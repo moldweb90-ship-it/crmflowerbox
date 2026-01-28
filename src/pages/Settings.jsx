@@ -70,31 +70,12 @@ export default function Settings() {
             <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Настройки</h1>
 
             {/* Tabs Header */}
-            <div style={{
-                display: 'flex',
-                gap: '1rem',
-                marginBottom: '2rem',
-                borderBottom: '1px solid var(--border)',
-                paddingBottom: '1px'
-            }}>
+            <div className="settings-tabs">
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        style={{
-                            padding: '0.75rem 1.5rem',
-                            background: 'none',
-                            border: 'none',
-                            borderBottom: activeTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                            color: activeTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            transition: 'all 0.2s',
-                            fontSize: '1rem'
-                        }}
+                        className={`settings-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
                     >
                         <tab.icon size={18} />
                         {tab.label}
@@ -110,7 +91,7 @@ export default function Settings() {
                     <div className="card">
                         <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Конфигурация цен</h2>
                         <form onSubmit={handleSave}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                            <div className="settings-grid">
                                 <div>
                                     <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
                                         Общая наценка (%)
