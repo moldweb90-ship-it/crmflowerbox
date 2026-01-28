@@ -1,160 +1,191 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { v4 as uuidv4 } from 'uuid'
+import { supabase } from '../supabase'
 
 const StoreContext = createContext()
 
-const INITIAL_DATA = {
-    flowers: [
-        { id: '1', name: 'Роза Красная', price: 150 },
-        { id: '2', name: 'Тюльпан Белый', price: 80 },
-        { id: '3', name: 'Пион Розовый', price: 350 },
-    ],
-    goods: [
-        { id: '1', name: 'Крафт бумага', price: 50, category: 'Упаковка' },
-        { id: '2', name: 'Лента атласная', price: 20, category: 'Декор' },
-        { id: '3', name: 'Корзина средняя', price: 400, category: 'Корзины' },
-    ],
-    categories: [
-        { id: '1', name: 'Свадебные' },
-        { id: '2', name: 'День Рождения' },
-        { id: '3', name: 'Премиум' },
-    ],
-    products: [], // Bouquets
-    settings: {
-        markupPercentage: 30, // 30%
-        deliveryCost: 500,
-    }
-}
-
 export function StoreProvider({ children }) {
-    // Initialize state from localStorage or default
-    const [flowers, setFlowers] = useState(() => {
-        const saved = localStorage.getItem('crm_flowers')
-        return saved ? JSON.parse(saved) : INITIAL_DATA.flowers
-    })
+    const [flowers, setFlowers] = useState([])
+    const [goods, setGoods] = useState([])
+    const [categories, setCategories] = useState([])
+    const [products, setProducts] = useState([])
+    const [settings, setSettings] = useState({ markup_percentage: 30, delivery_cost: 500 })
+    const [loading, setLoading] = useState(true)
 
-    const [goods, setGoods] = useState(() => {
-        const saved = localStorage.getItem('crm_goods')
-        return saved ? JSON.parse(saved) : INITIAL_DATA.goods
-    })
+    // Initial Data Fetch
+    useEffect(() => {
+        fetchAll()
+    }, [])
 
-    const [categories, setCategories] = useState(() => {
-        const saved = localStorage.getItem('crm_categories')
-        return saved ? JSON.parse(saved) : INITIAL_DATA.categories
-    })
+    const fetchAll = async () => {
+        setLoading(true)
+        try {
+            const [f, g, c, p, s] = await Promise.all([
+                supabase.from('flowers').select('*').order('created_at', { ascending: true }),
+                supabase.from('goods').select('*').order('created_at', { ascending: true }),
+                supabase.from('categories').select('*').order('created_at', { ascending: true }),
+                supabase.from('products').select('*').order('created_at', { ascending: true }),
+                supabase.from('settings').select('*').single()
+            ])
 
-    const [products, setProducts] = useState(() => {
-        const saved = localStorage.getItem('crm_products')
-        return saved ? JSON.parse(saved) : INITIAL_DATA.products
-    })
-
-    const [settings, setSettings] = useState(() => {
-        const saved = localStorage.getItem('crm_settings')
-        return saved ? JSON.parse(saved) : INITIAL_DATA.settings
-    })
-
-    // Persistence Effects
-    useEffect(() => localStorage.setItem('crm_flowers', JSON.stringify(flowers)), [flowers])
-    useEffect(() => localStorage.setItem('crm_goods', JSON.stringify(goods)), [goods])
-    useEffect(() => localStorage.setItem('crm_categories', JSON.stringify(categories)), [categories])
-    useEffect(() => localStorage.setItem('crm_products', JSON.stringify(products)), [products])
-    useEffect(() => localStorage.setItem('crm_settings', JSON.stringify(settings)), [settings])
+            if (f.data) setFlowers(f.data)
+            if (g.data) setGoods(g.data)
+            if (c.data) setCategories(c.data)
+            if (p.data) setProducts(p.data)
+            if (s.data) {
+                // Map underscore_case from DB to camelCase if needed, or just use snake_case in app
+                // For simplicity, let's keep using the keys as they come from DB (markup_percentage) 
+                // BUT the app expects camelCase (markupPercentage). Let's Normalize.
+                setSettings({
+                    markupPercentage: Number(s.data.markup_percentage),
+                    deliveryCost: Number(s.data.delivery_cost)
+                })
+            }
+        } catch (error) {
+            console.error('Error fetching data:', error)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     // --- Actions ---
 
     // Flowers
-    const addFlower = (flower) => setFlowers([...flowers, { ...flower, id: uuidv4() }])
-    const updateFlower = (id, updates) => {
-        setFlowers(flowers.map(f => f.id === id ? { ...f, ...updates } : f))
-        // Trigger Recalculation Logic Here (or use derived state in Products)
-        // For now, we'll implement a 'recalculateAll' helper or just let UI handle it if dynamic.
-        // However, user asked for specific "Button to recalculate" or auto.
-        // If we want auto-update of prices:
-        // We should probably just store composition and calculate price on the fly?
-        // User said: "export... with new price... button to recalculate".
-        // This implies stored prices might be stale.
-        // Strategy: calculate price on the fly for display, but also support "Snapshotting" price?
-        // Plan: We'll have a function `calculateProductPrice(product)` that uses current DB prices.
+    const addFlower = async (flower) => {
+        const { data, error } = await supabase.from('flowers').insert([flower]).select()
+        if (data) setFlowers([...flowers, data[0]])
     }
-    const deleteFlower = (id) => setFlowers(flowers.filter(f => f.id !== id))
+    const updateFlower = async (id, updates) => {
+        const { error } = await supabase.from('flowers').update(updates).eq('id', id)
+        if (!error) setFlowers(flowers.map(f => f.id === id ? { ...f, ...updates } : f))
+    }
+    const deleteFlower = async (id) => {
+        const { error } = await supabase.from('flowers').delete().eq('id', id)
+        if (!error) setFlowers(flowers.filter(f => f.id !== id))
+    }
 
     // Goods
-    const addGood = (good) => setGoods([...goods, { ...good, id: uuidv4() }])
-    const updateGood = (id, updates) => setGoods(goods.map(g => g.id === id ? { ...g, ...updates } : g))
-    const deleteGood = (id) => setGoods(goods.filter(g => g.id !== id))
+    const addGood = async (good) => {
+        const { data, error } = await supabase.from('goods').insert([good]).select()
+        if (data) setGoods([...goods, data[0]])
+    }
+    const updateGood = async (id, updates) => {
+        const { error } = await supabase.from('goods').update(updates).eq('id', id)
+        if (!error) setGoods(goods.map(g => g.id === id ? { ...g, ...updates } : g))
+    }
+    const deleteGood = async (id) => {
+        const { error } = await supabase.from('goods').delete().eq('id', id)
+        if (!error) setGoods(goods.filter(g => g.id !== id))
+    }
 
     // Categories
-    const addCategory = (name) => setCategories([...categories, { id: uuidv4(), name }])
-    const updateCategory = (id, name) => setCategories(categories.map(c => c.id === id ? { ...c, name } : c))
-    const deleteCategory = (id) => setCategories(categories.filter(c => c.id !== id))
-
-    // Settings
-    const updateSettings = (updates) => setSettings({ ...settings, ...updates })
+    const addCategory = async (name) => {
+        const { data, error } = await supabase.from('categories').insert([{ name }]).select()
+        if (data) setCategories([...categories, data[0]])
+    }
+    const updateCategory = async (id, name) => {
+        const { error } = await supabase.from('categories').update({ name }).eq('id', id)
+        if (!error) setCategories(categories.map(c => c.id === id ? { ...c, name } : c))
+    }
+    const deleteCategory = async (id) => {
+        const { error } = await supabase.from('categories').delete().eq('id', id)
+        if (!error) setCategories(categories.filter(c => c.id !== id))
+    }
 
     // Products
-    const addProduct = (product) => setProducts([...products, { ...product, id: uuidv4() }])
-    const updateProduct = (id, updates) => setProducts(products.map(p => p.id === id ? { ...p, ...updates } : p))
-    const deleteProduct = (id) => setProducts(products.filter(p => p.id !== id))
+    const addProduct = async (product) => {
+        // Prepare product for DB (properties mapping if needed)
+        // Ensure composition is stringified or passed as JSON object (Supabase handles JSON automatically)
+        // Ensure keys match DB columns (category_ids vs categoryIds)
+        const dbProduct = {
+            name: product.name,
+            sku: product.sku,
+            price: product.price,
+            composition: product.composition,
+            description: product.description,
+            category_ids: product.categoryIds || [] // Map to snake_case
+        }
+        const { data, error } = await supabase.from('products').insert([dbProduct]).select()
+        if (data) {
+            // Map back to camelCase for local state consistency
+            const newProduct = { ...data[0], categoryIds: data[0].category_ids }
+            setProducts([...products, newProduct])
+        }
+    }
+    const updateProduct = async (id, updates) => {
+        // Map updates to DB columns
+        const dbUpdates = { ...updates }
+        if (updates.categoryIds) {
+            dbUpdates.category_ids = updates.categoryIds
+            delete dbUpdates.categoryIds
+        }
 
-    // Calculation Helper - Updated Formula: (Cost + Delivery) * (1 + Markup%)
+        const { error } = await supabase.from('products').update(dbUpdates).eq('id', id)
+        if (!error) {
+            setProducts(products.map(p => p.id === id ? { ...p, ...updates } : p))
+        }
+    }
+    const deleteProduct = async (id) => {
+        const { error } = await supabase.from('products').delete().eq('id', id)
+        if (!error) setProducts(products.filter(p => p.id !== id))
+    }
+
+    // Settings
+    const updateSettings = async (updates) => {
+        // Convert camelCase to snake_case for DB
+        const dbUpdates = {}
+        if (updates.markupPercentage !== undefined) dbUpdates.markup_percentage = updates.markupPercentage
+        if (updates.deliveryCost !== undefined) dbUpdates.delivery_cost = updates.deliveryCost
+
+        const { error } = await supabase.from('settings').update(dbUpdates).eq('id', 1)
+        if (!error) setSettings({ ...settings, ...updates })
+    }
+
+    // Calculation Helper (Remains same logic)
     const calculatePrice = (composition) => {
         if (!Array.isArray(composition)) return 0
         let cost = 0
         composition.forEach(item => {
             if (item.type === 'flower') {
                 const f = flowers.find(x => x.id === item.id)
-                if (f) cost += f.price * item.qty
+                if (f) cost += Number(f.price) * item.qty
             } else if (item.type === 'good') {
                 const g = goods.find(x => x.id === item.id)
-                if (g) cost += g.price * item.qty
+                if (g) cost += Number(g.price) * item.qty
             }
         })
 
-        // Formula: (MaterialCost + Delivery) + Markup%
-        // Wait, user said: "Quantity * Price + Delivery Cost + % of this sum"
-        // So: (Sum(Qty*Price) + Delivery) * (1 + Markup/100)
-
         const baseWithDelivery = cost + settings.deliveryCost
         const final = baseWithDelivery + (baseWithDelivery * (settings.markupPercentage / 100))
-
-        // Round to nearest 10 (Beautiful Prices)
-        // 757 -> 760, 1554 -> 1550
         return Math.round(final / 10) * 10
     }
 
-    // Auto-Recalculation Effect
-    // Whenever flowers, goods, or settings change, we recalculate all bouquet prices
-    useEffect(() => {
-        const recalculate = () => {
-            let hasChanges = false
-            const updatedProducts = products.map(p => {
-                const newPrice = calculatePrice(p.composition)
-                if (newPrice !== p.price) {
-                    hasChanges = true
-                    return { ...p, price: newPrice }
-                }
-                return p
-            })
+    // Recalculate all products price globally (e.g. when settings change)
+    // NOTE: This could be heavy on DB effectively, we should probably update them in DB
+    // But for now, to replicate old behavior, we will just update them in MEMORY or optionally bulk update DB.
+    // Given the request complexity, let's keep it simple: We update the products in DB only when "recalculate" is explicitly requested or avoid it.
+    // Actually, the previous implementation had an effect to auto-update.
+    // For Supabase, auto-updating ALL products on every setting change is expensive (N requests).
+    // Let's REMOVE the auto-effect for now to avoid freezing the app.
+    // The user can manually edit products, or the price is calculated on the fly for display?
+    // The "Product Constructor" saves the price.
+    // Let's leave recalculate logic for the UI display, but strictly speaking, stored prices might get out of sync.
+    // WE WILL KEEP THE recalculateAllProducts function but make it update the DB.
 
-            if (hasChanges) {
-                setProducts(updatedProducts)
-            }
+    const recalculateAllProducts = async () => {
+        // This is potentially slow.
+        const updates = products.map(p => {
+            const newPrice = calculatePrice(p.composition)
+            return { ...p, price: newPrice }
+        })
+
+        // Optimistic update
+        setProducts(updates)
+
+        // Bulk update or individual updates? Supabase doesn't have easy bulk update for different values.
+        // We will loop.
+        for (const p of updates) {
+            await supabase.from('products').update({ price: p.price }).eq('id', p.id)
         }
-        recalculate()
-    }, [flowers, goods, settings.markupPercentage, settings.deliveryCost]) // We don't depend on 'products' to avoid loop, but we need to update 'products'
-    // Actually we need to depend on products.length or products ID list to not miss new products?
-    // But if we add product, we calculate price there.
-    // If we rely on this effect, we might get loops if we are not careful.
-    // The check `if (newPrice !== p.price)` prevents infinite loop if stable.
-
-    // Recalculate All Products (Manual Trigger - kept for compatibility but technically auto now)
-    const recalculateAllProducts = () => {
-        const updated = products.map(p => ({
-            ...p,
-            price: calculatePrice(p.composition)
-        }))
-        setProducts(updated)
-        return updated.length
     }
 
     return (
@@ -164,7 +195,8 @@ export function StoreProvider({ children }) {
             categories, addCategory, updateCategory, deleteCategory,
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
             settings, updateSettings,
-            calculatePrice
+            calculatePrice,
+            loading
         }}>
             {children}
         </StoreContext.Provider>
