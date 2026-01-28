@@ -91,16 +91,26 @@ export default function Products() {
 
     const addItemToComposition = () => {
         if (!compId) return
-        const existing = formData.composition.find(i => i.id === compId && i.type === compType)
+
+        // Find the actual item object to ensure we use the correct ID type (number vs string)
+        const list = compType === 'flower' ? flowers : goods
+        const selectedItem = list.find(item => String(item.id) === String(compId))
+
+        if (!selectedItem) return
+
+        const correctId = selectedItem.id
+
+        const existing = formData.composition.find(i => i.id === correctId && i.type === compType)
+
         if (existing) {
             setFormData({
                 ...formData,
-                composition: formData.composition.map(i => i.id === compId && i.type === compType ? { ...i, qty: i.qty + parseInt(compQty) } : i)
+                composition: formData.composition.map(i => i.id === correctId && i.type === compType ? { ...i, qty: i.qty + parseInt(compQty) } : i)
             })
         } else {
             setFormData({
                 ...formData,
-                composition: [...formData.composition, { type: compType, id: compId, qty: parseInt(compQty) }]
+                composition: [...formData.composition, { type: compType, id: correctId, qty: parseInt(compQty) }]
             })
         }
     }
@@ -263,7 +273,8 @@ export default function Products() {
                                 {formData.composition.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Состав пуст</p>}
                                 {formData.composition.map((comp, idx) => {
                                     const list = comp.type === 'flower' ? flowers : goods
-                                    const item = list.find(x => x.id === comp.id)
+                                    // Use loose comparison or string conversion for safety
+                                    const item = list.find(x => String(x.id) === String(comp.id))
                                     if (!item) return null
                                     return (
                                         <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
