@@ -15,6 +15,8 @@ export default function Products() {
 
     // State for Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+    const [sortConfig, setSortConfig] = useState({ key: 'index', direction: 'asc' })
+
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768)
         window.addEventListener('resize', handleResize)
@@ -364,6 +366,37 @@ export default function Products() {
         return matchesSearch && matchesCat
     })
 
+    // Sorting logic
+    const sortedProducts = [...filteredProducts].sort((a, b) => {
+        const direction = sortConfig.direction === 'asc' ? 1 : -1
+
+        if (sortConfig.key === 'sku') {
+            const skuA = (a.sku || '').toString().toLowerCase()
+            const skuB = (b.sku || '').toString().toLowerCase()
+            if (skuA < skuB) return -1 * direction
+            if (skuA > skuB) return 1 * direction
+            return 0
+        }
+
+        if (sortConfig.key === 'price') {
+            const priceA = parseFloat(a.price) || 0
+            const priceB = parseFloat(b.price) || 0
+            return (priceA - priceB) * direction
+        }
+
+        // Default: Sort by Creation Index (ID based)
+        const indexA = products.findIndex(p => p.id === a.id)
+        const indexB = products.findIndex(p => p.id === b.id)
+        return (indexA - indexB) * direction
+    })
+
+    const handleSort = (key) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }))
+    }
+
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -457,18 +490,43 @@ export default function Products() {
                     <table style={{ width: '100%' }}>
                         <thead style={{ backgroundColor: '#f9fafb' }}>
                             <tr>
+                                <th style={{ textAlign: 'left', padding: '1rem', width: '60px', cursor: 'pointer' }} onClick={() => handleSort('index')}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        #
+                                        {sortConfig.key === 'index' && (
+                                            <ArrowLeft size={14} style={{ transform: sortConfig.direction === 'asc' ? 'rotate(90deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', color: 'var(--primary)' }} />
+                                        )}
+                                    </div>
+                                </th>
                                 <th style={{ textAlign: 'left', padding: '1rem' }}>Название</th>
-                                <th style={{ textAlign: 'left', padding: '1rem' }}>Артикул</th>
+                                <th style={{ textAlign: 'left', padding: '1rem', cursor: 'pointer' }} onClick={() => handleSort('sku')}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        Артикул
+                                        {sortConfig.key === 'sku' && (
+                                            <ArrowLeft size={14} style={{ transform: sortConfig.direction === 'asc' ? 'rotate(90deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', color: 'var(--primary)' }} />
+                                        )}
+                                    </div>
+                                </th>
                                 <th style={{ textAlign: 'left', padding: '1rem' }}>Состав</th>
-                                <th style={{ textAlign: 'right', padding: '1rem' }}>Цена</th>
+                                <th style={{ textAlign: 'right', padding: '1rem', cursor: 'pointer' }} onClick={() => handleSort('price')}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                                        Цена
+                                        {sortConfig.key === 'price' && (
+                                            <ArrowLeft size={14} style={{ transform: sortConfig.direction === 'asc' ? 'rotate(90deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', color: 'var(--primary)' }} />
+                                        )}
+                                    </div>
+                                </th>
                                 <th style={{ textAlign: 'right', padding: '1rem' }}>Действия</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredProducts.map(p => {
+                            {sortedProducts.map((p, idx) => {
                                 const isPublished = p.is_published !== false
+                                // Global Index (based on original products array)
+                                const globalIndex = products.findIndex(prod => prod.id === p.id) + 1
                                 return (
                                     <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
+                                        <td style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{globalIndex}</td>
                                         <td style={{ padding: '1rem', fontWeight: 500 }}>
                                             {p.name}
                                             {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Снят с публикации</div>}
@@ -494,7 +552,7 @@ export default function Products() {
                                     </tr>
                                 )
                             })}
-                            {filteredProducts.length === 0 && (
+                            {sortedProducts.length === 0 && (
                                 <tr>
                                     <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                                         Товары не найдены.
