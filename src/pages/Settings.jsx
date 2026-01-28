@@ -57,125 +57,196 @@ export default function Settings() {
         }
     }
 
+    const [activeTab, setActiveTab] = useState('general')
+
+    const tabs = [
+        { id: 'general', label: 'Основные', icon: Save },
+        { id: 'security', label: 'Безопасность', icon: Lock },
+        { id: 'system', label: 'Система', icon: RefreshCw },
+    ]
+
     return (
-        <div style={{ maxWidth: '600px' }}>
+        <div style={{ maxWidth: '800px' }}>
             <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Настройки</h1>
 
-            <div className="card" style={{ marginBottom: '2rem' }}>
-                <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Конфигурация цен</h2>
-                <form onSubmit={handleSave}>
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                            Общая наценка (%)
-                        </label>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                            Этот процент добавляется к себестоимости всех букетов.
-                        </p>
-                        <input
-                            type="number"
-                            className="input"
-                            value={markup}
-                            onChange={e => setMarkup(e.target.value)}
-                            required
-                            min="0"
-                            step="0.1"
-                        />
-                    </div>
-
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                            Стоимость доставки (lei)
-                        </label>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                            Фиксированная стоимость, добавляемая к каждому букету.
-                        </p>
-                        <input
-                            type="number"
-                            className="input"
-                            value={delivery}
-                            onChange={e => setDelivery(e.target.value)}
-                            required
-                            min="0"
-                        />
-                    </div>
-
-                    <button type="submit" className="btn btn-primary">
-                        <Save size={18} style={{ marginRight: '0.5rem' }} />
-                        Сохранить настройки
+            {/* Tabs Header */}
+            <div style={{
+                display: 'flex',
+                gap: '1rem',
+                marginBottom: '2rem',
+                borderBottom: '1px solid var(--border)',
+                paddingBottom: '1px'
+            }}>
+                {tabs.map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        style={{
+                            padding: '0.75rem 1.5rem',
+                            background: 'none',
+                            border: 'none',
+                            borderBottom: activeTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
+                            color: activeTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            transition: 'all 0.2s',
+                            fontSize: '1rem'
+                        }}
+                    >
+                        <tab.icon size={18} />
+                        {tab.label}
                     </button>
-                </form>
+                ))}
             </div>
 
-            {/* Password Change Section */}
-            <div className="card" style={{ marginBottom: '2rem' }}>
-                <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Безопасность</h2>
-                <form onSubmit={handleChangePassword}>
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                            Новый пароль
-                        </label>
-                        <input
-                            type="password"
-                            className="input"
-                            value={newPassword}
-                            onChange={e => setNewPassword(e.target.value)}
-                            required
-                            placeholder="Минимум 6 символов"
-                        />
-                    </div>
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                            Подтвердите пароль
-                        </label>
-                        <input
-                            type="password"
-                            className="input"
-                            value={confirmPassword}
-                            onChange={e => setConfirmPassword(e.target.value)}
-                            required
-                            placeholder="Повторите пароль"
-                        />
-                    </div>
+            {/* Tab Content */}
+            <div className="tab-content" style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
 
-                    {passMessage && (
-                        <div style={{
-                            marginBottom: '1rem',
-                            padding: '0.75rem',
-                            borderRadius: '0.5rem',
-                            background: passError ? '#fee2e2' : '#dcfce7',
-                            color: passError ? '#ef4444' : '#166534',
-                            fontSize: '0.875rem'
-                        }}>
-                            {passMessage}
+                {/* GENERAL TAB */}
+                {activeTab === 'general' && (
+                    <div className="card">
+                        <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Конфигурация цен</h2>
+                        <form onSubmit={handleSave}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                                        Общая наценка (%)
+                                    </label>
+                                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                        Добавочная стоимость ко всем букетам.
+                                    </p>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        value={markup}
+                                        onChange={e => setMarkup(e.target.value)}
+                                        required
+                                        min="0"
+                                        step="0.1"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                                        Стоимость доставки (lei)
+                                    </label>
+                                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                        Фиксированная сумма доставки.
+                                    </p>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        value={delivery}
+                                        onChange={e => setDelivery(e.target.value)}
+                                        required
+                                        min="0"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
+                                <button type="submit" className="btn btn-primary">
+                                    <Save size={18} style={{ marginRight: '0.5rem' }} />
+                                    Сохранить настройки
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+
+                {/* SECURITY TAB */}
+                {activeTab === 'security' && (
+                    <div className="card" style={{ maxWidth: '500px' }}>
+                        <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Смена пароля</h2>
+                        <form onSubmit={handleChangePassword}>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                                    Новый пароль
+                                </label>
+                                <input
+                                    type="password"
+                                    className="input"
+                                    value={newPassword}
+                                    onChange={e => setNewPassword(e.target.value)}
+                                    required
+                                    placeholder="Минимум 6 символов"
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                                    Подтверждение
+                                </label>
+                                <input
+                                    type="password"
+                                    className="input"
+                                    value={confirmPassword}
+                                    onChange={e => setConfirmPassword(e.target.value)}
+                                    required
+                                    placeholder="Повторите пароль"
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+
+                            {passMessage && (
+                                <div style={{
+                                    marginBottom: '1rem',
+                                    padding: '0.75rem',
+                                    borderRadius: '0.5rem',
+                                    background: passError ? '#fee2e2' : '#dcfce7',
+                                    color: passError ? '#ef4444' : '#166534',
+                                    fontSize: '0.875rem'
+                                }}>
+                                    {passMessage}
+                                </div>
+                            )}
+
+                            <button type="submit" className="btn" style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                                <Lock size={18} style={{ marginRight: '0.5rem' }} />
+                                Обновить пароль
+                            </button>
+                        </form>
+                    </div>
+                )}
+
+                {/* SYSTEM TAB */}
+                {activeTab === 'system' && (
+                    <div className="card">
+                        <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Обслуживание системы</h2>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 0' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1rem', marginBottom: '0.25rem' }}>Пересчитать цены товаров</h3>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                                    Принудительно обновить цены всех букетов на основе актуальной стоимости цветов.
+                                </p>
+                            </div>
+                            <button className="btn" onClick={handleRecalculate} style={{ border: '1px solid var(--border)' }}>
+                                <RefreshCw size={18} style={{ marginRight: '0.5rem' }} />
+                                Запустить пересчет
+                            </button>
                         </div>
-                    )}
-
-                    <button type="submit" className="btn" style={{ border: '1px solid var(--border)' }}>
-                        <Lock size={18} style={{ marginRight: '0.5rem' }} />
-                        Сменить пароль
-                    </button>
-                </form>
-            </div>
-
-            <div className="card">
-                <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Действия</h2>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                        <h3 style={{ fontSize: '1rem' }}>Пересчитать цены</h3>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                            Обновить цены всех букетов на основе текущих цен цветов и настроек.
-                        </p>
+                        {recalcCount !== null && (
+                            <div style={{
+                                marginTop: '1rem',
+                                padding: '1rem',
+                                background: '#f0fdf4',
+                                color: '#15803d',
+                                borderRadius: 'var(--radius)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                            }}>
+                                <RefreshCw size={16} />
+                                Успешно обновлено товаров: <strong>{recalcCount}</strong>
+                            </div>
+                        )}
                     </div>
-                    <button className="btn" onClick={handleRecalculate} style={{ border: '1px solid var(--border)' }}>
-                        <RefreshCw size={18} style={{ marginRight: '0.5rem' }} />
-                        Пересчитать всё
-                    </button>
-                </div>
-                {recalcCount !== null && (
-                    <p style={{ marginTop: '1rem', color: 'var(--secondary)', fontWeight: 500 }}>
-                        Успешно пересчитано {recalcCount} товаров.
-                    </p>
                 )}
             </div>
         </div>
