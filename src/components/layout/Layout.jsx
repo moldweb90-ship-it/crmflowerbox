@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Link, useLocation, Outlet } from 'react-router-dom'
+import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 
 export default function Layout() {
     const location = useLocation()
@@ -31,6 +32,18 @@ export default function Layout() {
         { label: 'Категории', path: '/categories', icon: Layers },
         { label: 'Настройки', path: '/settings', icon: Settings },
     ]
+
+    const { logout } = useAuth()
+    const navigate = useNavigate()
+
+    const handleLogout = async () => {
+        try {
+            await logout()
+            navigate('/login')
+        } catch (error) {
+            console.error('Logout failed:', error)
+        }
+    }
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -114,7 +127,11 @@ export default function Layout() {
                     </nav>
 
                     <div style={{ padding: '1rem', borderTop: '1px solid var(--border)' }}>
-                        <button className="btn" style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--text-muted)', gap: '0.75rem' }}>
+                        <button
+                            className="btn"
+                            onClick={handleLogout}
+                            style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--text-muted)', gap: '0.75rem' }}
+                        >
                             <LogOut size={20} />
                             Выйти
                         </button>
