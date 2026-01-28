@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
 import { Package, Flower2, DollarSign, Layers } from 'lucide-react'
 
@@ -13,10 +14,10 @@ export default function Dashboard() {
             <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Дашборд</h1>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                <StatCard title="Всего букетов" value={products.length} icon={Package} color="blue" />
-                <StatCard title="Цветов" value={flowers.length} icon={Flower2} color="green" />
-                <StatCard title="Доп. товаров" value={goods.length} icon={Package} color="pink" />
-                <StatCard title="Категории" value={categories.length} icon={Layers} color="purple" />
+                <StatCard title="Всего букетов" value={products.length} icon={Package} color="blue" to="/products" />
+                <StatCard title="Цветов" value={flowers.length} icon={Flower2} color="green" to="/flowers" />
+                <StatCard title="Доп. товаров" value={goods.length} icon={Package} color="pink" to="/goods" />
+                <StatCard title="Категории" value={categories.length} icon={Layers} color="purple" to="/categories" />
                 <StatCard title="Общая стоимость" value={`${totalValue} lei`} icon={DollarSign} color="amber" />
             </div>
 
@@ -28,11 +29,43 @@ export default function Dashboard() {
                     и создания вашего первого <strong style={{ color: 'var(--text-main)' }}>Букета</strong>.
                 </p>
             </div>
+
+            <div className="card" style={{ marginTop: '2rem' }}>
+                <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Последние добавленные букеты</h2>
+                <div className="table-container">
+                    <table style={{ width: '100%' }}>
+                        <thead>
+                            <tr>
+                                <th style={{ textAlign: 'left', padding: '0.75rem 1rem' }}>Название</th>
+                                <th style={{ textAlign: 'left', padding: '0.75rem 1rem' }}>Артикул</th>
+                                <th style={{ textAlign: 'right', padding: '0.75rem 1rem' }}>Цена</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {products.slice(-10).reverse().map(product => (
+                                <tr key={product.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                    <td style={{ padding: '0.75rem 1rem' }}>{product.name}</td>
+                                    <td style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)' }}>{product.sku || '-'}</td>
+                                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 'bold' }}>{product.price} lei</td>
+                                </tr>
+                            ))}
+                            {products.length === 0 && (
+                                <tr>
+                                    <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                        Список пуст
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     )
 }
 
-function StatCard({ title, value, icon: Icon, color }) {
+
+function StatCard({ title, value, icon: Icon, color, to }) {
     const colors = {
         blue: { bg: '#dbeafe', text: '#2563eb' },
         green: { bg: '#dcfce7', text: '#16a34a' },
@@ -43,8 +76,8 @@ function StatCard({ title, value, icon: Icon, color }) {
 
     const theme = colors[color] || colors.blue
 
-    return (
-        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+    const CardContent = (
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', height: '100%', transition: 'transform 0.2s' }}>
             <div style={{
                 padding: '1rem',
                 borderRadius: '50%',
@@ -60,4 +93,15 @@ function StatCard({ title, value, icon: Icon, color }) {
             </div>
         </div>
     )
+
+    if (to) {
+        return (
+            <Link to={to} style={{ textDecoration: 'none', color: 'inherit' }}>
+                {CardContent}
+            </Link>
+        )
+    }
+
+    return CardContent
 }
+

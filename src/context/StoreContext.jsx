@@ -85,6 +85,7 @@ export function StoreProvider({ children }) {
 
     // Categories
     const addCategory = (name) => setCategories([...categories, { id: uuidv4(), name }])
+    const updateCategory = (id, name) => setCategories(categories.map(c => c.id === id ? { ...c, name } : c))
     const deleteCategory = (id) => setCategories(categories.filter(c => c.id !== id))
 
     // Settings
@@ -160,7 +161,7 @@ export function StoreProvider({ children }) {
         <StoreContext.Provider value={{
             flowers, addFlower, updateFlower, deleteFlower,
             goods, addGood, updateGood, deleteGood,
-            categories, addCategory, deleteCategory,
+            categories, addCategory, updateCategory, deleteCategory,
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
             settings, updateSettings,
             calculatePrice
