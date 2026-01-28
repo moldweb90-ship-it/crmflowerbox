@@ -112,15 +112,21 @@ export function StoreProvider({ children }) {
         }
     }
     const updateProduct = async (id, updates) => {
-        // Map updates to DB columns
-        const dbUpdates = { ...updates }
-        if (updates.categoryIds) {
-            dbUpdates.category_ids = updates.categoryIds
-            delete dbUpdates.categoryIds
-        }
+        // Prepare DB updates explicitly to avoid sending unknown columns like 'manualPrice'
+        const dbUpdates = {}
+        if (updates.name !== undefined) dbUpdates.name = updates.name
+        if (updates.sku !== undefined) dbUpdates.sku = updates.sku
+        if (updates.price !== undefined) dbUpdates.price = updates.price
+        if (updates.composition !== undefined) dbUpdates.composition = updates.composition
+        if (updates.description !== undefined) dbUpdates.description = updates.description
+        if (updates.categoryIds !== undefined) dbUpdates.category_ids = updates.categoryIds
 
         const { error } = await supabase.from('products').update(dbUpdates).eq('id', id)
-        if (!error) {
+
+        if (error) {
+            console.error("Error updating product:", error)
+        } else {
+            // Update local state (keep using 'updates' which has camelCase keys for local consistency)
             setProducts(products.map(p => p.id === id ? { ...p, ...updates } : p))
         }
     }
