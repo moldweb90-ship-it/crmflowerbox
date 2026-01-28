@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 export default function Products() {
-    const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice } = useStore()
+    const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice, recalculateAllProducts } = useStore()
 
     const [view, setView] = useState('list') // 'list' | 'editor'
     const [filterCat, setFilterCat] = useState('all')
@@ -37,6 +37,17 @@ export default function Products() {
     // Computed Price
     const [calculatedCost, setCalculatedCost] = useState(0)
     const [finalPrice, setFinalPrice] = useState(0)
+
+    // Recalculate State
+    const [recalcMsg, setRecalcMsg] = useState('')
+
+    const handleRecalculate = async () => {
+        if (!window.confirm('Пересчитать цены всех товаров на основе текущих цен цветов?')) return
+        setRecalcMsg('Пересчет...')
+        const count = await recalculateAllProducts()
+        setRecalcMsg(`Обновлено: ${count}`)
+        setTimeout(() => setRecalcMsg(''), 3000)
+    }
 
     // Initialization for Edit
     const handleEdit = (product) => {
@@ -137,11 +148,14 @@ export default function Products() {
     }
 
     const handleExport = () => {
-        // Filter based on current selection
-        const filtered = products.filter(p => filterCat === 'all' || (p.categoryIds && p.categoryIds.includes(filterCat)))
+        // Filter: Match Category AND Match Published Status (Only Published)
+        const filtered = products.filter(p => {
+            const matchCat = filterCat === 'all' || (p.categoryIds && p.categoryIds.includes(filterCat))
+            const isPublished = p.is_published !== false // Default to true if undefined
+            return matchCat && isPublished
+        })
 
         // Sort by SKU Ascending
-        // SKU might be string "100", "A-5", etc. Simple string comparison is usually expected.
         const sorted = [...filtered].sort((a, b) => {
             if (!a.sku) return 1;
             if (!b.sku) return -1;
@@ -152,7 +166,8 @@ export default function Products() {
         const data = sorted.map(p => {
             const compStr = p.composition.map(c => {
                 const list = c.type === 'flower' ? flowers : goods
-                const item = list.find(x => x.id === c.id)
+                // Use loose comparison or string conversion for safety
+                const item = list.find(x => String(x.id) === String(c.id))
                 return `${item ? item.name : 'Неизвестно'} x${c.qty}`
             }).join('; ')
 
@@ -170,7 +185,6 @@ export default function Products() {
         XLSX.utils.book_append_sheet(wb, ws, "Bouquets");
 
         // Generate Filename
-        // [CategoryName]_[Count].xlsx
         let fileName = 'All_Products'
         if (filterCat !== 'all') {
             const catObj = categories.find(c => c.id === filterCat)
@@ -182,6 +196,11 @@ export default function Products() {
 
         // Save File
         XLSX.writeFile(wb, finalName);
+    }
+
+    // Toggle Publish Status
+    const togglePublish = (p) => {
+        updateProduct(p.id, { is_published: !p.is_published })
     }
 
     if (view === 'editor') {
@@ -341,15 +360,17 @@ export default function Products() {
         return matchesSearch && matchesCat
     })
 
-
-
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 <div>
                     <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Товары / Букеты</h1>
+                    {recalcMsg && <p style={{ color: '#16a34a', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.25rem' }}>{recalcMsg}</p>}
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button className="btn" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={handleRecalculate} title="Пересчитать цены">
+                        <RefreshCw size={20} />
+                    </button>
                     {!isMobile && <button className="btn" style={{ border: '1px solid var(--border)' }} onClick={handleExport}>Экспорт CSV</button>}
                     <button className="btn btn-primary" onClick={handleCreate}>
                         <Plus size={20} style={{ marginRight: isMobile ? 0 : '0.5rem' }} />
@@ -378,38 +399,46 @@ export default function Products() {
             {isMobile ? (
                 // Mobile Cards View
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-                    {filteredProducts.map(p => (
-                        <div key={p.id} className="card">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
-                                <div>
-                                    <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>{p.name}</h3>
-                                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{p.sku}</p>
+                    {filteredProducts.map(p => {
+                        const isPublished = p.is_published !== false
+                        return (
+                            <div key={p.id} className="card" style={{ opacity: isPublished ? 1 : 0.6 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>{p.name}</h3>
+                                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{p.sku}</p>
+                                        {!isPublished && <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>Снят с публикации</span>}
+                                    </div>
+                                    <span style={{ fontWeight: 'bold', fontSize: '1.125rem', color: 'var(--primary)' }}>{p.price} lei</span>
                                 </div>
-                                <span style={{ fontWeight: 'bold', fontSize: '1.125rem', color: 'var(--primary)' }}>{p.price} lei</span>
-                            </div>
 
-                            <div style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '1rem', backgroundColor: '#f1f5f9', padding: '0.5rem', borderRadius: '4px' }}>
-                                <span style={{ fontWeight: 600 }}>Состав: </span>
-                                {p.composition.map(c => {
-                                    const list = c.type === 'flower' ? flowers : goods
-                                    const item = list.find(x => x.id === c.id)
-                                    return item ? item.name : '?'
-                                }).join(', ')}
-                            </div>
+                                <div style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '1rem', backgroundColor: '#f1f5f9', padding: '0.5rem', borderRadius: '4px' }}>
+                                    <span style={{ fontWeight: 600 }}>Состав: </span>
+                                    {p.composition.map(c => {
+                                        const list = c.type === 'flower' ? flowers : goods
+                                        // Use loose comparison or string conversion for safety
+                                        const item = list.find(x => String(x.id) === String(c.id))
+                                        return item ? item.name : '?'
+                                    }).join(', ')}
+                                </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                                <button onClick={() => handleDuplicate(p)} className="btn" style={{ border: '1px solid var(--border)', padding: '0.5rem' }} title="Дублировать">
-                                    <Copy size={18} />
-                                </button>
-                                <button onClick={() => handleEdit(p)} className="btn" style={{ border: '1px solid var(--border)', padding: '0.5rem' }} title="Редактировать">
-                                    <Edit2 size={18} /> Ред.
-                                </button>
-                                <button onClick={() => deleteProduct(p.id)} className="btn" style={{ backgroundColor: '#fef2f2', border: '1px solid #fee2e2', color: '#ef4444', padding: '0.5rem' }}>
-                                    <Trash2 size={18} />
-                                </button>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                                    <button onClick={() => togglePublish(p)} className="btn" style={{ border: '1px solid var(--border)', padding: '0.5rem' }} title={isPublished ? "Снять с публикации" : "Опубликовать"}>
+                                        {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
+                                    </button>
+                                    <button onClick={() => handleDuplicate(p)} className="btn" style={{ border: '1px solid var(--border)', padding: '0.5rem' }} title="Дублировать">
+                                        <Copy size={18} />
+                                    </button>
+                                    <button onClick={() => handleEdit(p)} className="btn" style={{ border: '1px solid var(--border)', padding: '0.5rem' }} title="Редактировать">
+                                        <Edit2 size={18} /> Ред.
+                                    </button>
+                                    <button onClick={() => deleteProduct(p.id)} className="btn" style={{ backgroundColor: '#fef2f2', border: '1px solid #fee2e2', color: '#ef4444', padding: '0.5rem' }}>
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                     {filteredProducts.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Нет товаров.</p>}
                 </div>
             ) : (
@@ -426,26 +455,35 @@ export default function Products() {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredProducts.map(p => (
-                                <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                    <td style={{ padding: '1rem', fontWeight: 500 }}>{p.name}</td>
-                                    <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{p.sku}</td>
-                                    <td style={{ padding: '1rem', fontSize: '0.875rem', maxWidth: '300px' }}>
-                                        {p.composition.slice(0, 3).map(c => {
-                                            const list = c.type === 'flower' ? flowers : goods
-                                            const item = list.find(x => x.id === c.id)
-                                            return item ? item.name : '?'
-                                        }).join(', ')}
-                                        {p.composition.length > 3 && '...'}
-                                    </td>
-                                    <td style={{ textAlign: 'right', padding: '1rem', fontWeight: 600 }}>{p.price} lei</td>
-                                    <td style={{ textAlign: 'right', padding: '1rem' }}>
-                                        <button onClick={() => handleEdit(p)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }} title="Редактировать"><Edit2 size={18} /></button>
-                                        <button onClick={() => handleDuplicate(p)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }} title="Дублировать"><Copy size={18} /></button>
-                                        <button onClick={() => deleteProduct(p.id)} style={{ color: '#ef4444' }} title="Удалить"><Trash2 size={18} /></button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {filteredProducts.map(p => {
+                                const isPublished = p.is_published !== false
+                                return (
+                                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
+                                        <td style={{ padding: '1rem', fontWeight: 500 }}>
+                                            {p.name}
+                                            {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Снят с публикации</div>}
+                                        </td>
+                                        <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{p.sku}</td>
+                                        <td style={{ padding: '1rem', fontSize: '0.875rem', maxWidth: '300px' }}>
+                                            {p.composition.slice(0, 3).map(c => {
+                                                const list = c.type === 'flower' ? flowers : goods
+                                                const item = list.find(x => String(x.id) === String(c.id))
+                                                return item ? item.name : '?'
+                                            }).join(', ')}
+                                            {p.composition.length > 3 && '...'}
+                                        </td>
+                                        <td style={{ textAlign: 'right', padding: '1rem', fontWeight: 600 }}>{p.price} lei</td>
+                                        <td style={{ textAlign: 'right', padding: '1rem' }}>
+                                            <button onClick={() => togglePublish(p)} style={{ marginRight: '0.5rem', color: isPublished ? 'var(--text-muted)' : 'var(--primary)' }} title={isPublished ? "Снять с публикации" : "Опубликовать"}>
+                                                {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
+                                            </button>
+                                            <button onClick={() => handleEdit(p)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }} title="Редактировать"><Edit2 size={18} /></button>
+                                            <button onClick={() => handleDuplicate(p)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }} title="Дублировать"><Copy size={18} /></button>
+                                            <button onClick={() => deleteProduct(p.id)} style={{ color: '#ef4444' }} title="Удалить"><Trash2 size={18} /></button>
+                                        </td>
+                                    </tr>
+                                )
+                            })}
                             {filteredProducts.length === 0 && (
                                 <tr>
                                     <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>

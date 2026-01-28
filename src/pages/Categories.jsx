@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Trash2, Edit, Eye } from 'lucide-react'
+import { Plus, Trash2, Edit, Eye, EyeOff } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 export default function Categories() {
@@ -47,6 +47,10 @@ export default function Categories() {
         setViewModalOpen(true)
     }
 
+    const togglePublish = (cat) => {
+        updateCategory(cat.id, { is_published: !cat.is_published })
+    }
+
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -72,9 +76,13 @@ export default function Categories() {
                     <tbody>
                         {categories.map(cat => {
                             const count = getCategoryProducts(cat.id).length
+                            const isPublished = cat.is_published !== false
                             return (
-                                <tr key={cat.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                    <td style={{ padding: '1rem', fontWeight: 500 }}>{cat.name}</td>
+                                <tr key={cat.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
+                                    <td style={{ padding: '1rem', fontWeight: 500 }}>
+                                        {cat.name}
+                                        {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Снята с публикации</div>}
+                                    </td>
                                     <td style={{ textAlign: 'center', padding: '1rem' }}>
                                         <span style={{
                                             background: 'var(--bg-body)',
@@ -88,6 +96,9 @@ export default function Categories() {
                                         </span>
                                     </td>
                                     <td style={{ textAlign: 'right', padding: '1rem' }}>
+                                        <button onClick={() => togglePublish(cat)} style={{ marginRight: '0.5rem', color: isPublished ? 'var(--text-muted)' : 'var(--primary)' }} title={isPublished ? "Снять с публикации" : "Опубликовать"}>
+                                            {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
+                                        </button>
                                         <button onClick={() => handleViewClick(cat)} style={{ marginRight: '0.5rem', color: 'var(--primary)' }} title="Посмотреть товары">
                                             <Eye size={18} />
                                         </button>

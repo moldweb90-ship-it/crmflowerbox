@@ -30,7 +30,13 @@ export function StoreProvider({ children }) {
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
             if (c.data) setCategories(c.data)
-            if (p.data) setProducts(p.data)
+            if (p.data) {
+                const mappedProducts = p.data.map(prod => ({
+                    ...prod,
+                    categoryIds: prod.category_ids || []
+                }))
+                setProducts(mappedProducts)
+            }
             if (s.data) {
                 // Map underscore_case from DB to camelCase if needed, or just use snake_case in app
                 // For simplicity, let's keep using the keys as they come from DB (markup_percentage) 
@@ -51,7 +57,8 @@ export function StoreProvider({ children }) {
 
     // Flowers
     const addFlower = async (flower) => {
-        const { data, error } = await supabase.from('flowers').insert([flower]).select()
+        const payload = { ...flower, is_published: true }
+        const { data, error } = await supabase.from('flowers').insert([payload]).select()
         if (data) setFlowers([...flowers, data[0]])
     }
     const updateFlower = async (id, updates) => {
@@ -65,7 +72,8 @@ export function StoreProvider({ children }) {
 
     // Goods
     const addGood = async (good) => {
-        const { data, error } = await supabase.from('goods').insert([good]).select()
+        const payload = { ...good, is_published: true }
+        const { data, error } = await supabase.from('goods').insert([payload]).select()
         if (data) setGoods([...goods, data[0]])
     }
     const updateGood = async (id, updates) => {
@@ -79,12 +87,18 @@ export function StoreProvider({ children }) {
 
     // Categories
     const addCategory = async (name) => {
-        const { data, error } = await supabase.from('categories').insert([{ name }]).select()
+        const { data, error } = await supabase.from('categories').insert([{ name, is_published: true }]).select()
         if (data) setCategories([...categories, data[0]])
     }
-    const updateCategory = async (id, name) => {
-        const { error } = await supabase.from('categories').update({ name }).eq('id', id)
-        if (!error) setCategories(categories.map(c => c.id === id ? { ...c, name } : c))
+    const updateCategory = async (id, updates) => {
+        // Support legacy call (id, name) for safety
+        let finalUpdates = updates
+        if (typeof updates === 'string') {
+            finalUpdates = { name: updates }
+        }
+
+        const { error } = await supabase.from('categories').update(finalUpdates).eq('id', id)
+        if (!error) setCategories(categories.map(c => c.id === id ? { ...c, ...finalUpdates } : c))
     }
     const deleteCategory = async (id) => {
         const { error } = await supabase.from('categories').delete().eq('id', id)
@@ -102,7 +116,8 @@ export function StoreProvider({ children }) {
             price: product.price,
             composition: product.composition,
             description: product.description,
-            category_ids: product.categoryIds || [] // Map to snake_case
+            category_ids: product.categoryIds || [], // Map to snake_case
+            is_published: true
         }
         const { data, error } = await supabase.from('products').insert([dbProduct]).select()
         if (data) {
@@ -120,6 +135,7 @@ export function StoreProvider({ children }) {
         if (updates.composition !== undefined) dbUpdates.composition = updates.composition
         if (updates.description !== undefined) dbUpdates.description = updates.description
         if (updates.categoryIds !== undefined) dbUpdates.category_ids = updates.categoryIds
+        if (updates.is_published !== undefined) dbUpdates.is_published = updates.is_published
 
         const { error } = await supabase.from('products').update(dbUpdates).eq('id', id)
 
@@ -192,6 +208,8 @@ export function StoreProvider({ children }) {
         for (const p of updates) {
             await supabase.from('products').update({ price: p.price }).eq('id', p.id)
         }
+
+        return updates.length
     }
 
     return (

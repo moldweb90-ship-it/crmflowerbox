@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2 } from 'lucide-react'
+import { Plus, Edit2, Trash2, Eye, EyeOff } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
@@ -54,6 +54,11 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         }
     }
 
+    const togglePublish = (item) => {
+        if (isFlowers) updateFlower(item.id, { is_published: !item.is_published })
+        else updateGood(item.id, { is_published: !item.is_published })
+    }
+
     // State for Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     useEffect(() => {
@@ -79,23 +84,32 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             {isMobile ? (
                 // Mobile Card View
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-                    {items.map(item => (
-                        <div key={item.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>{item.name}</h3>
-                                {!isFlowers && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{item.category}</p>}
-                                <p style={{ color: 'var(--primary)', fontWeight: 'bold', marginTop: '0.25rem' }}>{item.price} lei</p>
+                    {items.map(item => {
+                        const isPublished = item.is_published !== false
+                        return (
+                            <div key={item.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: isPublished ? 1 : 0.6 }}>
+                                <div>
+                                    <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>
+                                        {item.name}
+                                        {!isPublished && <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700, marginLeft: '0.5rem' }}>Скрыт</span>}
+                                    </h3>
+                                    {!isFlowers && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{item.category}</p>}
+                                    <p style={{ color: 'var(--primary)', fontWeight: 'bold', marginTop: '0.25rem' }}>{item.price} lei</p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button className="btn" onClick={() => togglePublish(item)} style={{ padding: '0.5rem', border: '1px solid var(--border)' }}>
+                                        {isPublished ? <Eye size={18} color="var(--text-muted)" /> : <EyeOff size={18} />}
+                                    </button>
+                                    <button className="btn" onClick={() => openEditModal(item)} style={{ padding: '0.5rem', border: '1px solid var(--border)' }}>
+                                        <Edit2 size={18} color="var(--text-muted)" />
+                                    </button>
+                                    <button className="btn" onClick={() => handleDelete(item.id)} style={{ padding: '0.5rem', border: '1px solid #fee2e2', backgroundColor: '#fef2f2' }}>
+                                        <Trash2 size={18} color="#ef4444" />
+                                    </button>
+                                </div>
                             </div>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <button className="btn" onClick={() => openEditModal(item)} style={{ padding: '0.5rem', border: '1px solid var(--border)' }}>
-                                    <Edit2 size={18} color="var(--text-muted)" />
-                                </button>
-                                <button className="btn" onClick={() => handleDelete(item.id)} style={{ padding: '0.5rem', border: '1px solid #fee2e2', backgroundColor: '#fef2f2' }}>
-                                    <Trash2 size={18} color="#ef4444" />
-                                </button>
-                            </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                     {items.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Список пуст.</p>}
                 </div>
             ) : (
@@ -111,17 +125,26 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             </tr>
                         </thead>
                         <tbody>
-                            {items.map(item => (
-                                <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                    <td style={{ padding: '1rem' }}>{item.name}</td>
-                                    {!isFlowers && <td style={{ padding: '1rem' }}>{item.category}</td>}
-                                    <td style={{ textAlign: 'right', padding: '1rem' }}>{item.price} lei</td>
-                                    <td style={{ textAlign: 'right', padding: '1rem' }}>
-                                        <button onClick={() => openEditModal(item)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }}><Edit2 size={18} /></button>
-                                        <button onClick={() => handleDelete(item.id)} style={{ color: '#ef4444' }}><Trash2 size={18} /></button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {items.map(item => {
+                                const isPublished = item.is_published !== false
+                                return (
+                                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
+                                        <td style={{ padding: '1rem' }}>
+                                            {item.name}
+                                            {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Скрыт</div>}
+                                        </td>
+                                        {!isFlowers && <td style={{ padding: '1rem' }}>{item.category}</td>}
+                                        <td style={{ textAlign: 'right', padding: '1rem' }}>{item.price} lei</td>
+                                        <td style={{ textAlign: 'right', padding: '1rem' }}>
+                                            <button onClick={() => togglePublish(item)} style={{ marginRight: '0.5rem', color: isPublished ? 'var(--text-muted)' : 'var(--primary)' }} title={isPublished ? "Снять раздачу" : "Опубликовать"}>
+                                                {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
+                                            </button>
+                                            <button onClick={() => openEditModal(item)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }}><Edit2 size={18} /></button>
+                                            <button onClick={() => handleDelete(item.id)} style={{ color: '#ef4444' }}><Trash2 size={18} /></button>
+                                        </td>
+                                    </tr>
+                                )
+                            })}
                             {items.length === 0 && (
                                 <tr>
                                     <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>

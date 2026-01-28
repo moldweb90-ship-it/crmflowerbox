@@ -23,8 +23,8 @@ export default function Settings() {
         alert('Настройки сохранены!')
     }
 
-    const handleRecalculate = () => {
-        const count = recalculateAllProducts()
+    const handleRecalculate = async () => {
+        const count = await recalculateAllProducts()
         setRecalcCount(count)
         setTimeout(() => setRecalcCount(null), 3000)
     }
