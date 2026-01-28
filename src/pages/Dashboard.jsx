@@ -75,7 +75,7 @@ export default function Dashboard() {
 
             <div style={{
                 display: isMobile ? 'flex' : 'grid',
-                gridTemplateColumns: isMobile ? 'none' : 'repeat(3, 1fr)',
+                gridTemplateColumns: isMobile ? 'none' : 'repeat(4, 1fr)',
                 gap: '1.5rem',
                 marginBottom: '2.5rem',
                 overflowX: isMobile ? 'auto' : 'visible',
@@ -97,7 +97,10 @@ export default function Dashboard() {
                 </div>
 
                 {/* Products Count */}
-                <div className="card" style={{ gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                <Link to="/products" className="card" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                         <div style={{ padding: '10px', background: '#DBEAFE', borderRadius: '12px', color: '#2563EB' }}>
                             <Package size={24} />
@@ -108,21 +111,41 @@ export default function Dashboard() {
                         <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Букеты</span>
                         <span style={{ fontSize: '2rem', fontWeight: 800 }}>{products.length}</span>
                     </div>
-                </div>
+                </Link>
 
-                {/* Inventory */}
-                <div className="card" style={{ gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                {/* Flowers (New) */}
+                <Link to="/flowers" className="card" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                        <div style={{ padding: '10px', background: '#DCFCE7', borderRadius: '12px', color: '#16A34A' }}>
+                        <div style={{ padding: '10px', background: '#FCE7F3', borderRadius: '12px', color: '#DB2777' }}>
                             <Flower2 size={24} />
                         </div>
                         <span style={{ padding: '6px 16px', borderRadius: '99px', background: '#F3F4F6', fontSize: '0.75rem', fontWeight: 600 }}>Склад</span>
                     </div>
                     <div>
-                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Материалы</span>
-                        <span style={{ fontSize: '2rem', fontWeight: 800 }}>{totalItems}</span>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Цветы</span>
+                        <span style={{ fontSize: '2rem', fontWeight: 800 }}>{flowers.length}</span>
                     </div>
-                </div>
+                </Link>
+
+                {/* Materials (Goods) */}
+                <Link to="/goods" className="card" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                        <div style={{ padding: '10px', background: '#DCFCE7', borderRadius: '12px', color: '#16A34A' }}>
+                            <Layers size={24} />
+                        </div>
+                        <span style={{ padding: '6px 16px', borderRadius: '99px', background: '#F3F4F6', fontSize: '0.75rem', fontWeight: 600 }}>Склад</span>
+                    </div>
+                    <div>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Материалы</span>
+                        <span style={{ fontSize: '2rem', fontWeight: 800 }}>{goods.length}</span>
+                    </div>
+                </Link>
             </div>
 
             {/* Recent Section - Wide Card */}

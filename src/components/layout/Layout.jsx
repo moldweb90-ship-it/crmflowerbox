@@ -114,12 +114,12 @@ export default function Layout() {
                     // Actually, let's make it fixed left attached but styled internally.
                 }}>
                     {!isMobile && (
-                        <div style={{ padding: '2rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <Link to="/dashboard" style={{ padding: '2rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', textDecoration: 'none', color: 'inherit' }}>
                             <div style={{ background: 'var(--secondary)', color: 'white', padding: '8px', borderRadius: '14px', display: 'flex' }}>
                                 <Flower2 size={24} />
                             </div>
-                            <span style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em' }}>FlowerBox</span>
-                        </div>
+                            <span style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>FlowerBox</span>
+                        </Link>
                     )}
 
                     {isMobile && <div style={{ height: '80px' }} />} {/* Spacer for mobile header */}
