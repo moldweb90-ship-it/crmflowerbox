@@ -45,128 +45,202 @@ export default function Layout() {
         }
     }
 
+    const handleGlobalSearch = (e) => {
+        if (e.key === 'Enter') {
+            navigate(`/products?q=${encodeURIComponent(e.target.value)}`)
+        }
+    }
+
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-body)' }}>
 
             {/* Mobile Header */}
             {isMobile && (
                 <header style={{
-                    height: '60px',
-                    backgroundColor: '#fff',
-                    borderBottom: '1px solid var(--border)',
+                    height: '70px',
+                    backgroundColor: 'rgba(255,255,255,0.8)',
+                    backdropFilter: 'blur(10px)',
                     display: 'flex',
                     alignItems: 'center',
-                    padding: '0 1rem',
+                    padding: '0 1.5rem',
                     justifyContent: 'space-between',
-                    position: 'sticky',
+                    position: 'fixed',
                     top: 0,
-                    zIndex: 40
+                    left: 0,
+                    right: 0,
+                    zIndex: 40,
+                    boxShadow: 'var(--shadow-sm)'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.25rem' }}>
-                        <Flower2 /> FlowerBox
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--secondary)', fontWeight: 800, fontSize: '1.25rem' }}>
+                        <div style={{ background: 'var(--secondary)', color: 'white', padding: '6px', borderRadius: '12px' }}>
+                            <Flower2 size={24} />
+                        </div>
+                        FlowerBox
                     </div>
-                    <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ border: 'none', background: 'none', color: 'var(--text-main)' }}>
-                        {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+                    <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ border: 'none', background: 'none' }}>
+                        {isSidebarOpen ? <X size={28} /> : <Menu size={28} />}
                     </button>
                 </header>
             )}
 
-            <div style={{ display: 'flex', flex: 1, position: 'relative' }}>
-                {/* Sidebar */}
-                <aside style={{
-                    width: '260px',
-                    backgroundColor: '#ffffff',
-                    borderRight: '1px solid var(--border)',
+            {/* Sidebar */}
+            <aside style={{
+                width: '280px',
+                backgroundColor: 'transparent', /* Transparent to show body bg or just white floating? Let's go white fixed */
+                backgroundColor: isMobile ? 'white' : 'transparent',
+                display: 'flex',
+                flexDirection: 'column',
+                position: 'fixed',
+                top: 0,
+                bottom: 0,
+                left: 0,
+                zIndex: 30,
+                transform: isMobile && !isSidebarOpen ? 'translateX(-100%)' : 'translateX(0)',
+                transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                padding: isMobile ? '0' : '1.5rem', /* Add padding for desktop floating look */
+            }}>
+                {/* Desktop Sidebar Content Container */}
+                <div style={{
+                    backgroundColor: '#FFFFFF',
+                    height: '100%',
+                    borderRadius: isMobile ? '0' : '24px',
                     display: 'flex',
                     flexDirection: 'column',
-                    position: isMobile ? 'fixed' : 'fixed',
-                    top: isMobile ? '60px' : 0,
-                    bottom: 0,
-                    left: 0,
-                    zIndex: 30,
-                    transform: isMobile && !isSidebarOpen ? 'translateX(-100%)' : 'translateX(0)',
-                    transition: 'transform 0.3s ease-in-out',
-                    height: '100%' // Ensure full height
+                    boxShadow: isMobile ? 'none' : 'var(--shadow-sm)',
+                    overflow: 'hidden',
+                    marginRight: isMobile ? 0 : '0'
+                    // Note: In a real floating layout, we might want space between sidebar and edge. 
+                    // But for simplicity, let's keep it "Attached" but visually styled nicely.
+                    // Actually, let's make it fixed left attached but styled internally.
                 }}>
                     {!isMobile && (
-                        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border)' }}>
-                            <h2 style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-                                <Flower2 /> FlowerBox
-                            </h2>
+                        <div style={{ padding: '2rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <div style={{ background: 'var(--secondary)', color: 'white', padding: '8px', borderRadius: '14px', display: 'flex' }}>
+                                <Flower2 size={24} />
+                            </div>
+                            <span style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em' }}>FlowerBox</span>
                         </div>
                     )}
 
-                    <nav style={{ flex: 1, padding: '1rem', overflowY: 'auto' }}>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {navItems.map((item) => {
-                                const isActive = location.pathname === item.path
-                                return (
-                                    <li key={item.path}>
-                                        <Link
-                                            to={item.path}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.75rem',
-                                                padding: '0.75rem 1rem',
-                                                borderRadius: 'var(--radius)',
-                                                backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                                                color: isActive ? 'var(--primary)' : 'var(--text-muted)',
-                                                fontWeight: isActive ? 600 : 500,
-                                                transition: 'all 0.2s',
-                                                textDecoration: 'none'
-                                            }}
-                                        >
-                                            <item.icon size={20} />
-                                            {item.label}
-                                        </Link>
-                                    </li>
-                                )
-                            })}
-                        </ul>
+                    {isMobile && <div style={{ height: '80px' }} />} {/* Spacer for mobile header */}
+
+                    <nav style={{ flex: 1, padding: '0 1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: isMobile ? '1rem' : '0' }}>
+                        {navItems.map((item) => {
+                            const isActive = location.pathname === item.path
+                            return (
+                                <Link
+                                    key={item.path}
+                                    to={item.path}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '1rem',
+                                        padding: '1rem 1.25rem',
+                                        borderRadius: '16px',
+                                        backgroundColor: isActive ? 'var(--secondary)' : 'transparent',
+                                        color: isActive ? '#FFFFFF' : 'var(--text-muted)',
+                                        fontWeight: isActive ? 600 : 500,
+                                        transition: 'all 0.2s',
+                                        textDecoration: 'none'
+                                    }}
+                                >
+                                    <item.icon size={22} style={{ opacity: isActive ? 1 : 0.7 }} />
+                                    {item.label}
+                                </Link>
+                            )
+                        })}
                     </nav>
 
-                    <div style={{ padding: '1rem', borderTop: '1px solid var(--border)' }}>
+                    <div style={{ padding: '1.5rem' }}>
                         <button
                             className="btn"
                             onClick={handleLogout}
-                            style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--text-muted)', gap: '0.75rem' }}
+                            style={{
+                                width: '100%',
+                                justifyContent: 'flex-start',
+                                color: 'var(--text-muted)',
+                                gap: '1rem',
+                                padding: '1rem 1.25rem',
+                                borderRadius: '16px',
+                                backgroundColor: '#F9FAFB'
+                            }}
                         >
                             <LogOut size={20} />
                             Выйти
                         </button>
                     </div>
-                </aside>
+                </div>
+            </aside>
 
-                {/* Overlay for Mobile */}
-                {isMobile && isSidebarOpen && (
-                    <div
-                        onClick={() => setIsSidebarOpen(false)}
-                        style={{
-                            position: 'fixed',
-                            top: '60px',
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: 'rgba(0,0,0,0.5)',
-                            zIndex: 20
-                        }}
-                    />
+            {/* Overlay for Mobile */}
+            {isMobile && isSidebarOpen && (
+                <div
+                    onClick={() => setIsSidebarOpen(false)}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.2)',
+                        backdropFilter: 'blur(4px)',
+                        zIndex: 20
+                    }}
+                />
+            )}
+
+            {/* Main Content */}
+            <main style={{
+                flex: 1,
+                marginLeft: isMobile ? 0 : '310px', // 280px sidebar + 30px gap
+                padding: isMobile ? '90px 1rem 2rem 1rem' : '1.5rem 2rem 2rem 0', // Desktop: Top padding handled by header, right padding
+                width: '100%',
+                maxWidth: '1600px', // Prevent too wide on huge screens
+                overflowX: 'hidden'
+            }}>
+                {/* Desktop Header */}
+                {!isMobile && (
+                    <header style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '3rem',
+                        padding: '1rem 0'
+                    }}>
+                        <div>
+                            {/* Dynamic Title based on route? For now generic greeting */}
+                            <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Обзор</h1>
+                            <p style={{ color: 'var(--text-muted)' }}>Добро пожаловать обратно, Руслан</p>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    placeholder="Поиск..."
+                                    onKeyDown={handleGlobalSearch}
+                                    style={{
+                                        padding: '0.75rem 1rem 0.75rem 2.5rem',
+                                        borderRadius: '99px',
+                                        border: 'none',
+                                        backgroundColor: '#FFFFFF',
+                                        boxShadow: 'var(--shadow-sm)',
+                                        width: '240px'
+                                    }}
+                                />
+                                <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                </div>
+                            </div>
+
+                            <Link to="/settings" style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-sm)', color: 'inherit' }}>
+                                <Settings size={20} color="var(--text-muted)" />
+                            </Link>
+                        </div>
+                    </header>
                 )}
 
-                {/* Main Content */}
-                <main style={{
-                    flex: 1,
-                    marginLeft: isMobile ? 0 : '260px',
-                    padding: '1.5rem',
-                    width: '100%', // Ensure it takes full width
-                    overflowX: 'hidden' // Prevent horizontal scroll on body
-                }}>
-                    <div className="container" style={{ maxWidth: '1200px', margin: '0 auto' }}>
-                        <Outlet />
-                    </div>
-                </main>
-            </div>
+                <Outlet />
+            </main>
         </div>
     )
 }

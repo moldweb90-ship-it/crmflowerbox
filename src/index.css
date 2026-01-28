@@ -1,25 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --primary: #be185d;
-  /* Pink 700 */
-  --primary-light: #fbcfe8;
-  /* Pink 200 */
-  --secondary: #059669;
-  /* Emerald 600 */
-  --bg-body: #f8fafc;
-  /* Slate 50 */
-  --bg-card: #ffffff;
-  --text-main: #0f172a;
-  /* Slate 900 */
-  --text-muted: #64748b;
-  /* Slate 500 */
-  --border: #e2e8f0;
-  /* Slate 200 */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --radius: 0.5rem;
-  font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
+  /* Financial Theme Palette */
+  --primary: #E85D42;
+  /* Coral/Terracotta Accent */
+  --primary-light: #FFEEEB;
+  /* Pale Coral */
+  --secondary: #1A1A1A;
+  /* Near Black */
+
+  --bg-body: #F2F4F7;
+  /* Soft Clay Grey */
+  --bg-card: #FFFFFF;
+
+  --text-main: #1A1A1A;
+  /* Dark Grey/Black */
+  --text-muted: #9CA3AF;
+  /* Cool Grey */
+
+  --border: transparent;
+  /* Move away from borders to shadows */
+
+  /* Soft UI Shadows */
+  --shadow-sm: 0 4px 20px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.06);
+  --shadow-float: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
+
+  --radius: 1.25rem;
+  /* 20px - Large soft radius */
+  --radius-sm: 0.75rem;
+  /* 12px */
+  --radius-pill: 9999px;
+
+  /* Typography: Google Sans equivalent (Outfit) */
+  font-family: "Google Sans", "Outfit", system-ui, -apple-system, sans-serif;
 }
 
 body {
@@ -44,7 +58,7 @@ h6 {
   margin: 0;
   font-weight: 800;
   /* Dense/Thick headers */
-  font-family: 'Montserrat', sans-serif;
+  font-family: inherit;
   letter-spacing: -0.02em;
 }
 
@@ -71,7 +85,8 @@ a {
   background: var(--bg-card);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border);
+  border: none;
+  /* Removed border for cleaner look */
   padding: 1.5rem;
 }
 
@@ -79,10 +94,13 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius);
-  font-weight: 500;
-  transition: all 0.2s;
+  padding: 0.75rem 1.5rem;
+  /* Larger touch area */
+  border-radius: var(--radius-pill);
+  /* Pill shaped buttons */
+  font-weight: 600;
+  /* Bolder text */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-primary {
@@ -96,11 +114,15 @@ a {
 
 .input {
   width: 100%;
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  border: 1px solid #E5E7EB;
+  /* Subtle static border */
+  border-radius: var(--radius-sm);
+  /* Slightly less round than cards */
   outline: none;
-  transition: border-color 0.2s;
+  background-color: #F9FAFB;
+  /* Slight grey background for inputs */
+  transition: all 0.2s;
 }
 
 .input:focus {
@@ -181,7 +203,7 @@ tr:last-child td {
   .settings-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .settings-tabs {
     gap: 0.5rem;
   }

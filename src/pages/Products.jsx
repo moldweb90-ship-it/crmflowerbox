@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
 import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 
 export default function Products() {
     const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice, recalculateAllProducts } = useStore()
 
+    const [searchParams, setSearchParams] = useSearchParams()
+    const searchTerm = searchParams.get('q') || ''
+
     const [view, setView] = useState('list') // 'list' | 'editor'
     const [filterCat, setFilterCat] = useState('all')
-    const [searchTerm, setSearchTerm] = useState('')
 
     // State for Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -355,7 +358,8 @@ export default function Products() {
 
     // LIST VIEW
     const filteredProducts = products.filter(p => {
-        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase())
+        const term = searchTerm.toLowerCase()
+        const matchesSearch = p.name.toLowerCase().includes(term) || (p.sku && p.sku.toLowerCase().includes(term))
         const matchesCat = filterCat === 'all' || (p.categoryIds && p.categoryIds.includes(filterCat))
         return matchesSearch && matchesCat
     })
@@ -387,7 +391,13 @@ export default function Products() {
                         placeholder="Поиск товаров..."
                         style={{ border: 'none', outline: 'none', width: '100%' }}
                         value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
+                        onChange={e => {
+                            const val = e.target.value
+                            setSearchParams(prev => {
+                                prev.set('q', val)
+                                return prev
+                            }, { replace: true })
+                        }}
                     />
                 </div>
                 <select className="input" style={{ width: isMobile ? '100%' : '200px' }} value={filterCat} onChange={e => setFilterCat(e.target.value)}>
