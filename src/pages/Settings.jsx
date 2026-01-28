@@ -1,13 +1,21 @@
 import React, { useState } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Save, RefreshCw } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { Save, RefreshCw, Lock } from 'lucide-react'
 
 export default function Settings() {
     const { settings, updateSettings, recalculateAllProducts } = useStore()
+    const { updatePassword } = useAuth()
 
     const [markup, setMarkup] = useState(settings.markupPercentage)
     const [delivery, setDelivery] = useState(settings.deliveryCost)
     const [recalcCount, setRecalcCount] = useState(null)
+
+    // Password State
+    const [newPassword, setNewPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
+    const [passMessage, setPassMessage] = useState('')
+    const [passError, setPassError] = useState(false)
 
     const handleSave = (e) => {
         e.preventDefault()
@@ -19,6 +27,34 @@ export default function Settings() {
         const count = recalculateAllProducts()
         setRecalcCount(count)
         setTimeout(() => setRecalcCount(null), 3000)
+    }
+
+    const handleChangePassword = async (e) => {
+        e.preventDefault()
+        setPassMessage('')
+        setPassError(false)
+
+        if (newPassword !== confirmPassword) {
+            setPassError(true)
+            setPassMessage('Пароли не совпадают!')
+            return
+        }
+
+        if (newPassword.length < 6) {
+            setPassError(true)
+            setPassMessage('Пароль должен быть не менее 6 символов')
+            return
+        }
+
+        try {
+            await updatePassword(newPassword)
+            setPassMessage('Пароль успешно изменен!')
+            setNewPassword('')
+            setConfirmPassword('')
+        } catch (error) {
+            setPassError(true)
+            setPassMessage('Ошибка: ' + error.message)
+        }
     }
 
     return (
@@ -66,6 +102,57 @@ export default function Settings() {
                     <button type="submit" className="btn btn-primary">
                         <Save size={18} style={{ marginRight: '0.5rem' }} />
                         Сохранить настройки
+                    </button>
+                </form>
+            </div>
+
+            {/* Password Change Section */}
+            <div className="card" style={{ marginBottom: '2rem' }}>
+                <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Безопасность</h2>
+                <form onSubmit={handleChangePassword}>
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                            Новый пароль
+                        </label>
+                        <input
+                            type="password"
+                            className="input"
+                            value={newPassword}
+                            onChange={e => setNewPassword(e.target.value)}
+                            required
+                            placeholder="Минимум 6 символов"
+                        />
+                    </div>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                            Подтвердите пароль
+                        </label>
+                        <input
+                            type="password"
+                            className="input"
+                            value={confirmPassword}
+                            onChange={e => setConfirmPassword(e.target.value)}
+                            required
+                            placeholder="Повторите пароль"
+                        />
+                    </div>
+
+                    {passMessage && (
+                        <div style={{
+                            marginBottom: '1rem',
+                            padding: '0.75rem',
+                            borderRadius: '0.5rem',
+                            background: passError ? '#fee2e2' : '#dcfce7',
+                            color: passError ? '#ef4444' : '#166534',
+                            fontSize: '0.875rem'
+                        }}>
+                            {passMessage}
+                        </div>
+                    )}
+
+                    <button type="submit" className="btn" style={{ border: '1px solid var(--border)' }}>
+                        <Lock size={18} style={{ marginRight: '0.5rem' }} />
+                        Сменить пароль
                     </button>
                 </form>
             </div>
