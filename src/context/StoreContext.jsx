@@ -10,6 +10,7 @@ export function StoreProvider({ children }) {
     const [products, setProducts] = useState([])
     const [suppliers, setSuppliers] = useState([])
     const [supplies, setSupplies] = useState([])
+    const [expenses, setExpenses] = useState([])
     const [settings, setSettings] = useState({ markup_percentage: 30, delivery_cost: 500 })
     const [loading, setLoading] = useState(true)
 
@@ -28,10 +29,11 @@ export function StoreProvider({ children }) {
                 supabase.from('products').select('*').order('created_at', { ascending: true }),
                 supabase.from('suppliers').select('*').order('created_at', { ascending: true }),
                 supabase.from('supplies').select('*, suppliers(name)').order('date', { ascending: false }),
+                supabase.from('expenses').select('*').order('date', { ascending: false }),
                 supabase.from('settings').select('*').single()
             ])
 
-            const [f, g, c, p, sup, supply, s] = responses
+            const [f, g, c, p, sup, supply, exp, s] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -45,6 +47,7 @@ export function StoreProvider({ children }) {
             }
             if (sup.data) setSuppliers(sup.data)
             if (supply.data) setSupplies(supply.data)
+            if (exp.data) setExpenses(exp.data)
             if (s.data) {
                 setSettings({
                     markupPercentage: Number(s.data.markup_percentage),
@@ -385,6 +388,30 @@ export function StoreProvider({ children }) {
         }))
     }
 
+    // Expenses
+    const addExpense = async (expense) => {
+        // expense: { amount, category, date, comment }
+        const { data, error } = await supabase.from('expenses').insert([expense]).select()
+        if (data) setExpenses([data[0], ...expenses])
+        return { success: !error, error }
+    }
+    const updateExpense = async (id, updates) => {
+        const { error } = await supabase.from('expenses').update(updates).eq('id', id)
+        if (!error) {
+            setExpenses(expenses.map(e => e.id === id ? { ...e, ...updates } : e))
+            return { success: true }
+        }
+        return { success: false, error }
+    }
+    const deleteExpense = async (id) => {
+        const { error } = await supabase.from('expenses').delete().eq('id', id)
+        if (!error) {
+            setExpenses(expenses.filter(e => e.id !== id))
+            return { success: true }
+        }
+        return { success: false, error }
+    }
+
     // Calculation Helper (Remains same logic)
     const calculatePrice = (composition) => {
         if (!Array.isArray(composition)) return 0
@@ -442,6 +469,7 @@ export function StoreProvider({ children }) {
             categories, addCategory, updateCategory, deleteCategory,
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
             suppliers, supplies, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems,
+            expenses, addExpense, updateExpense, deleteExpense,
             settings, updateSettings,
             calculatePrice,
             loading
