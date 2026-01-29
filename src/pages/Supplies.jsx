@@ -25,9 +25,27 @@ export default function Supplies() {
     const [editingSupplyId, setEditingSupplyId] = useState(null)
     const [loading, setLoading] = useState(false)
 
+    // View Modal State
+    const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+    const [viewingSupply, setViewingSupply] = useState(null)
+
     // Form State
     const [supplierName, setSupplierName] = useState('')
     const [supplyItems, setSupplyItems] = useState([])
+
+    const handleViewClick = async (supply) => {
+        try {
+            setLoading(true)
+            const items = await getSupplyItems(supply.id)
+            setViewingSupply({ ...supply, items })
+            setLoading(false)
+            setIsViewModalOpen(true)
+        } catch (error) {
+            console.error('Error opening supply details:', error)
+            alert('Не удалось загрузить данные поставки. См. консоль.')
+            setLoading(false)
+        }
+    }
 
     // Draft Item State
     const [itemType, setItemType] = useState('flower') // 'flower' | 'good'
@@ -407,7 +425,13 @@ export default function Supplies() {
                                     </thead>
                                     <tbody>
                                         {filteredSupplies.map(supply => (
-                                            <tr key={supply.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                            <tr
+                                                key={supply.id}
+                                                style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                                                onClick={() => handleViewClick(supply)}
+                                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                            >
                                                 <td style={{ padding: '1rem' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                         <Calendar size={16} color="var(--text-muted)" />
@@ -495,7 +519,12 @@ export default function Supplies() {
                             // Mobile Card View
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 {filteredSupplies.map(supply => (
-                                    <div key={supply.id} className="card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    <div
+                                        key={supply.id}
+                                        className="card"
+                                        style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', cursor: 'pointer' }}
+                                        onClick={() => handleViewClick(supply)}
+                                    >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <div>
                                                 <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.25rem' }}>{supply.suppliers?.name || 'Неизвестно'}</div>
@@ -733,30 +762,88 @@ export default function Supplies() {
                                         <span>{goodsTotal.toFixed(2)} lei</span>
                                     </div>
                                 )}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)', marginTop: '0.25rem' }}>
-                                    <span style={{ fontWeight: 600, color: '#111827' }}>Итого поставка:</span>
-                                    <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#166534' }}>{totalSum} lei</span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', marginTop: '0.5rem', fontWeight: 800, fontSize: '1.25rem', color: 'var(--primary)' }}>
+                                    <span>Итого:</span>
+                                    <span>{((flowersTotal + goodsTotal) || 0).toFixed(2)} lei</span>
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                                <button
-                                    className="btn"
-                                    onClick={() => setIsModalOpen(false)}
-                                    style={{ flex: 1, justifyContent: 'center', padding: '1rem' }}
-                                >
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                                <button className="btn" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-main)' }} onClick={() => setIsModalOpen(false)}>
                                     Отмена
                                 </button>
-                                <button
-                                    className="btn btn-primary"
-                                    disabled={loading || (!supplierName) || (supplyItems.length === 0 && !currentItem.id)}
-                                    onClick={handleSaveSupply}
-                                    style={{ flex: 2, justifyContent: 'center', padding: '1rem', fontSize: '1.1rem' }}
-                                >
-                                    {loading ? '...' : 'Сохранить'}
+                                <button className="btn" style={{ background: 'var(--primary)', color: 'white' }} onClick={handleSaveSupply}>
+                                    {loading ? 'Сохранение...' : (modalMode === 'add' ? 'Создать поставку' : 'Сохранить изменения')}
                                 </button>
                             </div>
                         </div>
+                    </Modal>
+
+                    {/* View Details Modal (Invoice Style) */}
+                    <Modal
+                        isOpen={isViewModalOpen}
+                        onClose={() => setIsViewModalOpen(false)}
+                        title={viewingSupply ? `Поставка от ${new Date(viewingSupply.date).toLocaleDateString()}` : 'Детали поставки'}
+                        maxWidth="800px"
+                    >
+                        {viewingSupply && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '70vh', overflowY: 'auto' }}>
+                                {/* Invoice Header */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #eee', paddingBottom: '1rem' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Поставщик</div>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{viewingSupply.suppliers?.name || 'Неизвестно'}</div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Сумма</div>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>{Number(viewingSupply.total_amount).toLocaleString('ru-RU')} lei</div>
+                                    </div>
+                                </div>
+
+                                {/* Items Table */}
+                                <div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '1rem', padding: '0.5rem 1rem', background: '#f9fafb', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)', borderRadius: '8px 8px 0 0' }}>
+                                        <div>Тип</div>
+                                        <div>Наименование</div>
+                                        <div style={{ textAlign: 'center' }}>Кол-во</div>
+                                        <div style={{ textAlign: 'right' }}>Стоимость</div>
+                                    </div>
+
+                                    <div style={{ border: '1px solid #f3f4f6', borderTop: 'none', borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
+                                        {viewingSupply.items && viewingSupply.items.length > 0 ? (
+                                            viewingSupply.items.map((item, idx) => (
+                                                <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '1rem', padding: '1rem', borderBottom: '1px solid #f3f4f6', alignItems: 'center' }}>
+                                                    <div style={{ color: item.type === 'flower' ? 'var(--primary)' : '#f59e0b' }}>
+                                                        {item.type === 'flower' ? <Flower size={16} /> : <Package size={16} />}
+                                                    </div>
+                                                    <div style={{ fontWeight: 500 }}>{item.name}</div>
+                                                    <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                                                        {item.quantity} шт <span style={{ fontSize: '0.8em' }}>x {item.unitCost} L</span>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right', fontWeight: 600 }}>
+                                                        {(Number(item.quantity) * Number(item.unitCost)).toLocaleString('ru-RU')} L
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Нет данных о товарах</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Footer Summary */}
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '2rem', background: '#f9fafb', padding: '1.5rem', borderRadius: '12px' }}>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Всего товаров</div>
+                                        <div style={{ fontWeight: 600 }}>{Number(viewingSupply.flowers_amount || 0) + Number(viewingSupply.goods_amount || 0)} шт</div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Итого к оплате</div>
+                                        <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--primary)' }}>{Number(viewingSupply.total_amount).toLocaleString('ru-RU')} lei</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </Modal>
                 </div>
             </div>

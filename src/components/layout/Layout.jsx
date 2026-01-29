@@ -41,7 +41,7 @@ export default function Layout() {
             items: [
                 { label: 'Букеты', path: '/products', icon: Layers },
                 { label: 'Цветы', path: '/flowers', icon: Flower2 },
-                { label: 'Материалы', path: '/goods', icon: Package },
+                { label: 'Доп. товары', path: '/goods', icon: Package },
                 { label: 'Категории', path: '/categories', icon: Layers },
             ]
         },
