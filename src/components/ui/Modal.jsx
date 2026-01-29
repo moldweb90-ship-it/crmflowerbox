@@ -2,7 +2,7 @@ import React from 'react'
 import { X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export default function Modal({ isOpen, onClose, title, children }) {
+export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px' }) {
     if (!isOpen) return null
 
     return (
@@ -25,12 +25,13 @@ export default function Modal({ isOpen, onClose, title, children }) {
                     style={{
                         position: 'relative',
                         width: '100%',
-                        maxWidth: '500px',
+                        maxWidth: maxWidth,
                         maxHeight: '90vh',
                         overflowY: 'auto',
                         padding: 0,
                         backgroundColor: 'var(--bg-card)',
-                        boxShadow: 'var(--shadow-md)'
+                        boxShadow: 'var(--shadow-md)',
+                        margin: '1rem'
                     }}
                 >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', borderBottom: '1px solid var(--border)' }}>

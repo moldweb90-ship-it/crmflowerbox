@@ -11,6 +11,9 @@ export function StoreProvider({ children }) {
     const [suppliers, setSuppliers] = useState([])
     const [supplies, setSupplies] = useState([])
     const [expenses, setExpenses] = useState([])
+    const [sales, setSales] = useState([])
+    const [couriers, setCouriers] = useState([])
+    const [florists, setFlorists] = useState([])
     const [settings, setSettings] = useState({ markup_percentage: 30, delivery_cost: 500 })
     const [loading, setLoading] = useState(true)
 
@@ -30,10 +33,13 @@ export function StoreProvider({ children }) {
                 supabase.from('suppliers').select('*').order('created_at', { ascending: true }),
                 supabase.from('supplies').select('*, suppliers(name)').order('date', { ascending: false }),
                 supabase.from('expenses').select('*').order('date', { ascending: false }),
+                supabase.from('sales').select('*, products(name, sku, composition), couriers(name), florists(name)').order('order_date', { ascending: false }),
+                supabase.from('couriers').select('*').order('name', { ascending: true }),
+                supabase.from('florists').select('*').order('name', { ascending: true }),
                 supabase.from('settings').select('*').single()
             ])
 
-            const [f, g, c, p, sup, supply, exp, s] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, s] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -48,6 +54,9 @@ export function StoreProvider({ children }) {
             if (sup.data) setSuppliers(sup.data)
             if (supply.data) setSupplies(supply.data)
             if (exp.data) setExpenses(exp.data)
+            if (sal.data) setSales(sal.data)
+            if (cour.data) setCouriers(cour.data)
+            if (flor.data) setFlorists(flor.data)
             if (s.data) {
                 setSettings({
                     markupPercentage: Number(s.data.markup_percentage),
@@ -162,13 +171,20 @@ export function StoreProvider({ children }) {
     // Settings
     const updateSettings = async (updates) => {
         // Convert camelCase to snake_case for DB
-        const dbUpdates = {}
-        if (updates.markupPercentage !== undefined) dbUpdates.markup_percentage = updates.markupPercentage
-        if (updates.deliveryCost !== undefined) dbUpdates.delivery_cost = updates.deliveryCost
+        const dbUpdates = {
+            id: 1, // Fixed ID for single row
+            markup_percentage: updates.markupPercentage ?? settings.markupPercentage ?? 30,
+            delivery_cost: updates.deliveryCost ?? settings.deliveryCost ?? 500
+        }
 
-        const { error } = await supabase.from('settings').update(dbUpdates).eq('id', 1)
-        if (!error) setSettings({ ...settings, ...updates })
-        if (!error) setSettings({ ...settings, ...updates })
+        // Use upsert to create or update the settings row
+        const { error } = await supabase.from('settings').upsert(dbUpdates, { onConflict: 'id' })
+        if (!error) {
+            setSettings({
+                markupPercentage: dbUpdates.markup_percentage,
+                deliveryCost: dbUpdates.delivery_cost
+            })
+        }
     }
 
     // Supplies
@@ -412,6 +428,63 @@ export function StoreProvider({ children }) {
         return { success: false, error }
     }
 
+    // Sales
+    const addSale = async (sale) => {
+        const { data, error } = await supabase.from('sales').insert([sale]).select('*, products(name, sku, composition), couriers(name), florists(name)')
+        if (data) setSales([data[0], ...sales])
+        return { success: !error, error, data: data?.[0] }
+    }
+    const updateSale = async (id, updates) => {
+        const { error } = await supabase.from('sales').update(updates).eq('id', id)
+        if (!error) {
+            setSales(sales.map(s => s.id === id ? { ...s, ...updates } : s))
+            return { success: true }
+        }
+        return { success: false, error }
+    }
+    const deleteSale = async (id) => {
+        const { error } = await supabase.from('sales').delete().eq('id', id)
+        if (!error) {
+            setSales(sales.filter(s => s.id !== id))
+            return { success: true }
+        }
+        return { success: false, error }
+    }
+
+    // Couriers
+    const addCourier = async (name, phone = null) => {
+        const { data, error } = await supabase.from('couriers').insert([{ name, phone }]).select()
+        if (data) setCouriers([...couriers, data[0]])
+        return { success: !error, data: data?.[0], error }
+    }
+
+    // Florists
+    const addFlorist = async (name) => {
+        const { data, error } = await supabase.from('florists').insert([{ name }]).select()
+        if (data) setFlorists([...florists, data[0]])
+        return { success: !error, data: data?.[0], error }
+    }
+
+    // Cost calculation helper (for profit display)
+    // Calculates the ACTUAL cost: purchase prices + delivery
+    const calculateCostPrice = (composition) => {
+        if (!Array.isArray(composition)) return 0
+        let materialCost = 0
+        composition.forEach(item => {
+            if (item.type === 'flower') {
+                const f = flowers.find(x => x.id === item.id)
+                // Use 'cost' field (purchase price), NOT 'price' (sale price with markup)
+                if (f) materialCost += Number(f.cost || 0) * (item.qty || 1)
+            } else if (item.type === 'good') {
+                const g = goods.find(x => x.id === item.id)
+                // Use 'cost' field for goods as well
+                if (g) materialCost += Number(g.cost || 0) * (item.qty || 1)
+            }
+        })
+        // Total cost = materials + delivery (from settings)
+        return materialCost + Number(settings.deliveryCost || 0)
+    }
+
     // Calculation Helper (Remains same logic)
     const calculatePrice = (composition) => {
         if (!Array.isArray(composition)) return 0
@@ -470,8 +543,11 @@ export function StoreProvider({ children }) {
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
             suppliers, supplies, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems,
             expenses, addExpense, updateExpense, deleteExpense,
+            sales, addSale, updateSale, deleteSale,
+            couriers, addCourier,
+            florists, addFlorist,
             settings, updateSettings,
-            calculatePrice,
+            calculatePrice, calculateCostPrice,
             loading
         }}>
             {children}

@@ -7,6 +7,7 @@ import Settings from './pages/Settings'
 import Categories from './pages/Categories'
 import Supplies from './pages/Supplies'
 import Expenses from './pages/Expenses'
+import Sales from './pages/Sales'
 import { StoreProvider } from './context/StoreContext'
 import { AuthProvider } from './context/AuthContext'
 import Login from './pages/Login'
@@ -26,6 +27,7 @@ function App() {
                         }>
                             <Route index element={<Navigate to="/dashboard" replace />} />
                             <Route path="dashboard" element={<Dashboard />} />
+                            <Route path="sales" element={<Sales />} />
                             <Route path="flowers" element={<Inventory mode="flowers" />} />
                             <Route path="goods" element={<Inventory mode="goods" />} />
                             <Route path="products" element={<Products />} />

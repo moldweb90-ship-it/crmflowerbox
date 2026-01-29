@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
 import { Save, RefreshCw, Lock } from 'lucide-react'
@@ -7,9 +7,15 @@ export default function Settings() {
     const { settings, updateSettings, recalculateAllProducts } = useStore()
     const { updatePassword } = useAuth()
 
-    const [markup, setMarkup] = useState(settings.markupPercentage)
-    const [delivery, setDelivery] = useState(settings.deliveryCost)
+    const [markup, setMarkup] = useState(settings.markupPercentage || '')
+    const [delivery, setDelivery] = useState(settings.deliveryCost || '')
     const [recalcCount, setRecalcCount] = useState(null)
+
+    // Sync form with settings when they load
+    useEffect(() => {
+        if (settings.markupPercentage !== undefined) setMarkup(settings.markupPercentage)
+        if (settings.deliveryCost !== undefined) setDelivery(settings.deliveryCost)
+    }, [settings])
 
     // Password State
     const [newPassword, setNewPassword] = useState('')

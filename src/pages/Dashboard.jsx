@@ -1,11 +1,12 @@
 
 import React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
-import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight } from 'lucide-react'
+import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck } from 'lucide-react'
 
 export default function Dashboard() {
     const { products, flowers, goods, categories } = useStore()
+    const navigate = useNavigate()
 
     const totalValue = products.reduce((acc, p) => acc + (p.price || 0), 0)
     const totalItems = flowers.length + goods.length
@@ -38,8 +39,9 @@ export default function Dashboard() {
                 </div>
 
                 {/* Primary Action Button */}
-                <Link to="/products" style={{ textDecoration: 'none', flex: 1, minWidth: '220px' }}>
-                    <div style={{
+                <div
+                    onClick={() => navigate('/sales?add=true')}
+                    style={{
                         backgroundColor: 'var(--primary)',
                         color: 'white',
                         padding: '1.25rem 2rem',
@@ -49,24 +51,50 @@ export default function Dashboard() {
                         justifyContent: 'space-between',
                         boxShadow: '0 20px 40px -10px rgba(232, 93, 66, 0.4)',
                         transition: 'transform 0.2s',
+                        cursor: 'pointer',
+                        flex: 1,
+                        minWidth: '220px'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <ShoppingCart size={22} />
+                        <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>Добавить продажу</span>
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '50%' }}>
+                        <Plus size={20} />
+                    </div>
+                </div>
+
+                {/* Secondary Action - Delivery Calendar */}
+                <div
+                    onClick={() => navigate('/sales?calendar=true')}
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '0.5rem',
                         cursor: 'pointer'
                     }}
-                        onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-                        onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                    <div style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '50%',
+                        backgroundColor: '#FFFFFF',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: 'var(--shadow-sm)',
+                        transition: 'transform 0.2s, box-shadow 0.2s'
+                    }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)' }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)' }}
                     >
-                        <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>Создать Букет</span>
-                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '50%' }}>
-                            <ArrowUpRight size={20} />
-                        </div>
+                        <Truck size={24} color="var(--primary)" />
                     </div>
-                </Link>
-
-                {/* Secondary Action */}
-                <div style={{
-                    width: '56px', height: '56px', borderRadius: '50%', backgroundColor: '#FFFFFF',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-sm)', cursor: 'pointer'
-                }}>
-                    <Calendar size={24} color="var(--text-main)" />
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Доставки</span>
                 </div>
             </div>
 
