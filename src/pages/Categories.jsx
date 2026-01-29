@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Trash2, Edit, Eye, EyeOff } from 'lucide-react'
+import { Plus, Trash2, Edit, Eye, EyeOff, Tag } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 export default function Categories() {
@@ -8,6 +8,14 @@ export default function Categories() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [newCategoryName, setNewCategoryName] = useState('')
     const [editingCategory, setEditingCategory] = useState(null)
+
+    // Responsive
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 768)
+        window.addEventListener('resize', handleResize)
+        return () => window.removeEventListener('resize', handleResize)
+    }, [])
 
     // View Modal State
     const [viewModalOpen, setViewModalOpen] = useState(false)
@@ -52,76 +60,156 @@ export default function Categories() {
     }
 
     return (
-        <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div style={{ paddingBottom: '5rem' }}>
+            {/* Header */}
+            <div style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                justifyContent: 'space-between',
+                alignItems: isMobile ? 'stretch' : 'center',
+                marginBottom: '1.5rem',
+                gap: '1rem'
+            }}>
                 <div>
-                    <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Категории</h1>
-                    <p style={{ color: 'var(--text-muted)' }}>Управление категориями товаров.</p>
+                    <h1 style={{ fontSize: isMobile ? '1.5rem' : '1.875rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Tag className="text-primary" size={isMobile ? 24 : 28} />
+                        Категории
+                    </h1>
+                    <p style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.875rem' : '1rem' }}>Управление категориями товаров</p>
                 </div>
-                <button className="btn btn-primary" onClick={handleAddClick}>
+                <button
+                    className="btn btn-primary"
+                    onClick={handleAddClick}
+                    style={{ width: isMobile ? '100%' : 'auto', justifyContent: 'center', padding: isMobile ? '0.75rem' : '0.5rem 1rem' }}
+                >
                     <Plus size={20} style={{ marginRight: '0.5rem' }} />
                     Добавить категорию
                 </button>
             </div>
 
-            <div className="card">
-                <table style={{ width: '100%' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                            <th style={{ textAlign: 'left', padding: '1rem' }}>Название</th>
-                            <th style={{ textAlign: 'center', padding: '1rem' }}>Кол-во товаров</th>
-                            <th style={{ textAlign: 'right', padding: '1rem' }}>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {categories.map(cat => {
-                            const count = getCategoryProducts(cat.id).length
-                            const isPublished = cat.is_published !== false
-                            return (
-                                <tr key={cat.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
-                                    <td style={{ padding: '1rem', fontWeight: 500 }}>
+            {/* Content */}
+            {isMobile ? (
+                // Mobile Card View
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {categories.map(cat => {
+                        const count = getCategoryProducts(cat.id).length
+                        const isPublished = cat.is_published !== false
+                        return (
+                            <div
+                                key={cat.id}
+                                className="card"
+                                style={{
+                                    padding: '1rem',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    opacity: isPublished ? 1 : 0.6
+                                }}
+                            >
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.25rem' }}>
                                         {cat.name}
-                                        {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Снята с публикации</div>}
-                                    </td>
-                                    <td style={{ textAlign: 'center', padding: '1rem' }}>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                         <span style={{
                                             background: 'var(--bg-body)',
-                                            padding: '0.25rem 0.75rem',
+                                            padding: '0.125rem 0.5rem',
                                             borderRadius: '99px',
-                                            fontSize: '0.875rem',
+                                            fontSize: '0.75rem',
                                             fontWeight: 600,
                                             color: 'var(--text-muted)'
                                         }}>
-                                            {count} шт.
+                                            {count} товаров
                                         </span>
-                                    </td>
-                                    <td style={{ textAlign: 'right', padding: '1rem' }}>
-                                        <button onClick={() => togglePublish(cat)} style={{ marginRight: '0.5rem', color: isPublished ? 'var(--text-muted)' : 'var(--primary)' }} title={isPublished ? "Снять с публикации" : "Опубликовать"}>
-                                            {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
-                                        </button>
-                                        <button onClick={() => handleViewClick(cat)} style={{ marginRight: '0.5rem', color: 'var(--primary)' }} title="Посмотреть товары">
-                                            <Eye size={18} />
-                                        </button>
-                                        <button onClick={() => handleEditClick(cat)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }} title="Редактировать">
-                                            <Edit size={18} />
-                                        </button>
-                                        <button onClick={() => deleteCategory(cat.id)} style={{ color: '#ef4444' }} title="Удалить">
-                                            <Trash2 size={18} />
-                                        </button>
+                                        {!isPublished && (
+                                            <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>Скрыта</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
+                                    <button onClick={() => togglePublish(cat)} style={{ padding: '0.5rem', border: 'none', background: '#f3f4f6', borderRadius: '8px', cursor: 'pointer' }}>
+                                        {isPublished ? <Eye size={16} color="var(--text-muted)" /> : <EyeOff size={16} color="var(--primary)" />}
+                                    </button>
+                                    <button onClick={() => handleViewClick(cat)} style={{ padding: '0.5rem', border: 'none', background: '#ecfdf5', borderRadius: '8px', cursor: 'pointer' }}>
+                                        <Eye size={16} color="var(--primary)" />
+                                    </button>
+                                    <button onClick={() => handleEditClick(cat)} style={{ padding: '0.5rem', border: 'none', background: '#f3f4f6', borderRadius: '8px', cursor: 'pointer' }}>
+                                        <Edit size={16} color="var(--text-muted)" />
+                                    </button>
+                                    <button onClick={() => deleteCategory(cat.id)} style={{ padding: '0.5rem', border: 'none', background: '#fee2e2', borderRadius: '8px', cursor: 'pointer' }}>
+                                        <Trash2 size={16} color="#ef4444" />
+                                    </button>
+                                </div>
+                            </div>
+                        )
+                    })}
+                    {categories.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                            Категорий пока нет
+                        </div>
+                    )}
+                </div>
+            ) : (
+                // Desktop Table View
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead style={{ backgroundColor: '#f9fafb' }}>
+                            <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                                <th style={{ textAlign: 'left', padding: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Название</th>
+                                <th style={{ textAlign: 'center', padding: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Кол-во товаров</th>
+                                <th style={{ textAlign: 'right', padding: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {categories.map(cat => {
+                                const count = getCategoryProducts(cat.id).length
+                                const isPublished = cat.is_published !== false
+                                return (
+                                    <tr key={cat.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
+                                        <td style={{ padding: '1rem', fontWeight: 500 }}>
+                                            {cat.name}
+                                            {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Снята с публикации</div>}
+                                        </td>
+                                        <td style={{ textAlign: 'center', padding: '1rem' }}>
+                                            <span style={{
+                                                background: 'var(--bg-body)',
+                                                padding: '0.25rem 0.75rem',
+                                                borderRadius: '99px',
+                                                fontSize: '0.875rem',
+                                                fontWeight: 600,
+                                                color: 'var(--text-muted)'
+                                            }}>
+                                                {count} шт.
+                                            </span>
+                                        </td>
+                                        <td style={{ textAlign: 'right', padding: '1rem' }}>
+                                            <button onClick={() => togglePublish(cat)} style={{ marginRight: '0.5rem', color: isPublished ? 'var(--text-muted)' : 'var(--primary)' }} title={isPublished ? "Снять с публикации" : "Опубликовать"}>
+                                                {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
+                                            </button>
+                                            <button onClick={() => handleViewClick(cat)} style={{ marginRight: '0.5rem', color: 'var(--primary)' }} title="Посмотреть товары">
+                                                <Eye size={18} />
+                                            </button>
+                                            <button onClick={() => handleEditClick(cat)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }} title="Редактировать">
+                                                <Edit size={18} />
+                                            </button>
+                                            <button onClick={() => deleteCategory(cat.id)} style={{ color: '#ef4444' }} title="Удалить">
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                            {categories.length === 0 && (
+                                <tr>
+                                    <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                        Категорий нет.
                                     </td>
                                 </tr>
-                            )
-                        })}
-                        {categories.length === 0 && (
-                            <tr>
-                                <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                                    Категорий нет.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
             {/* Add/Edit Modal */}
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingCategory ? "Редактировать категорию" : "Добавить категорию"}>

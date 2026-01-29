@@ -90,35 +90,43 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             </div>
 
             {isMobile ? (
-                // Mobile Card View
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                // Mobile Card View - Compact
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {items.map(item => {
                         const isPublished = item.is_published !== false
                         return (
-                            <div key={item.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: isPublished ? 1 : 0.6 }}>
-                                <div>
-                                    <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>
+                            <div key={item.id} className="card" style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                opacity: isPublished ? 1 : 0.6,
+                                padding: '0.75rem'
+                            }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0 }}>
                                         {item.name}
-                                        {!isPublished && <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700, marginLeft: '0.5rem' }}>Скрыт</span>}
+                                        {!isPublished && <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 700, marginLeft: '0.5rem' }}>Скрыт</span>}
                                     </h3>
-                                    {!isFlowers && <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{item.category}</p>}
-                                    <p style={{ color: 'var(--primary)', fontWeight: 'bold', marginTop: '0.25rem' }}>{item.price} lei</p>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                        {!isFlowers && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.category}</span>}
+                                        <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.9rem' }}>{item.price} lei</span>
+                                    </div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    <button className="btn" onClick={() => togglePublish(item)} style={{ padding: '0.5rem', border: '1px solid var(--border)' }}>
-                                        {isPublished ? <Eye size={18} color="var(--text-muted)" /> : <EyeOff size={18} />}
+                                <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
+                                    <button onClick={() => togglePublish(item)} style={{ padding: '0.4rem', border: 'none', background: '#f3f4f6', borderRadius: '6px', cursor: 'pointer' }}>
+                                        {isPublished ? <Eye size={16} color="var(--text-muted)" /> : <EyeOff size={16} color="var(--primary)" />}
                                     </button>
-                                    <button className="btn" onClick={() => openEditModal(item)} style={{ padding: '0.5rem', border: '1px solid var(--border)' }}>
-                                        <Edit2 size={18} color="var(--text-muted)" />
+                                    <button onClick={() => openEditModal(item)} style={{ padding: '0.4rem', border: 'none', background: '#f3f4f6', borderRadius: '6px', cursor: 'pointer' }}>
+                                        <Edit2 size={16} color="var(--text-muted)" />
                                     </button>
-                                    <button className="btn" onClick={() => handleDelete(item.id)} style={{ padding: '0.5rem', border: '1px solid #fee2e2', backgroundColor: '#fef2f2' }}>
-                                        <Trash2 size={18} color="#ef4444" />
+                                    <button onClick={() => handleDelete(item.id)} style={{ padding: '0.4rem', border: 'none', background: '#fee2e2', borderRadius: '6px', cursor: 'pointer' }}>
+                                        <Trash2 size={16} color="#ef4444" />
                                     </button>
                                 </div>
                             </div>
                         )
                     })}
-                    {items.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Список пуст.</p>}
+                    {items.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Список пуст.</p>}
                 </div>
             ) : (
                 // Desktop Table View

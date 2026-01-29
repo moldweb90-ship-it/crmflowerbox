@@ -948,30 +948,30 @@ export default function Sales() {
             </Modal>
 
             {/* Delivery Calendar Modal */}
-            <Modal isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} title="Календарь доставок" maxWidth="800px">
-                <div>
+            <Modal isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} title="Календарь доставок" maxWidth={isMobile ? '100%' : '700px'}>
+                <div style={{ maxWidth: '100%', overflow: 'hidden' }}>
                     {/* Month Navigation */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                        <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))} style={{ border: 'none', background: '#f3f4f6', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <ChevronLeft size={20} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))} style={{ border: 'none', background: '#f3f4f6', borderRadius: '50%', width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <ChevronLeft size={isMobile ? 16 : 20} />
                         </button>
-                        <h3 style={{ fontWeight: 700, textTransform: 'capitalize' }}>
+                        <h3 style={{ fontWeight: 700, textTransform: 'capitalize', fontSize: isMobile ? '1rem' : '1.25rem' }}>
                             {calendarMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
                         </h3>
-                        <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))} style={{ border: 'none', background: '#f3f4f6', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <ChevronRight size={20} />
+                        <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))} style={{ border: 'none', background: '#f3f4f6', borderRadius: '50%', width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <ChevronRight size={isMobile ? 16 : 20} />
                         </button>
                     </div>
 
                     {/* Weekday Headers */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '0.25rem' }}>
                         {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => (
-                            <div key={d} style={{ textAlign: 'center', fontWeight: 600, fontSize: '0.75rem', color: 'var(--text-muted)', padding: '0.5rem' }}>{d}</div>
+                            <div key={d} style={{ textAlign: 'center', fontWeight: 600, fontSize: isMobile ? '0.65rem' : '0.75rem', color: 'var(--text-muted)', padding: isMobile ? '0.25rem' : '0.5rem' }}>{d}</div>
                         ))}
                     </div>
 
                     {/* Calendar Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
                         {calendarDays.map((day, idx) => {
                             if (!day) return <div key={idx} />
                             // Use local date format to avoid timezone issues
@@ -986,8 +986,8 @@ export default function Sales() {
                                     key={idx}
                                     style={{
                                         aspectRatio: '1',
-                                        padding: '0.5rem',
-                                        borderRadius: '12px',
+                                        padding: isMobile ? '0.25rem' : '0.5rem',
+                                        borderRadius: isMobile ? '8px' : '12px',
                                         background: dayDeliveries.length > 0 ? '#ecfdf5' : isToday ? '#fef3c7' : 'transparent',
                                         border: isToday ? '2px solid #f59e0b' : dayDeliveries.length > 0 ? '2px solid #10b981' : '1px solid var(--border)',
                                         display: 'flex',
@@ -995,7 +995,8 @@ export default function Sales() {
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         cursor: dayDeliveries.length > 0 ? 'pointer' : 'default',
-                                        transition: 'all 0.2s'
+                                        transition: 'all 0.2s',
+                                        minWidth: 0
                                     }}
                                     onClick={() => {
                                         if (dayDeliveries.length > 0) {
@@ -1005,9 +1006,9 @@ export default function Sales() {
                                         }
                                     }}
                                 >
-                                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{day.getDate()}</div>
+                                    <div style={{ fontWeight: 600, fontSize: isMobile ? '0.75rem' : '0.9rem' }}>{day.getDate()}</div>
                                     {dayDeliveries.length > 0 && (
-                                        <div style={{ fontSize: '0.65rem', color: '#10b981', fontWeight: 700, marginTop: '2px' }}>
+                                        <div style={{ fontSize: isMobile ? '0.5rem' : '0.65rem', color: '#10b981', fontWeight: 700, marginTop: '1px' }}>
                                             {dayDeliveries.length} 📦
                                         </div>
                                     )}

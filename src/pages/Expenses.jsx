@@ -185,7 +185,9 @@ export default function Expenses() {
                 display: 'grid',
                 gridTemplateColumns: isMobile ? '1fr' : '300px 1fr',
                 gap: '1.5rem',
-                marginBottom: '2rem'
+                marginBottom: '2rem',
+                maxWidth: '100%',
+                overflow: 'hidden'
             }}>
                 {/* Total Card */}
                 <div className="card" style={{
@@ -194,9 +196,11 @@ export default function Expenses() {
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
-                    padding: '1.5rem',
-                    borderRadius: '20px',
-                    boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)'
+                    padding: isMobile ? '1rem' : '1.5rem',
+                    borderRadius: '16px',
+                    boxShadow: '0 10px 25px -5px rgba(239, 68, 68, 0.4)',
+                    boxSizing: 'border-box',
+                    maxWidth: '100%'
                 }}>
                     <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Расходы за период</div>
                     <div style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '1rem' }}>
@@ -223,22 +227,40 @@ export default function Expenses() {
                 </div>
 
                 {/* Filters Panel */}
-                <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '1rem' }}>
+                <div className="card" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    gap: '0.75rem',
+                    overflow: 'hidden',
+                    maxWidth: '100%',
+                    boxSizing: 'border-box'
+                }}>
 
-                    {/* Category Filter + Date Presets - Horizontal Scroll on Mobile */}
-                    <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {/* Category Filter - Horizontal Scroll */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '0.5rem',
+                        overflowX: 'auto',
+                        paddingBottom: '4px',
+                        marginLeft: '-0.5rem',
+                        marginRight: '-0.5rem',
+                        paddingLeft: '0.5rem',
+                        paddingRight: '0.5rem'
+                    }}>
                         <button
                             onClick={() => setCategoryFilter('all')}
                             style={{
-                                padding: '0.625rem 1.25rem',
+                                padding: isMobile ? '0.5rem 0.75rem' : '0.625rem 1.25rem',
                                 borderRadius: '99px',
                                 border: categoryFilter === 'all' ? '2px solid var(--primary)' : '1px solid var(--border)',
                                 background: categoryFilter === 'all' ? '#fef2f2' : 'white',
                                 color: categoryFilter === 'all' ? 'var(--primary)' : 'var(--text-muted)',
                                 fontWeight: 600,
-                                fontSize: '0.9rem',
+                                fontSize: isMobile ? '0.8rem' : '0.9rem',
                                 cursor: 'pointer',
-                                whiteSpace: 'nowrap'
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0
                             }}
                         >
                             Все
@@ -248,46 +270,57 @@ export default function Expenses() {
                                 key={cat.id}
                                 onClick={() => setCategoryFilter(cat.id)}
                                 style={{
-                                    padding: '0.625rem 1.25rem',
+                                    padding: isMobile ? '0.5rem 0.75rem' : '0.625rem 1.25rem',
                                     borderRadius: '99px',
                                     border: categoryFilter === cat.id ? `2px solid ${cat.color}` : '1px solid var(--border)',
                                     background: categoryFilter === cat.id ? `${cat.color}15` : 'white',
                                     color: categoryFilter === cat.id ? cat.color : 'var(--text-muted)',
                                     fontWeight: 600,
-                                    fontSize: '0.9rem',
+                                    fontSize: isMobile ? '0.8rem' : '0.9rem',
                                     cursor: 'pointer',
                                     whiteSpace: 'nowrap',
+                                    flexShrink: 0,
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.3rem'
+                                    gap: '0.25rem'
                                 }}
                             >
-                                {cat.icon} {cat.label}
+                                {cat.icon} {isMobile ? '' : cat.label}
                             </button>
                         ))}
                     </div>
 
-                    {/* Date Preset Buttons */}
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {/* Date Preset Buttons - Horizontal Scroll */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '0.5rem',
+                        overflowX: 'auto',
+                        paddingBottom: '4px',
+                        marginLeft: '-0.5rem',
+                        marginRight: '-0.5rem',
+                        paddingLeft: '0.5rem',
+                        paddingRight: '0.5rem'
+                    }}>
                         {[
                             { id: 'week', label: '7 дней' },
-                            { id: 'month', label: 'Этот месяц' },
+                            { id: 'month', label: 'Месяц' },
                             { id: '30days', label: '30 дней' },
-                            { id: 'all', label: 'Все время' }
+                            { id: 'all', label: 'Все' }
                         ].map(p => (
                             <button
                                 key={p.id}
                                 onClick={() => applyPreset(p.id)}
                                 style={{
-                                    padding: '0.5rem 1rem',
+                                    padding: isMobile ? '0.5rem 0.75rem' : '0.5rem 1rem',
                                     borderRadius: '99px',
                                     border: 'none',
-                                    fontSize: '0.8rem',
+                                    fontSize: isMobile ? '0.75rem' : '0.8rem',
                                     fontWeight: 600,
                                     cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                    flexShrink: 0,
                                     backgroundColor: dateFilter.preset === p.id ? 'var(--primary)' : '#f3f4f6',
-                                    color: dateFilter.preset === p.id ? 'white' : 'var(--text-muted)',
-                                    transition: 'all 0.2s'
+                                    color: dateFilter.preset === p.id ? 'white' : 'var(--text-muted)'
                                 }}
                             >
                                 {p.label}
@@ -295,31 +328,38 @@ export default function Expenses() {
                         ))}
                     </div>
 
-                    {/* Date Inputs */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
-                        <div style={{ position: 'relative' }}>
-                            <input
-                                type="date"
-                                className="input"
-                                style={{ paddingLeft: isMobile ? '0.75rem' : '2.5rem', width: '100%', boxSizing: 'border-box' }}
-                                value={dateFilter.start}
-                                onChange={(e) => setDateFilter({ ...dateFilter, start: e.target.value, preset: 'custom' })}
-                            />
-                            {!isMobile && <Calendar size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />}
-                        </div>
-
-                        {!isMobile && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>→</div>}
-
-                        <div style={{ position: 'relative' }}>
-                            <input
-                                type="date"
-                                className="input"
-                                style={{ paddingLeft: isMobile ? '0.75rem' : '2.5rem', width: '100%', boxSizing: 'border-box' }}
-                                value={dateFilter.end}
-                                onChange={(e) => setDateFilter({ ...dateFilter, end: e.target.value, preset: 'custom' })}
-                            />
-                            {!isMobile && <Calendar size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />}
-                        </div>
+                    {/* Date Inputs - Always Two Columns */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '0.5rem'
+                    }}>
+                        <input
+                            type="date"
+                            className="input"
+                            style={{
+                                width: '100%',
+                                fontSize: isMobile ? '0.85rem' : '1rem',
+                                padding: isMobile ? '0.5rem' : '0.75rem',
+                                minWidth: 0,
+                                boxSizing: 'border-box'
+                            }}
+                            value={dateFilter.start}
+                            onChange={(e) => setDateFilter({ ...dateFilter, start: e.target.value, preset: 'custom' })}
+                        />
+                        <input
+                            type="date"
+                            className="input"
+                            style={{
+                                width: '100%',
+                                fontSize: isMobile ? '0.85rem' : '1rem',
+                                padding: isMobile ? '0.5rem' : '0.75rem',
+                                minWidth: 0,
+                                boxSizing: 'border-box'
+                            }}
+                            value={dateFilter.end}
+                            onChange={(e) => setDateFilter({ ...dateFilter, end: e.target.value, preset: 'custom' })}
+                        />
                     </div>
                 </div>
             </div>
