@@ -18,7 +18,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
 
     const openAddModal = () => {
         setModalMode('add')
-        setFormData({ name: '', price: '', category: '', cost: '', markup: 2 })
+        setFormData({ name: '', price: '', category: '', cost: '', markup: isFlowers ? 2 : 1.5 })
         setIsModalOpen(true)
     }
 
@@ -30,7 +30,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             price: item.price,
             category: item.category || '',
             cost: item.cost || '',
-            markup: item.markup_factor || 2
+            markup: item.markup_factor || (isFlowers ? 2 : 1.5)
         })
         setIsModalOpen(true)
     }
@@ -41,10 +41,8 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             name: formData.name,
             price: parseFloat(formData.price),
             ...(!isFlowers && { category: formData.category }),
-            ...(isFlowers && {
-                cost: parseFloat(formData.cost) || 0,
-                markup_factor: parseFloat(formData.markup) || 2
-            })
+            cost: parseFloat(formData.cost) || 0,
+            markup_factor: parseFloat(formData.markup) || (isFlowers ? 2 : 1.5)
         }
 
         if (modalMode === 'add') {
@@ -183,44 +181,43 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         />
                     </div>
 
-                    {isFlowers && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Закупка</label>
-                                <input
-                                    type="number"
-                                    placeholder="0"
-                                    className="input"
-                                    style={{ width: '100%' }}
-                                    value={formData.cost}
-                                    onChange={e => {
-                                        const newCost = e.target.value
-                                        const costVal = parseFloat(newCost) || 0
-                                        const priceVal = costVal * (parseFloat(formData.markup) || 2)
-                                        setFormData({ ...formData, cost: newCost, price: priceVal ? priceVal.toFixed(2) : '' })
-                                    }}
-                                />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Наценка (x)</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    placeholder="2.0"
-                                    className="input"
-                                    style={{ width: '100%' }}
-                                    value={formData.markup}
-                                    onChange={e => {
-                                        const newMarkup = e.target.value
-                                        const costVal = parseFloat(formData.cost) || 0
-                                        const markupVal = parseFloat(newMarkup) || 0
-                                        const priceVal = costVal * markupVal
-                                        setFormData({ ...formData, markup: newMarkup, price: priceVal ? priceVal.toFixed(2) : '' })
-                                    }}
-                                />
-                            </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Закупка</label>
+                            <input
+                                type="number"
+                                placeholder="0"
+                                className="input"
+                                style={{ width: '100%' }}
+                                value={formData.cost}
+                                onChange={e => {
+                                    const newCost = e.target.value
+                                    const costVal = parseFloat(newCost) || 0
+                                    const markupVal = parseFloat(formData.markup) || (isFlowers ? 2 : 1.5)
+                                    const priceVal = costVal * markupVal
+                                    setFormData({ ...formData, cost: newCost, price: priceVal ? priceVal.toFixed(2) : '' })
+                                }}
+                            />
                         </div>
-                    )}
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Наценка (x)</label>
+                            <input
+                                type="number"
+                                step="0.1"
+                                placeholder={isFlowers ? "2.0" : "1.5"}
+                                className="input"
+                                style={{ width: '100%' }}
+                                value={formData.markup}
+                                onChange={e => {
+                                    const newMarkup = e.target.value
+                                    const costVal = parseFloat(formData.cost) || 0
+                                    const markupVal = parseFloat(newMarkup) || 0
+                                    const priceVal = costVal * markupVal
+                                    setFormData({ ...formData, markup: newMarkup, price: priceVal ? priceVal.toFixed(2) : '' })
+                                }}
+                            />
+                        </div>
+                    </div>
 
                     {!isFlowers && (
                         <div>

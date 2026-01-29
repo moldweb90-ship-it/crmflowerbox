@@ -121,12 +121,12 @@ export default function Products() {
         if (existing) {
             setFormData({
                 ...formData,
-                composition: formData.composition.map(i => i.id === correctId && i.type === compType ? { ...i, qty: i.qty + parseInt(compQty) } : i)
+                composition: formData.composition.map(i => i.id === correctId && i.type === compType ? { ...i, qty: i.qty + parseFloat(compQty) } : i)
             })
         } else {
             setFormData({
                 ...formData,
-                composition: [...formData.composition, { type: compType, id: correctId, qty: parseInt(compQty) }]
+                composition: [...formData.composition, { type: compType, id: correctId, qty: parseFloat(compQty) }]
             })
         }
     }
@@ -285,7 +285,14 @@ export default function Products() {
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Кол-во</label>
-                                    <input type="number" className="input" min="1" value={compQty} onChange={e => setCompQty(e.target.value)} />
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        min="0"
+                                        step="any"
+                                        value={compQty}
+                                        onChange={e => setCompQty(e.target.value)}
+                                    />
                                 </div>
                                 <button className="btn btn-primary" onClick={addItemToComposition} style={{ minWidth: '120px' }}>
                                     <Plus size={18} style={{ marginRight: '0.5rem' }} />

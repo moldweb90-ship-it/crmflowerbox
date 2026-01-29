@@ -186,9 +186,14 @@ export function StoreProvider({ children }) {
 
             // 2. Create Supply Record
             const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+            const flowersAmount = items.filter(i => i.type === 'flower').reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+            const goodsAmount = items.filter(i => i.type === 'good').reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+
             const { data: newSupply, error: supplyError } = await supabase.from('supplies').insert([{
                 supplier_id: supplierId,
                 total_amount: totalAmount,
+                flowers_amount: flowersAmount,
+                goods_amount: goodsAmount,
                 date: new Date().toISOString()
             }]).select('*, suppliers(name)').single()
 
@@ -196,40 +201,50 @@ export function StoreProvider({ children }) {
             setSupplies([newSupply, ...supplies])
 
             // 3. Insert Items & Update Flowers
+            // 3. Insert Items & Update Flowers/Goods
             const supplyItemsPayload = items.map(item => ({
                 supply_id: newSupply.id,
-                flower_id: item.flowerId,
+                flower_id: item.type === 'flower' ? item.id : null,
+                good_id: item.type === 'good' ? item.id : null,
                 quantity: item.quantity,
                 unit_cost: item.unitCost
             }))
 
             await supabase.from('supply_items').insert(supplyItemsPayload)
 
-            // 4. Update Flowers Cost & Price (One by one for now to trigger logic)
-            // Ideally should be a DB trigger, but we do client-side coordination for now
+            // 4. Update Costs & Prices
             const updatedFlowers = [...flowers]
+            const updatedGoods = [...goods]
 
             for (const item of items) {
-                const flower = flowers.find(f => f.id === item.flowerId)
-                if (flower) {
-                    const newCost = item.unitCost
-                    const markup = flower.markup_factor || 2
-                    const newPrice = newCost * markup
+                const newCost = item.unitCost
 
-                    // Update in DB
-                    await supabase.from('flowers').update({
-                        cost: newCost,
-                        price: newPrice
-                    }).eq('id', item.flowerId)
+                if (item.type === 'flower') {
+                    const flower = flowers.find(f => f.id === item.id)
+                    if (flower) {
+                        const markup = flower.markup_factor || 2
+                        const newPrice = newCost * markup
 
-                    // Update local state temporarily
-                    const idx = updatedFlowers.findIndex(f => f.id === item.flowerId)
-                    if (idx !== -1) {
-                        updatedFlowers[idx] = { ...updatedFlowers[idx], cost: newCost, price: newPrice }
+                        await supabase.from('flowers').update({ cost: newCost, price: newPrice }).eq('id', item.id)
+
+                        const idx = updatedFlowers.findIndex(f => f.id === item.id)
+                        if (idx !== -1) updatedFlowers[idx] = { ...updatedFlowers[idx], cost: newCost, price: newPrice }
+                    }
+                } else if (item.type === 'good') {
+                    const good = goods.find(g => g.id === item.id)
+                    if (good) {
+                        const markup = good.markup_factor || 1.5
+                        const newPrice = newCost * markup
+
+                        await supabase.from('goods').update({ cost: newCost, price: newPrice }).eq('id', item.id)
+
+                        const idx = updatedGoods.findIndex(g => g.id === item.id)
+                        if (idx !== -1) updatedGoods[idx] = { ...updatedGoods[idx], cost: newCost, price: newPrice }
                     }
                 }
             }
             setFlowers(updatedFlowers)
+            setGoods(updatedGoods)
 
             // 5. Trigger Recalculate Logic to update Bouquets
             // We can call recalculateAllProducts but we need latest flower prices (which we just updated in DB and State)
@@ -244,6 +259,130 @@ export function StoreProvider({ children }) {
             console.error('Supply Save Error:', error)
             return { success: false, error }
         }
+    }
+
+    const updateSupply = async (supplyId, supplierName, items) => {
+        try {
+            // 1. Get/Create Supplier (Reuse fetch logic or just ID if passed, but name is safer for edits)
+            let supplierId
+            const existingSupplier = suppliers.find(s => s.name.toLowerCase() === supplierName.toLowerCase())
+            if (existingSupplier) {
+                supplierId = existingSupplier.id
+            } else {
+                const { data: newSup, error: supError } = await supabase.from('suppliers').insert([{ name: supplierName }]).select().single()
+                if (supError) throw supError
+                setSuppliers([...suppliers, newSup])
+                supplierId = newSup.id
+            }
+
+            // 2. Calc Totals
+            const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+            const flowersAmount = items.filter(i => i.type === 'flower').reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+            const goodsAmount = items.filter(i => i.type === 'good').reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+
+            // 3. Update Supply Header
+            const { error: headerError } = await supabase.from('supplies').update({
+                supplier_id: supplierId,
+                total_amount: totalAmount,
+                flowers_amount: flowersAmount,
+                goods_amount: goodsAmount
+            }).eq('id', supplyId)
+
+            if (headerError) throw headerError
+
+            // 4. Replace Items (Delete All + Insert All) - Easiest valid strategy
+            await supabase.from('supply_items').delete().eq('supply_id', supplyId)
+
+            const supplyItemsPayload = items.map(item => ({
+                supply_id: supplyId,
+                flower_id: item.type === 'flower' ? item.id : null,
+                good_id: item.type === 'good' ? item.id : null,
+                quantity: item.quantity,
+                unit_cost: item.unitCost
+            }))
+
+            await supabase.from('supply_items').insert(supplyItemsPayload)
+
+            // 5. Re-run Cost Logic (Same as Save)
+            const updatedFlowers = [...flowers]
+            const updatedGoods = [...goods]
+
+            for (const item of items) {
+                const newCost = item.unitCost
+
+                if (item.type === 'flower') {
+                    const flower = flowers.find(f => f.id === item.id)
+                    if (flower) {
+                        const markup = flower.markup_factor || 2
+                        const newPrice = newCost * markup
+                        await supabase.from('flowers').update({ cost: newCost, price: newPrice }).eq('id', item.id)
+                        const idx = updatedFlowers.findIndex(f => f.id === item.id)
+                        if (idx !== -1) updatedFlowers[idx] = { ...updatedFlowers[idx], cost: newCost, price: newPrice }
+                    }
+                } else if (item.type === 'good') {
+                    const good = goods.find(g => g.id === item.id)
+                    if (good) {
+                        const markup = good.markup_factor || 1.5
+                        const newPrice = newCost * markup
+                        await supabase.from('goods').update({ cost: newCost, price: newPrice }).eq('id', item.id)
+                        const idx = updatedGoods.findIndex(g => g.id === item.id)
+                        if (idx !== -1) updatedGoods[idx] = { ...updatedGoods[idx], cost: newCost, price: newPrice }
+                    }
+                }
+            }
+            setFlowers(updatedFlowers)
+            setGoods(updatedGoods)
+
+            // Refresh Supplies List
+            const { data: refreshedSupply } = await supabase.from('supplies').select('*, suppliers(name)').eq('id', supplyId).single()
+            setSupplies(supplies.map(s => s.id === supplyId ? refreshedSupply : s))
+
+            setTimeout(() => recalculateAllProducts(), 500)
+
+            return { success: true }
+
+        } catch (error) {
+            console.error('Update Supply Error:', error)
+            return { success: false, error }
+        }
+    }
+
+    const deleteSupply = async (id) => {
+        try {
+            await supabase.from('supply_items').delete().eq('supply_id', id)
+            const { error } = await supabase.from('supplies').delete().eq('id', id)
+            if (error) throw error
+            setSupplies(supplies.filter(s => s.id !== id))
+            return { success: true }
+        } catch (e) {
+            console.error('Delete Error:', e)
+            return { success: false, error: e }
+        }
+    }
+
+    const toggleSupplyVisibility = async (id, isHidden) => {
+        try {
+            const { error } = await supabase.from('supplies').update({ is_hidden: isHidden }).eq('id', id)
+            if (error) throw error
+            setSupplies(supplies.map(s => s.id === id ? { ...s, is_hidden: isHidden } : s))
+            return { success: true }
+        } catch (e) {
+            console.error('Toggle Visibility Error:', e)
+            return { success: false, error: e }
+        }
+    }
+
+    const getSupplyItems = async (supplyId) => {
+        const { data } = await supabase.from('supply_items').select('*, flowers(name), goods(name)').eq('supply_id', supplyId)
+        // Normalize for UI
+        if (!data) return []
+        return data.map(i => ({
+            id: i.flower_id || i.good_id,
+            type: i.flower_id ? 'flower' : 'good',
+            name: i.flowers?.name || i.goods?.name || 'Unknown',
+            quantity: i.quantity,
+            unitCost: i.unit_cost
+        }))
     }
 
     // Calculation Helper (Remains same logic)
@@ -302,7 +441,7 @@ export function StoreProvider({ children }) {
             goods, addGood, updateGood, deleteGood,
             categories, addCategory, updateCategory, deleteCategory,
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
-            suppliers, supplies, saveSupply,
+            suppliers, supplies, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems,
             settings, updateSettings,
             calculatePrice,
             loading

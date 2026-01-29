@@ -1,33 +1,41 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react'
+import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp, Flower } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 export default function Supplies() {
-    const { supplies, suppliers, flowers, saveSupply } = useStore()
+    const { supplies, suppliers, flowers, goods, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems } = useStore() // Added goods
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+    const [expandedMenuId, setExpandedMenuId] = useState(null) // For dropdown menu
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768)
         window.addEventListener('resize', handleResize)
-        return () => window.removeEventListener('resize', handleResize)
+        const handleClickOutside = () => setExpandedMenuId(null)
+        window.addEventListener('click', handleClickOutside)
+        return () => {
+            window.removeEventListener('resize', handleResize)
+            window.removeEventListener('click', handleClickOutside)
+        }
     }, [])
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [modalMode, setModalMode] = useState('add') // 'add' | 'edit'
+    const [editingSupplyId, setEditingSupplyId] = useState(null)
     const [loading, setLoading] = useState(false)
 
     // Form State
     const [supplierName, setSupplierName] = useState('')
     const [supplyItems, setSupplyItems] = useState([])
-    // Draft Item State
-    const [currentItem, setCurrentItem] = useState({ flowerId: '', quantity: '', unitCost: '' })
 
-    // Expanded State for Mobile items
-    const [expandedSupplyId, setExpandedSupplyId] = useState(null)
+    // Draft Item State
+    const [itemType, setItemType] = useState('flower') // 'flower' | 'good'
+    const [currentItem, setCurrentItem] = useState({ id: '', quantity: '', unitCost: '' })
 
     // --- Filters & Analytics State ---
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'month' }) // presets: 'week', 'month', '30days', 'custom', 'all'
+    const [typeFilter, setTypeFilter] = useState('all') // 'all' | 'flowers' | 'goods'
 
     // Initialize default filter (Current Month)
     useEffect(() => {
@@ -61,31 +69,46 @@ export default function Supplies() {
 
     const filteredSupplies = useMemo(() => {
         return supplies.filter(supply => {
+            if (supply.is_hidden) return false // Filter hidden by default
+
+            // Type Filter
+            if (typeFilter === 'flowers' && !Number(supply.flowers_amount)) return false
+            if (typeFilter === 'goods' && !Number(supply.goods_amount)) return false
+
+            // Date Filter
             if (!dateFilter.start && !dateFilter.end) return true
             const supplyDate = supply.date.split('T')[0]
             if (dateFilter.start && supplyDate < dateFilter.start) return false
             if (dateFilter.end && supplyDate > dateFilter.end) return false
+
             return true
         })
-    }, [supplies, dateFilter])
+    }, [supplies, dateFilter, typeFilter])
 
     const periodTotal = filteredSupplies.reduce((acc, s) => acc + Number(s.total_amount || 0), 0)
 
     // --- Handlers ---
 
     const handleAddItem = () => {
-        if (!currentItem.flowerId || !currentItem.quantity || !currentItem.unitCost) return
+        if (!currentItem.id || !currentItem.quantity || !currentItem.unitCost) return
 
-        const flower = flowers.find(f => f.id === currentItem.flowerId)
+        let itemData
+        if (itemType === 'flower') {
+            const f = flowers.find(x => x.id === currentItem.id)
+            itemData = { type: 'flower', name: f ? f.name : 'Unknown Flower', ...currentItem }
+        } else {
+            const g = goods.find(x => x.id === currentItem.id)
+            itemData = { type: 'good', name: g ? g.name : 'Unknown Good', ...currentItem }
+        }
 
         setSupplyItems([...supplyItems, {
-            ...currentItem,
-            flowerName: flower ? flower.name : 'Unknown',
+            ...itemData,
+            name: itemData.name,
             quantity: Number(currentItem.quantity),
             unitCost: Number(currentItem.unitCost)
         }])
 
-        setCurrentItem({ flowerId: '', quantity: '', unitCost: '' })
+        setCurrentItem({ id: '', quantity: '', unitCost: '' })
     }
 
     const handleRemoveItem = (index) => {
@@ -95,36 +118,106 @@ export default function Supplies() {
     const handleSaveSupply = async () => {
         // If there are unsaved items in the form, add them first
         let finalItems = [...supplyItems]
-        if (currentItem.flowerId && currentItem.quantity && currentItem.unitCost) {
-            const flower = flowers.find(f => f.id === currentItem.flowerId)
-            const newItem = {
-                ...currentItem,
-                flowerName: flower ? flower.name : 'Unknown',
+        if (currentItem.id && currentItem.quantity && currentItem.unitCost) {
+            let itemData
+            if (itemType === 'flower') {
+                const f = flowers.find(x => x.id === currentItem.id)
+                itemData = { type: 'flower', name: f ? f.name : 'Unknown', ...currentItem }
+            } else {
+                const g = goods.find(x => x.id === currentItem.id)
+                itemData = { type: 'good', name: g ? g.name : 'Unknown', ...currentItem }
+            }
+            finalItems.push({
+                ...itemData,
                 quantity: Number(currentItem.quantity),
                 unitCost: Number(currentItem.unitCost)
-            }
-            finalItems.push(newItem)
+            })
         }
 
         if (!supplierName || finalItems.length === 0) return
 
         setLoading(true)
-        const result = await saveSupply(supplierName, finalItems)
+        let result
+        if (modalMode === 'edit' && editingSupplyId) {
+            result = await updateSupply(editingSupplyId, supplierName, finalItems)
+        } else {
+            result = await saveSupply(supplierName, finalItems)
+        }
         setLoading(false)
 
         if (result.success) {
             setIsModalOpen(false)
             setSupplierName('')
             setSupplyItems([])
-            setCurrentItem({ flowerId: '', quantity: '', unitCost: '' })
+            setCurrentItem({ id: '', quantity: '', unitCost: '' })
+            setEditingSupplyId(null)
         } else {
-            alert('Ошибка при сохранении поставки')
+            alert('Ошибка при сохранении поставки: ' + (result.error?.message || ''))
         }
     }
 
+    const handleEditClick = async (e, supply) => {
+        e.stopPropagation()
+        setModalMode('edit')
+        setEditingSupplyId(supply.id)
+        setSupplierName(supply.suppliers?.name || '')
+        setLoading(true)
+
+        // Fetch items
+        const items = await getSupplyItems(supply.id)
+        setSupplyItems(items.map(i => ({
+            ...i,
+            flowerName: i.name, // compatibility
+            unitCost: i.unitCost // compatibility
+        })))
+
+        setLoading(false)
+        setIsModalOpen(true)
+        setExpandedMenuId(null)
+    }
+
+    const handleDeleteClick = async (e, id) => {
+        e.stopPropagation()
+        if (window.confirm('Вы уверены, что хотите удалить эту поставку? Это действие нельзя отменить.')) {
+            await deleteSupply(id)
+        }
+        setExpandedMenuId(null)
+    }
+
+    const handleHideClick = async (e, id) => {
+        e.stopPropagation()
+        if (window.confirm('Скрыть поставку из списка? (Данные сохранятся в базе)')) {
+            await toggleSupplyVisibility(id, true)
+        }
+        setExpandedMenuId(null)
+    }
+
+    const openNewSupplyModal = () => {
+        setModalMode('add')
+        setEditingSupplyId(null)
+        setSupplierName('')
+        setSupplyItems([])
+        setCurrentItem({ id: '', quantity: '', unitCost: '' })
+        setIsModalOpen(true)
+    }
+
+    // Modal Totals Calculation
     const currentItemSum = (Number(currentItem.quantity) || 0) * (Number(currentItem.unitCost) || 0)
-    const itemsSum = supplyItems.reduce((acc, item) => acc + (item.quantity * item.unitCost), 0)
-    const totalSum = itemsSum + currentItemSum
+    // Add current item to calculations if valid
+    const allItems = [...supplyItems]
+    if (currentItem.id && currentItem.quantity && currentItem.unitCost) {
+        // Temporarily add for calc
+        // But wait, if I add it here, I need to know its type for the split calculation
+        // It's safer to just calculate `itemsSum` and `currentItemSum` 
+    }
+
+    const flowersTotal = supplyItems.filter(i => i.type === 'flower').reduce((acc, i) => acc + (i.quantity * i.unitCost), 0)
+        + (itemType === 'flower' ? currentItemSum : 0)
+
+    const goodsTotal = supplyItems.filter(i => i.type === 'good').reduce((acc, i) => acc + (i.quantity * i.unitCost), 0)
+        + (itemType === 'good' ? currentItemSum : 0)
+
+    const totalSum = flowersTotal + goodsTotal
 
     return (
         <div style={{ paddingBottom: '6rem' }}>
@@ -138,7 +231,7 @@ export default function Supplies() {
                 </div>
                 <button
                     className="btn btn-primary"
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={openNewSupplyModal}
                     style={{ width: isMobile ? '100%' : 'auto', justifyContent: 'center', padding: isMobile ? '0.75rem' : '0.5rem 1rem' }}
                 >
                     <Plus size={20} style={{ marginRight: '0.5rem' }} />
@@ -164,12 +257,44 @@ export default function Supplies() {
                     borderRadius: '20px',
                     boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.4)'
                 }}>
-                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <DollarSign size={16} />
-                        Итого за период
-                    </div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Итого за период</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '1rem' }}>
                         {periodTotal.toLocaleString('ru-RU')} lei
+                    </div>
+
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        gap: isMobile ? '1rem' : '0',
+                        background: 'rgba(255,255,255,0.1)',
+                        padding: '0.75rem',
+                        borderRadius: '12px'
+                    }}>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.9, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <Flower size={12} /> Цветы
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                                {filteredSupplies.reduce((acc, s) => acc + (Number(s.flowers_amount) || 0), 0).toLocaleString()} <span style={{ fontSize: '0.7em' }}>lei</span>
+                            </div>
+                        </div>
+
+                        {/* Divider */}
+                        <div style={{
+                            width: isMobile ? '100%' : '1px',
+                            height: isMobile ? '1px' : 'auto',
+                            background: 'rgba(255,255,255,0.2)',
+                            margin: isMobile ? '0' : '0 1rem'
+                        }}></div>
+
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.9, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <Package size={12} /> Товары
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                                {filteredSupplies.reduce((acc, s) => acc + (Number(s.goods_amount) || 0), 0).toLocaleString()} <span style={{ fontSize: '0.7em' }}>lei</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -178,6 +303,34 @@ export default function Supplies() {
 
                     {/* Presets - Horizontal Scroll on Mobile */}
                     <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                        {[
+                            { id: 'all', label: 'Все' },
+                            { id: 'flowers', label: '🌸 Цветы' },
+                            { id: 'goods', label: '📦 Товары' }
+                        ].map(t => (
+                            <button
+                                key={t.id}
+                                onClick={() => setTypeFilter(t.id)}
+                                style={{
+                                    padding: '0.625rem 1.25rem',
+                                    borderRadius: '99px',
+                                    border: typeFilter === t.id ? '2px solid var(--primary)' : '1px solid var(--border)',
+                                    background: typeFilter === t.id ? '#ecfdf5' : 'white',
+                                    color: typeFilter === t.id ? 'var(--primary)' : 'var(--text-muted)',
+                                    fontWeight: 600,
+                                    fontSize: '0.9rem',
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                    transition: 'all 0.2s',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem'
+                                }}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
+                        <div style={{ width: '1px', background: 'var(--border)', margin: '0 0.25rem' }}></div>
                         {[
                             { id: 'week', label: '7 дней' },
                             { id: 'month', label: 'Этот месяц' },
@@ -207,265 +360,406 @@ export default function Supplies() {
                     </div>
 
                     {/* Date Inputs */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: isMobile ? '100%' : 'auto' }}>
-                            <CalendarRange size={18} color="var(--text-muted)" />
-                            <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
-                                <input
-                                    type="date"
-                                    className="input"
-                                    style={{ padding: '0.5rem', flex: 1, minWidth: 0 }}
-                                    value={dateFilter.start}
-                                    onChange={e => setDateFilter({ ...dateFilter, start: e.target.value, preset: 'custom' })}
-                                />
-                                <span style={{ color: 'var(--text-muted)', alignSelf: 'center' }}><ArrowRight size={14} /></span>
-                                <input
-                                    type="date"
-                                    className="input"
-                                    style={{ padding: '0.5rem', flex: 1, minWidth: 0 }}
-                                    value={dateFilter.end}
-                                    onChange={e => setDateFilter({ ...dateFilter, end: e.target.value, preset: 'custom' })}
-                                />
-                            </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem', marginTop: '0.75rem' }}>
+                        <div style={{ position: 'relative' }}>
+                            <input
+                                type="date"
+                                className="input"
+                                style={{ paddingLeft: isMobile ? '0.75rem' : '2.5rem', width: '100%', fontSize: isMobile ? '0.9rem' : '1rem', minWidth: 0, boxSizing: 'border-box' }}
+                                value={dateFilter.start}
+                                onChange={(e) => {
+                                    setDateFilter({ ...dateFilter, start: e.target.value, preset: 'custom' })
+                                }}
+                            />
+                            {!isMobile && <Calendar size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />}
+                        </div>
+
+                        {!isMobile && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>→</div>}
+
+                        <div style={{ position: 'relative' }}>
+                            <input
+                                type="date"
+                                className="input"
+                                style={{ paddingLeft: isMobile ? '0.75rem' : '2.5rem', width: '100%', fontSize: isMobile ? '0.9rem' : '1rem', minWidth: 0, boxSizing: 'border-box' }}
+                                value={dateFilter.end}
+                                onChange={(e) => {
+                                    setDateFilter({ ...dateFilter, end: e.target.value, preset: 'custom' })
+                                }}
+                            />
+                            {!isMobile && <Calendar size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />}
                         </div>
                     </div>
-                </div>
-            </div>
 
-            {/* List */}
-            {!isMobile ? (
-                // Desktop Table View
-                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid var(--border)' }}>
-                            <tr>
-                                <th style={{ padding: '1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Дата</th>
-                                <th style={{ padding: '1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Поставщик</th>
-                                <th style={{ padding: '1rem', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)' }}>Сумма</th>
-                                <th style={{ padding: '1rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>Статус</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredSupplies.map(supply => (
-                                <tr key={supply.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                    <td style={{ padding: '1rem' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <Calendar size={16} color="var(--text-muted)" />
-                                            {new Date(supply.date).toLocaleDateString()}
+
+                    {/* List */}
+                    {
+                        !isMobile ? (
+                            // Desktop Table View
+                            <div className="card" style={{ padding: 0, overflow: 'visible' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid var(--border)' }}>
+                                        <tr>
+                                            <th style={{ padding: '1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Дата</th>
+                                            <th style={{ padding: '1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Поставщик</th>
+                                            <th style={{ padding: '1rem', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)' }}>Сумма</th>
+                                            <th style={{ padding: '1rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>Статус</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredSupplies.map(supply => (
+                                            <tr key={supply.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                <td style={{ padding: '1rem' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <Calendar size={16} color="var(--text-muted)" />
+                                                        {new Date(supply.date).toLocaleDateString()}
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '1rem', fontWeight: 500 }}>
+                                                    {supply.suppliers?.name || 'Неизвестно'}
+                                                </td>
+                                                <td style={{ padding: '1rem', textAlign: 'right' }}>
+                                                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>{Number(supply.total_amount).toLocaleString('ru-RU')} lei</div>
+                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', fontSize: '0.75rem', marginTop: '0.25rem', color: 'var(--text-muted)' }}>
+                                                        {Number(supply.flowers_amount) > 0 && (
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#10b981' }}>
+                                                                <Flower size={10} /> {Number(supply.flowers_amount).toLocaleString()}
+                                                            </span>
+                                                        )}
+                                                        {Number(supply.goods_amount) > 0 && (
+                                                            <span style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#f59e0b' }}>
+                                                                <Package size={10} /> {Number(supply.goods_amount).toLocaleString()}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '1rem', textAlign: 'center' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                                                        <span style={{
+                                                            padding: '0.25rem 0.75rem',
+                                                            backgroundColor: '#ecfdf5',
+                                                            color: '#059669',
+                                                            borderRadius: '99px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 600
+                                                        }}>
+                                                            Принят
+                                                        </span>
+
+                                                        <div style={{ position: 'relative' }}>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setExpandedMenuId(expandedMenuId === supply.id ? null : supply.id) }}
+                                                                style={{ padding: '0.5rem', cursor: 'pointer', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center' }}
+                                                            >
+                                                                <div style={{ display: 'flex', gap: '3px' }}>
+                                                                    <div style={{ width: '4px', height: '4px', background: '#ccc', borderRadius: '50%' }}></div>
+                                                                    <div style={{ width: '4px', height: '4px', background: '#ccc', borderRadius: '50%' }}></div>
+                                                                    <div style={{ width: '4px', height: '4px', background: '#ccc', borderRadius: '50%' }}></div>
+                                                                </div>
+                                                            </button>
+
+                                                            {expandedMenuId === supply.id && (
+                                                                <div style={{
+                                                                    position: 'absolute',
+                                                                    top: '100%',
+                                                                    right: '0',
+                                                                    background: 'white',
+                                                                    border: '1px solid var(--border)',
+                                                                    borderRadius: '8px',
+                                                                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                                                    zIndex: 10,
+                                                                    minWidth: '150px',
+                                                                    overflow: 'hidden',
+                                                                    marginTop: '0.25rem'
+                                                                }}>
+                                                                    <button onClick={(e) => handleEditClick(e, supply)} style={{ display: 'block', width: '100%', padding: '0.75rem 1rem', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.9rem' }}>✏️ Редактировать</button>
+                                                                    <button onClick={(e) => handleHideClick(e, supply.id)} style={{ display: 'block', width: '100%', padding: '0.75rem 1rem', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.9rem' }}>👁️ Скрыть</button>
+                                                                    <button onClick={(e) => handleDeleteClick(e, supply.id)} style={{ display: 'block', width: '100%', padding: '0.75rem 1rem', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', color: 'red', fontSize: '0.9rem' }}>🗑️ Удалить</button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {filteredSupplies.length === 0 && (
+                                            <tr>
+                                                <td colSpan={4} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                                    {supplies.length > 0 ? 'Нет поставок за выбранный период' : 'Список поставок пуст'}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            // Mobile Card View
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                {filteredSupplies.map(supply => (
+                                    <div key={supply.id} className="card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.25rem' }}>{supply.suppliers?.name || 'Неизвестно'}</div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                                    <Calendar size={14} />
+                                                    {new Date(supply.date).toLocaleDateString()} at {new Date(supply.date).toLocaleTimeString().slice(0, 5)}
+                                                </div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--primary)' }}>{Number(supply.total_amount).toLocaleString('ru-RU')} L</div>
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', fontSize: '0.8rem', marginTop: '0.25rem', color: 'var(--text-muted)' }}>
+                                                    {Number(supply.flowers_amount) > 0 && (
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#10b981' }}>
+                                                            <Flower size={12} /> {Number(supply.flowers_amount).toLocaleString()}
+                                                        </span>
+                                                    )}
+                                                    {Number(supply.goods_amount) > 0 && (
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#f59e0b' }}>
+                                                            <Package size={12} /> {Number(supply.goods_amount).toLocaleString()}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </td>
-                                    <td style={{ padding: '1rem', fontWeight: 500 }}>
-                                        {supply.suppliers?.name || 'Неизвестно'}
-                                    </td>
-                                    <td style={{ padding: '1rem', textAlign: 'right', fontWeight: 600 }}>
-                                        {Number(supply.total_amount).toLocaleString('ru-RU')} lei
-                                    </td>
-                                    <td style={{ padding: '1rem', textAlign: 'center' }}>
-                                        <span style={{
-                                            padding: '0.25rem 0.75rem',
-                                            backgroundColor: '#ecfdf5',
-                                            color: '#059669',
-                                            borderRadius: '99px',
-                                            fontSize: '0.75rem',
-                                            fontWeight: 600
-                                        }}>
-                                            Принят
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredSupplies.length === 0 && (
-                                <tr>
-                                    <td colSpan={4} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                        {supplies.length > 0 ? 'Нет поставок за выбранный период' : 'Список поставок пуст'}
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            ) : (
-                // Mobile Card View
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {filteredSupplies.map(supply => (
-                        <div key={supply.id} className="card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.25rem' }}>{supply.suppliers?.name || 'Неизвестно'}</div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                                        <Calendar size={14} />
-                                        {new Date(supply.date).toLocaleDateString()} at {new Date(supply.date).toLocaleTimeString().slice(0, 5)}
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.75rem', borderTop: '1px dashed var(--border)' }}>
+                                            <span style={{
+                                                padding: '0.25rem 0.75rem',
+                                                backgroundColor: '#ecfdf5',
+                                                color: '#059669',
+                                                borderRadius: '99px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 600
+                                            }}>
+                                                Принят на склад
+                                            </span>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button onClick={(e) => handleEditClick(e, supply)} className="btn-sm" style={{ padding: '0.4rem 0.8rem', background: '#f3f4f6', borderRadius: '8px', fontSize: '0.8rem' }}>✏️</button>
+                                                <button onClick={(e) => handleHideClick(e, supply.id)} className="btn-sm" style={{ padding: '0.4rem 0.8rem', background: '#f3f4f6', borderRadius: '8px', fontSize: '0.8rem' }}>👁️</button>
+                                                <button onClick={(e) => handleDeleteClick(e, supply.id)} className="btn-sm" style={{ padding: '0.4rem 0.8rem', background: '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '0.8rem' }}>🗑️</button>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--primary)' }}>{Number(supply.total_amount).toLocaleString('ru-RU')} L</div>
-                                </div>
+                                ))}
+                                {filteredSupplies.length === 0 && (
+                                    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                                        {supplies.length > 0 ? 'Нет поставок за выбранный период' : 'Поставок пока нет'}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    }
+
+                    {/* New Supply Modal */}
+                    <Modal
+                        isOpen={isModalOpen}
+                        onClose={() => setIsModalOpen(false)}
+                        title="Новая поставка"
+                    >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '70vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
+
+                            {/* Supplier Selection */}
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Поставщик</label>
+                                <input
+                                    list="suppliers-list"
+                                    className="input"
+                                    placeholder="Название поставщика"
+                                    value={supplierName}
+                                    onChange={e => setSupplierName(e.target.value)}
+                                    style={{ fontSize: '1rem', padding: '0.75rem' }}
+                                />
+                                <datalist id="suppliers-list">
+                                    {suppliers.map(s => <option key={s.id} value={s.name} />)}
+                                </datalist>
                             </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.75rem', borderTop: '1px dashed var(--border)' }}>
-                                <span style={{
-                                    padding: '0.25rem 0.75rem',
-                                    backgroundColor: '#ecfdf5',
-                                    color: '#059669',
-                                    borderRadius: '99px',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600
+                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                                <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Позиции</h3>
+
+                                {supplyItems.length > 0 && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                                        {supplyItems.map((item, idx) => (
+                                            <div key={idx} style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'auto minmax(0, 1fr) auto auto auto',
+                                                gap: '0.75rem',
+                                                alignItems: 'center',
+                                                backgroundColor: '#f9fafb',
+                                                padding: '0.75rem',
+                                                borderRadius: '12px',
+                                                border: '1px solid var(--border)'
+                                            }}>
+                                                {item.type === 'flower' ? <Flower size={16} color="var(--primary)" /> : <Package size={16} color="#f59e0b" />}
+                                                <div style={{ fontWeight: 600, gridColumn: isMobile ? '2 / -1' : 'auto' }}>
+                                                    {item.name}
+                                                    {isMobile && <div style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)' }}>{item.quantity} шт x {item.unitCost} L</div>}
+                                                </div>
+                                                {!isMobile && <div style={{ fontSize: '0.9rem' }}>{item.quantity} шт</div>}
+                                                {!isMobile && <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{item.unitCost} L</div>}
+                                                <button onClick={() => handleRemoveItem(idx)} style={{ color: '#ef4444', padding: '0.25rem', gridColumn: isMobile ? '-1' : 'auto', gridRow: isMobile ? '1' : 'auto' }}>
+                                                    <X size={20} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Add Item Form */}
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.75rem',
+                                    marginTop: '0.5rem',
+                                    backgroundColor: '#fff',
+                                    border: '2px dashed var(--border)',
+                                    padding: '1rem',
+                                    borderRadius: '16px'
                                 }}>
-                                    Принят на склад
-                                </span>
-                                {/* Future: Expand details button */}
+                                    {/* Type Switcher Tabs */}
+                                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                        <button
+                                            onClick={() => setItemType('flower')}
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.5rem',
+                                                borderRadius: '8px',
+                                                border: 'none',
+                                                background: itemType === 'flower' ? 'var(--primary)' : '#f3f4f6',
+                                                color: itemType === 'flower' ? 'white' : 'var(--text-muted)',
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '0.5rem'
+                                            }}
+                                        >
+                                            <Flower size={16} /> Цветы
+                                        </button>
+                                        <button
+                                            onClick={() => setItemType('good')}
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.5rem',
+                                                borderRadius: '8px',
+                                                border: 'none',
+                                                background: itemType === 'good' ? '#f59e0b' : '#f3f4f6',
+                                                color: itemType === 'good' ? 'white' : 'var(--text-muted)',
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '0.5rem'
+                                            }}
+                                        >
+                                            <Package size={16} /> Товары
+                                        </button>
+                                    </div>
+
+                                    <select
+                                        className="input"
+                                        value={currentItem.id}
+                                        onChange={e => setCurrentItem({ ...currentItem, id: e.target.value })}
+                                        style={{ padding: '0.75rem' }}
+                                    >
+                                        <option value="">{itemType === 'flower' ? 'Выберите цветок...' : 'Выберите товар...'}</option>
+                                        {(itemType === 'flower' ? flowers : goods).map(f => (
+                                            <option key={f.id} value={f.id}>{f.name}</option>
+                                        ))}
+                                    </select>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            placeholder="Кол-во"
+                                            value={currentItem.quantity}
+                                            onChange={e => setCurrentItem({ ...currentItem, quantity: e.target.value })}
+                                            style={{ padding: '0.75rem' }}
+                                        />
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            placeholder="Цена"
+                                            value={currentItem.unitCost}
+                                            onChange={e => setCurrentItem({ ...currentItem, unitCost: e.target.value })}
+                                            style={{ padding: '0.75rem' }}
+                                        />
+                                    </div>
+
+                                    <button
+                                        className="btn"
+                                        style={{
+                                            padding: '0.75rem',
+                                            justifyContent: 'center',
+                                            backgroundColor: itemType === 'flower' ? 'var(--primary)' : '#f59e0b',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px'
+                                        }}
+                                        onClick={handleAddItem}
+                                        disabled={!currentItem.id}
+                                    >
+                                        <Plus size={24} />
+                                    </button>
+                                </div>
+
+                                {currentItem.id && (
+                                    <div style={{ textAlign: 'right', fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                                        Сумма: <b>{((Number(currentItem.quantity) || 0) * (Number(currentItem.unitCost) || 0)).toFixed(2)} lei</b>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    ))}
-                    {filteredSupplies.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                            {supplies.length > 0 ? 'Нет поставок за выбранный период' : 'Поставок пока нет'}
-                        </div>
-                    )}
-                </div>
-            )}
 
-            {/* New Supply Modal */}
-            <Modal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title="Новая поставка"
-            >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '70vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
-
-                    {/* Supplier Selection */}
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Поставщик</label>
-                        <input
-                            list="suppliers-list"
-                            className="input"
-                            placeholder="Название поставщика"
-                            value={supplierName}
-                            onChange={e => setSupplierName(e.target.value)}
-                            style={{ fontSize: '1rem', padding: '0.75rem' }}
-                        />
-                        <datalist id="suppliers-list">
-                            {suppliers.map(s => <option key={s.id} value={s.name} />)}
-                        </datalist>
-                    </div>
-
-                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-                        <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Позиции</h3>
-
-                        {supplyItems.map((item, idx) => (
-                            <div key={idx} style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'minmax(0, 1fr) auto auto auto',
-                                gap: '0.75rem',
-                                alignItems: 'center',
-                                marginBottom: '0.75rem',
+                            <div style={{
+                                marginTop: '0.5rem',
+                                padding: '1.25rem',
                                 backgroundColor: '#f9fafb',
-                                padding: '0.75rem',
-                                borderRadius: '12px',
-                                border: '1px solid var(--border)'
+                                borderRadius: '16px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.5rem'
                             }}>
-                                <div style={{ fontWeight: 600, gridColumn: isMobile ? '1 / -1' : 'auto' }}>{item.flowerName}</div>
-                                <div style={{ fontSize: '0.9rem' }}>{item.quantity} шт</div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{item.unitCost} L</div>
-                                <button onClick={() => handleRemoveItem(idx)} style={{ color: '#ef4444', padding: '0.25rem' }}>
-                                    <X size={20} />
+                                {flowersTotal > 0 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Flower size={14} /> Цветы:</span>
+                                        <span>{flowersTotal.toFixed(2)} lei</span>
+                                    </div>
+                                )}
+                                {goodsTotal > 0 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={14} /> Товары:</span>
+                                        <span>{goodsTotal.toFixed(2)} lei</span>
+                                    </div>
+                                )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)', marginTop: '0.25rem' }}>
+                                    <span style={{ fontWeight: 600, color: '#111827' }}>Итого поставка:</span>
+                                    <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#166534' }}>{totalSum} lei</span>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                                <button
+                                    className="btn"
+                                    onClick={() => setIsModalOpen(false)}
+                                    style={{ flex: 1, justifyContent: 'center', padding: '1rem' }}
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    className="btn btn-primary"
+                                    disabled={loading || (!supplierName) || (supplyItems.length === 0 && !currentItem.id)}
+                                    onClick={handleSaveSupply}
+                                    style={{ flex: 2, justifyContent: 'center', padding: '1rem', fontSize: '1.1rem' }}
+                                >
+                                    {loading ? '...' : 'Сохранить'}
                                 </button>
                             </div>
-                        ))}
-
-                        {/* Add Item Form */}
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr auto',
-                            gap: '0.75rem',
-                            marginTop: '1rem',
-                            backgroundColor: '#fff',
-                            border: '2px dashed var(--border)',
-                            padding: '1rem',
-                            borderRadius: '16px'
-                        }}>
-                            <select
-                                className="input"
-                                value={currentItem.flowerId}
-                                onChange={e => setCurrentItem({ ...currentItem, flowerId: e.target.value })}
-                                style={{ padding: '0.75rem' }}
-                            >
-                                <option value="">Выберите цветок...</option>
-                                {flowers.map(f => (
-                                    <option key={f.id} value={f.id}>{f.name}</option>
-                                ))}
-                            </select>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                <input
-                                    type="number"
-                                    className="input"
-                                    placeholder="Кол-во"
-                                    value={currentItem.quantity}
-                                    onChange={e => setCurrentItem({ ...currentItem, quantity: e.target.value })}
-                                    style={{ padding: '0.75rem' }}
-                                />
-                                <input
-                                    type="number"
-                                    className="input"
-                                    placeholder="Цена"
-                                    value={currentItem.unitCost}
-                                    onChange={e => setCurrentItem({ ...currentItem, unitCost: e.target.value })}
-                                    style={{ padding: '0.75rem' }}
-                                />
-                            </div>
-
-                            <button
-                                className="btn btn-primary"
-                                style={{ padding: '0.75rem', justifyContent: 'center' }}
-                                onClick={handleAddItem}
-                                disabled={!currentItem.flowerId}
-                            >
-                                <Plus size={24} />
-                            </button>
                         </div>
-
-                        {currentItem.flowerId && (
-                            <div style={{ textAlign: 'right', fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                                Сумма: <b>{((Number(currentItem.quantity) || 0) * (Number(currentItem.unitCost) || 0)).toFixed(2)} lei</b>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Добавится автоматически при сохранении</div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div style={{
-                        marginTop: '1rem',
-                        padding: '1.25rem',
-                        backgroundColor: '#ecfdf5',
-                        borderRadius: '16px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        color: '#065f46'
-                    }}>
-                        <span style={{ fontWeight: 600 }}>Итого:</span>
-                        <span style={{ fontSize: '1.5rem', fontWeight: 800 }}>{totalSum} lei</span>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                        <button
-                            className="btn"
-                            onClick={() => setIsModalOpen(false)}
-                            style={{ flex: 1, justifyContent: 'center', padding: '1rem' }}
-                        >
-                            Отмена
-                        </button>
-                        <button
-                            className="btn btn-primary"
-                            disabled={loading || (!supplierName) || (supplyItems.length === 0 && !currentItem.flowerId)}
-                            onClick={handleSaveSupply}
-                            style={{ flex: 2, justifyContent: 'center', padding: '1rem', fontSize: '1.1rem' }}
-                        >
-                            {loading ? '...' : 'Сохранить'}
-                        </button>
-                    </div>
+                    </Modal>
                 </div>
-            </Modal>
+            </div>
         </div>
     )
 }
