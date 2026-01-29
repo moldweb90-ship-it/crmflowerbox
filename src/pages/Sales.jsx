@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
-import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye } from 'lucide-react'
+import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye, Search } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 // Enums
@@ -57,6 +57,7 @@ export default function Sales() {
     // Date filter
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'today' })
     const [deliveryDateFilter, setDeliveryDateFilter] = useState(null) // For calendar click - filter by delivery date
+    const [orderSearch, setOrderSearch] = useState('') // For order number search from global search
 
     // Auto-open modal when navigated with ?add=true (from Dashboard)
     useEffect(() => {
@@ -69,6 +70,15 @@ export default function Sales() {
         if (searchParams.get('calendar') === 'true') {
             setIsCalendarOpen(true)
             searchParams.delete('calendar')
+            setSearchParams(searchParams, { replace: true })
+        }
+        // Handle order number search from global search
+        const orderParam = searchParams.get('order')
+        if (orderParam) {
+            setOrderSearch(orderParam)
+            setDateFilter({ start: '', end: '', preset: 'all' }) // Show all dates when searching
+            setDeliveryDateFilter(null)
+            searchParams.delete('order')
             setSearchParams(searchParams, { replace: true })
         }
     }, [searchParams, setSearchParams])
@@ -139,6 +149,10 @@ export default function Sales() {
     // Filtered & grouped sales
     const filteredSales = useMemo(() => {
         return sales.filter(sale => {
+            // If searching by order number (from global search)
+            if (orderSearch) {
+                return sale.order_number?.toString().includes(orderSearch)
+            }
             // If filtering by delivery date (from calendar click)
             if (deliveryDateFilter) {
                 const deliveryDate = sale.delivery_date?.split('T')[0]
@@ -151,7 +165,7 @@ export default function Sales() {
             if (dateFilter.end && saleDate > dateFilter.end) return false
             return true
         })
-    }, [sales, dateFilter, deliveryDateFilter])
+    }, [sales, dateFilter, deliveryDateFilter, orderSearch])
 
     const groupedSales = useMemo(() => {
         const groups = {}
@@ -341,6 +355,48 @@ export default function Sales() {
                     </button>
                 </div>
             </div>
+
+            {/* Order Search Indicator */}
+            {orderSearch && (
+                <div style={{
+                    marginBottom: '1rem',
+                    padding: '0.75rem 1rem',
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    borderRadius: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    border: '1px solid #f59e0b'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Search size={18} style={{ color: '#d97706' }} />
+                        <span style={{ fontWeight: 600, color: '#92400e' }}>
+                            Поиск заказа: #{orderSearch}
+                        </span>
+                        <span style={{ color: '#b45309', fontSize: '0.875rem' }}>
+                            ({filteredSales.length} найдено)
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => { setOrderSearch(''); applyPreset('today'); }}
+                        style={{
+                            background: 'white',
+                            border: '1px solid #f59e0b',
+                            borderRadius: '8px',
+                            padding: '0.375rem 0.75rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            fontWeight: 500,
+                            color: '#92400e'
+                        }}
+                    >
+                        <X size={14} />
+                        Сбросить
+                    </button>
+                </div>
+            )}
 
             {/* Stats & Filters */}
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '280px 1fr', gap: '1.5rem', marginBottom: '2rem' }}>

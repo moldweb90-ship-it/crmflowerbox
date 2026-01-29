@@ -74,7 +74,17 @@ export default function Layout() {
 
     const handleGlobalSearch = (e) => {
         if (e.key === 'Enter') {
-            navigate(`/products?q=${encodeURIComponent(e.target.value)}`)
+            const value = e.target.value.trim()
+            // Check if searching for order number (starts with # or is a number)
+            const orderPattern = /^#?(\d+)$/
+            const match = value.match(orderPattern)
+            if (match) {
+                // Search for order by number
+                navigate(`/sales?order=${encodeURIComponent(match[1])}`)
+            } else {
+                // Search for products
+                navigate(`/products?q=${encodeURIComponent(value)}`)
+            }
         }
     }
 
@@ -303,7 +313,7 @@ export default function Layout() {
                         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
                             <div style={{ position: 'relative' }}>
                                 <input
-                                    placeholder="Поиск..."
+                                    placeholder="Товар или #заказ..."
                                     onKeyDown={handleGlobalSearch}
                                     style={{
                                         padding: '0.75rem 1rem 0.75rem 2.5rem',
