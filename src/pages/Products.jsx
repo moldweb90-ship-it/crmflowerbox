@@ -458,54 +458,113 @@ export default function Products() {
             </div>
 
             {isMobile ? (
-                // Mobile Cards View
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                // Mobile Cards View - Compact Design
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {filteredProducts.map(p => {
                         const isPublished = p.is_published !== false
                         return (
-                            <div key={p.id} className="card" style={{ opacity: isPublished ? 1 : 0.6 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
-                                    <div>
-                                        <h3
+                            <div
+                                key={p.id}
+                                className="card"
+                                style={{
+                                    opacity: isPublished ? 1 : 0.5,
+                                    padding: '0.75rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.5rem'
+                                }}
+                            >
+                                {/* Top Row: Name + Price */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div
                                             onClick={() => setViewingProduct(p)}
-                                            style={{ fontSize: '1.125rem', fontWeight: 600, cursor: 'pointer', color: 'var(--primary)' }}
+                                            style={{
+                                                fontSize: '0.95rem',
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                color: 'var(--primary)',
+                                                lineHeight: 1.3,
+                                                marginBottom: '2px'
+                                            }}
                                         >
                                             {p.name}
-                                        </h3>
-                                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{p.sku}</p>
-                                        {!isPublished && <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>Снят с публикации</span>}
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p.sku}</div>
                                     </div>
-                                    <span style={{ fontWeight: 'bold', fontSize: '1.125rem', color: 'var(--primary)' }}>{p.price} lei</span>
+                                    <div style={{
+                                        fontWeight: 700,
+                                        fontSize: '1rem',
+                                        color: 'var(--primary)',
+                                        whiteSpace: 'nowrap',
+                                        background: 'linear-gradient(135deg, #fef2f2, #fff1f2)',
+                                        padding: '0.25rem 0.5rem',
+                                        borderRadius: '8px'
+                                    }}>
+                                        {p.price} lei
+                                    </div>
                                 </div>
 
-                                <div style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '1rem', backgroundColor: '#f1f5f9', padding: '0.5rem', borderRadius: '4px' }}>
-                                    <span style={{ fontWeight: 600 }}>Состав: </span>
-                                    {p.composition.map(c => {
+                                {/* Composition - Compact */}
+                                <div style={{
+                                    fontSize: '0.75rem',
+                                    color: 'var(--text-muted)',
+                                    backgroundColor: '#f8fafc',
+                                    padding: '0.375rem 0.5rem',
+                                    borderRadius: '6px',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                }}>
+                                    {p.composition.slice(0, 3).map(c => {
                                         const list = c.type === 'flower' ? flowers : goods
-                                        // Use loose comparison or string conversion for safety
                                         const item = list.find(x => String(x.id) === String(c.id))
                                         return item ? item.name : null
-                                    }).filter(Boolean).join(', ') || 'Пусто'}
+                                    }).filter(Boolean).join(', ') || 'Пустой состав'}
+                                    {p.composition.length > 3 && '...'}
                                 </div>
 
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                                    <button onClick={() => togglePublish(p)} className="btn" style={{ border: '1px solid var(--border)', padding: '0.5rem' }} title={isPublished ? "Снять с публикации" : "Опубликовать"}>
-                                        {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
+                                {/* Actions Row - Compact Icons */}
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.25rem' }}>
+                                    <button
+                                        onClick={() => togglePublish(p)}
+                                        style={{
+                                            border: 'none',
+                                            background: 'transparent',
+                                            padding: '0.375rem',
+                                            cursor: 'pointer',
+                                            color: isPublished ? 'var(--text-muted)' : '#f59e0b'
+                                        }}
+                                        title={isPublished ? "Снять" : "Опубликовать"}
+                                    >
+                                        {isPublished ? <Eye size={16} /> : <EyeOff size={16} />}
                                     </button>
-                                    <button onClick={() => handleDuplicate(p)} className="btn" style={{ border: '1px solid var(--border)', padding: '0.5rem' }} title="Дублировать">
-                                        <Copy size={18} />
+                                    <button
+                                        onClick={() => handleDuplicate(p)}
+                                        style={{ border: 'none', background: 'transparent', padding: '0.375rem', cursor: 'pointer', color: 'var(--text-muted)' }}
+                                        title="Дублировать"
+                                    >
+                                        <Copy size={16} />
                                     </button>
-                                    <button onClick={() => handleEdit(p)} className="btn" style={{ border: '1px solid var(--border)', padding: '0.5rem' }} title="Редактировать">
-                                        <Edit2 size={18} /> Ред.
+                                    <button
+                                        onClick={() => handleEdit(p)}
+                                        style={{ border: 'none', background: 'transparent', padding: '0.375rem', cursor: 'pointer', color: 'var(--text-muted)' }}
+                                        title="Редактировать"
+                                    >
+                                        <Edit2 size={16} />
                                     </button>
-                                    <button onClick={() => deleteProduct(p.id)} className="btn" style={{ backgroundColor: '#fef2f2', border: '1px solid #fee2e2', color: '#ef4444', padding: '0.5rem' }}>
-                                        <Trash2 size={18} />
+                                    <button
+                                        onClick={() => deleteProduct(p.id)}
+                                        style={{ border: 'none', background: 'transparent', padding: '0.375rem', cursor: 'pointer', color: '#ef4444' }}
+                                        title="Удалить"
+                                    >
+                                        <Trash2 size={16} />
                                     </button>
                                 </div>
                             </div>
                         )
                     })}
-                    {filteredProducts.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Нет товаров.</p>}
+                    {filteredProducts.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Нет товаров.</p>}
                 </div>
             ) : (
                 // Desktop Table View
