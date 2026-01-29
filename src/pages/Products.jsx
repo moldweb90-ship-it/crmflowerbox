@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw, X, Package, Flower } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
+import Modal from '../components/ui/Modal'
 
 export default function Products() {
     const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice, recalculateAllProducts } = useStore()
@@ -45,6 +46,9 @@ export default function Products() {
 
     // Recalculate State
     const [recalcMsg, setRecalcMsg] = useState('')
+
+    // View Product State
+    const [viewingProduct, setViewingProduct] = useState(null)
 
     const handleRecalculate = async () => {
         if (!window.confirm('Пересчитать цены всех товаров на основе текущих цен цветов?')) return
@@ -462,7 +466,12 @@ export default function Products() {
                             <div key={p.id} className="card" style={{ opacity: isPublished ? 1 : 0.6 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
                                     <div>
-                                        <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>{p.name}</h3>
+                                        <h3
+                                            onClick={() => setViewingProduct(p)}
+                                            style={{ fontSize: '1.125rem', fontWeight: 600, cursor: 'pointer', color: 'var(--primary)' }}
+                                        >
+                                            {p.name}
+                                        </h3>
                                         <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{p.sku}</p>
                                         {!isPublished && <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}>Снят с публикации</span>}
                                     </div>
@@ -542,7 +551,12 @@ export default function Products() {
                                     <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
                                         <td style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 600 }}>{globalIndex}</td>
                                         <td style={{ padding: '1rem', fontWeight: 500 }}>
-                                            {p.name}
+                                            <span
+                                                onClick={() => setViewingProduct(p)}
+                                                style={{ cursor: 'pointer', color: 'var(--primary)' }}
+                                            >
+                                                {p.name}
+                                            </span>
                                             {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Снят с публикации</div>}
                                         </td>
                                         <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{p.sku}</td>
@@ -577,6 +591,173 @@ export default function Products() {
                     </table>
                 </div>
             )}
+
+            {/* View Product Modal */}
+            <Modal isOpen={!!viewingProduct} onClose={() => setViewingProduct(null)} title="Просмотр букета" maxWidth={isMobile ? '100%' : '600px'}>
+                {viewingProduct && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        {/* Header */}
+                        <div style={{ textAlign: 'center', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+                            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+                                {viewingProduct.name}
+                            </h2>
+                            {viewingProduct.sku && (
+                                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Артикул: {viewingProduct.sku}</p>
+                            )}
+                            <div style={{
+                                fontSize: '2rem',
+                                fontWeight: 800,
+                                color: 'var(--primary)',
+                                marginTop: '0.75rem'
+                            }}>
+                                {viewingProduct.price} lei
+                            </div>
+                        </div>
+
+                        {/* Categories */}
+                        {viewingProduct.categoryIds && viewingProduct.categoryIds.length > 0 && (
+                            <div>
+                                <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Категории</h4>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    {viewingProduct.categoryIds.map(catId => {
+                                        const cat = categories.find(c => c.id === catId)
+                                        return cat ? (
+                                            <span key={catId} style={{
+                                                padding: '0.25rem 0.75rem',
+                                                backgroundColor: 'var(--primary-light)',
+                                                color: 'var(--primary)',
+                                                borderRadius: '99px',
+                                                fontSize: '0.8rem',
+                                                fontWeight: 600
+                                            }}>
+                                                {cat.name}
+                                            </span>
+                                        ) : null
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Composition */}
+                        <div>
+                            <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Состав букета</h4>
+                            <div style={{
+                                background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+                                borderRadius: '12px',
+                                padding: '1rem',
+                                border: '1px solid #d1fae5'
+                            }}>
+                                {viewingProduct.composition && viewingProduct.composition.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {viewingProduct.composition.map((comp, idx) => {
+                                            const list = comp.type === 'flower' ? flowers : goods
+                                            const item = list.find(x => String(x.id) === String(comp.id))
+                                            if (!item) return null
+                                            return (
+                                                <div key={idx} style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                    padding: '0.5rem 0.75rem',
+                                                    background: 'white',
+                                                    borderRadius: '8px',
+                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        {comp.type === 'flower' ? (
+                                                            <Flower size={16} style={{ color: '#10b981' }} />
+                                                        ) : (
+                                                            <Package size={16} style={{ color: '#f59e0b' }} />
+                                                        )}
+                                                        <span style={{ fontWeight: 500 }}>{item.name}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                                        <span style={{
+                                                            backgroundColor: '#e0e7ff',
+                                                            color: '#4f46e5',
+                                                            padding: '0.125rem 0.5rem',
+                                                            borderRadius: '99px',
+                                                            fontSize: '0.8rem',
+                                                            fontWeight: 600
+                                                        }}>
+                                                            x{comp.qty}
+                                                        </span>
+                                                        <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+                                                            {item.price * comp.qty} lei
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                ) : (
+                                    <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Состав не указан</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Price Breakdown */}
+                        <div style={{
+                            background: '#f8fafc',
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            border: '1px solid var(--border)'
+                        }}>
+                            <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Расчет стоимости</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Себестоимость</span>
+                                    <span>
+                                        {viewingProduct.composition?.reduce((acc, comp) => {
+                                            const list = comp.type === 'flower' ? flowers : goods
+                                            const item = list.find(x => String(x.id) === String(comp.id))
+                                            return acc + (item ? item.price * comp.qty : 0)
+                                        }, 0)} lei
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Доставка</span>
+                                    <span>+{settings.deliveryCost} lei</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Наценка ({settings.markupPercentage}%)</span>
+                                    <span>применена</span>
+                                </div>
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    borderTop: '1px solid var(--border)',
+                                    paddingTop: '0.5rem',
+                                    marginTop: '0.25rem'
+                                }}>
+                                    <span style={{ fontWeight: 600 }}>Итого</span>
+                                    <span style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '1.125rem' }}>{viewingProduct.price} lei</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+                            <button
+                                className="btn"
+                                style={{ border: '1px solid var(--border)' }}
+                                onClick={() => { handleEdit(viewingProduct); setViewingProduct(null); }}
+                            >
+                                <Edit2 size={16} style={{ marginRight: '0.5rem' }} />
+                                Редактировать
+                            </button>
+                            <button
+                                className="btn"
+                                style={{ border: '1px solid var(--border)' }}
+                                onClick={() => { handleDuplicate(viewingProduct); setViewingProduct(null); }}
+                            >
+                                <Copy size={16} style={{ marginRight: '0.5rem' }} />
+                                Дублировать
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
         </div>
     )
 }
