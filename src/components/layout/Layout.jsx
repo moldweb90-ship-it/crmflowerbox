@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart } from 'lucide-react'
+import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function Layout() {
@@ -48,6 +48,7 @@ export default function Layout() {
         {
             items: [
                 { label: 'Поставки', path: '/supplies', icon: Truck },
+                { label: 'Склад', path: '/stock', icon: Warehouse },
             ]
         },
         {

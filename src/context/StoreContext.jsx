@@ -15,6 +15,8 @@ export function StoreProvider({ children }) {
     const [couriers, setCouriers] = useState([])
     const [florists, setFlorists] = useState([])
     const [settings, setSettings] = useState({ markup_percentage: 30, delivery_cost: 500 })
+    const [stock, setStock] = useState([])
+    const [stockTransactions, setStockTransactions] = useState([])
     const [loading, setLoading] = useState(true)
 
     // Initial Data Fetch
@@ -36,10 +38,12 @@ export function StoreProvider({ children }) {
                 supabase.from('sales').select('*, products(name, sku, composition), couriers(name), florists(name)').order('order_date', { ascending: false }),
                 supabase.from('couriers').select('*').order('name', { ascending: true }),
                 supabase.from('florists').select('*').order('name', { ascending: true }),
-                supabase.from('settings').select('*').single()
+                supabase.from('settings').select('*').single(),
+                supabase.from('stock').select('*'),
+                supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(100)
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, s] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, s, stk, stkTrans] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -63,6 +67,8 @@ export function StoreProvider({ children }) {
                     deliveryCost: Number(s.data.delivery_cost)
                 })
             }
+            if (stk.data) setStock(stk.data)
+            if (stkTrans.data) setStockTransactions(stkTrans.data)
         } catch (error) {
             console.error('Error fetching data:', error)
         } finally {
@@ -230,6 +236,28 @@ export function StoreProvider({ children }) {
             }))
 
             await supabase.from('supply_items').insert(supplyItemsPayload)
+
+            // 3.5. Update Stock - auto add to inventory from supply
+            for (const item of items) {
+                const existing = stock.find(s => s.item_type === item.type && s.item_id === item.id)
+                if (existing) {
+                    const newQty = existing.quantity + item.quantity
+                    await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
+                    setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+                } else {
+                    const { data: newStock } = await supabase.from('stock').insert([{ item_type: item.type, item_id: item.id, quantity: item.quantity }]).select()
+                    if (newStock) setStock(prev => [...prev, newStock[0]])
+                }
+                // Log transaction
+                await supabase.from('stock_transactions').insert([{
+                    item_type: item.type,
+                    item_id: item.id,
+                    quantity: item.quantity,
+                    transaction_type: 'supply',
+                    reference_id: newSupply.id,
+                    cost_price: item.unitCost
+                }])
+            }
 
             // 4. Update Costs & Prices
             const updatedFlowers = [...flowers]
@@ -431,7 +459,32 @@ export function StoreProvider({ children }) {
     // Sales
     const addSale = async (sale) => {
         const { data, error } = await supabase.from('sales').insert([sale]).select('*, products(name, sku, composition), couriers(name), florists(name)')
-        if (data) setSales([data[0], ...sales])
+        if (data) {
+            setSales([data[0], ...sales])
+
+            // Auto-deduct stock from product composition
+            const saleData = data[0]
+            const product = products.find(p => p.id === sale.product_id)
+            if (product?.composition && product.composition.length > 0) {
+                for (const comp of product.composition) {
+                    const existing = stock.find(s => s.item_type === comp.type && s.item_id === comp.id)
+                    if (existing) {
+                        const newQty = Math.max(0, existing.quantity - (comp.qty || 1))
+                        await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
+                        setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+
+                        // Log transaction
+                        await supabase.from('stock_transactions').insert([{
+                            item_type: comp.type,
+                            item_id: comp.id,
+                            quantity: -(comp.qty || 1),
+                            transaction_type: 'sale',
+                            reference_id: saleData.id
+                        }])
+                    }
+                }
+            }
+        }
         return { success: !error, error, data: data?.[0] }
     }
     const updateSale = async (id, updates) => {
@@ -535,6 +588,131 @@ export function StoreProvider({ children }) {
         return updates.length
     }
 
+    // ================== STOCK MANAGEMENT ==================
+
+    // Get stock quantity for an item
+    const getStockQty = (itemType, itemId) => {
+        const item = stock.find(s => s.item_type === itemType && s.item_id === itemId)
+        return item?.quantity || 0
+    }
+
+    // Add to stock (from supply or manual)
+    const addToStock = async (itemType, itemId, qty, transactionType = 'manual', referenceId = null, costPrice = null, notes = null) => {
+        try {
+            // 1. Upsert stock record
+            const existing = stock.find(s => s.item_type === itemType && s.item_id === itemId)
+
+            if (existing) {
+                const newQty = existing.quantity + qty
+                const { error } = await supabase
+                    .from('stock')
+                    .update({ quantity: newQty, updated_at: new Date().toISOString() })
+                    .eq('id', existing.id)
+                if (error) throw error
+                setStock(stock.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+            } else {
+                const { data, error } = await supabase
+                    .from('stock')
+                    .insert([{ item_type: itemType, item_id: itemId, quantity: qty }])
+                    .select()
+                if (error) throw error
+                if (data) setStock([...stock, data[0]])
+            }
+
+            // 2. Add transaction record
+            const { data: txData, error: txError } = await supabase
+                .from('stock_transactions')
+                .insert([{
+                    item_type: itemType,
+                    item_id: itemId,
+                    quantity: qty,
+                    transaction_type: transactionType,
+                    reference_id: referenceId,
+                    cost_price: costPrice,
+                    notes
+                }])
+                .select()
+            if (txError) throw txError
+            if (txData) setStockTransactions([txData[0], ...stockTransactions])
+
+            return { success: true }
+        } catch (error) {
+            console.error('Error adding to stock:', error)
+            return { success: false, error }
+        }
+    }
+
+    // Remove from stock (sale or waste)
+    const removeFromStock = async (itemType, itemId, qty, transactionType = 'sale', referenceId = null, notes = null) => {
+        try {
+            const existing = stock.find(s => s.item_type === itemType && s.item_id === itemId)
+            if (!existing) {
+                console.warn(`Stock not found for ${itemType}:${itemId}`)
+                return { success: false, error: 'Stock not found' }
+            }
+
+            const newQty = Math.max(0, existing.quantity - qty)
+            const { error } = await supabase
+                .from('stock')
+                .update({ quantity: newQty, updated_at: new Date().toISOString() })
+                .eq('id', existing.id)
+            if (error) throw error
+            setStock(stock.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+
+            // Add transaction (negative quantity)
+            const { data: txData, error: txError } = await supabase
+                .from('stock_transactions')
+                .insert([{
+                    item_type: itemType,
+                    item_id: itemId,
+                    quantity: -qty,
+                    transaction_type: transactionType,
+                    reference_id: referenceId,
+                    notes
+                }])
+                .select()
+            if (txError) throw txError
+            if (txData) setStockTransactions([txData[0], ...stockTransactions])
+
+            return { success: true }
+        } catch (error) {
+            console.error('Error removing from stock:', error)
+            return { success: false, error }
+        }
+    }
+
+    // Record waste (shorthand for removeFromStock with 'waste' type)
+    const recordWaste = async (itemType, itemId, qty, notes = '') => {
+        return removeFromStock(itemType, itemId, qty, 'waste', null, notes)
+    }
+
+    // Update minimum quantity threshold
+    const updateMinQuantity = async (stockId, minQty) => {
+        try {
+            const { error } = await supabase
+                .from('stock')
+                .update({ min_quantity: minQty })
+                .eq('id', stockId)
+            if (error) throw error
+            setStock(stock.map(s => s.id === stockId ? { ...s, min_quantity: minQty } : s))
+            return { success: true }
+        } catch (error) {
+            return { success: false, error }
+        }
+    }
+
+    // Get items with low stock (below min_quantity)
+    const getLowStockItems = () => {
+        return stock.filter(s => s.quantity <= (s.min_quantity || 5))
+    }
+
+    // Get item name helper
+    const getItemName = (itemType, itemId) => {
+        const list = itemType === 'flower' ? flowers : goods
+        const item = list.find(x => x.id === itemId)
+        return item?.name || 'Неизвестный товар'
+    }
+
     return (
         <StoreContext.Provider value={{
             flowers, addFlower, updateFlower, deleteFlower,
@@ -548,6 +726,7 @@ export function StoreProvider({ children }) {
             florists, addFlorist,
             settings, updateSettings,
             calculatePrice, calculateCostPrice,
+            stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
             loading
         }}>
             {children}

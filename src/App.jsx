@@ -6,6 +6,7 @@ import Products from './pages/Products'
 import Settings from './pages/Settings'
 import Categories from './pages/Categories'
 import Supplies from './pages/Supplies'
+import Stock from './pages/Stock'
 import Expenses from './pages/Expenses'
 import Sales from './pages/Sales'
 import { StoreProvider } from './context/StoreContext'
@@ -33,6 +34,7 @@ function App() {
                             <Route path="products" element={<Products />} />
                             <Route path="categories" element={<Categories />} />
                             <Route path="supplies" element={<Supplies />} />
+                            <Route path="stock" element={<Stock />} />
                             <Route path="expenses" element={<Expenses />} />
                             <Route path="settings" element={<Settings />} />
                         </Route>

@@ -38,12 +38,21 @@ const OCCASIONS = [
     { id: 'birthday', label: 'День Рождения', icon: '🎂' },
     { id: 'anniversary', label: 'Юбилей', icon: '🎉' },
     { id: 'wedding', label: 'Свадьба', icon: '💒' },
-    { id: 'valentines', label: '14 февраля', icon: '❤️' },
-    { id: 'march8', label: '8 марта', icon: '💐' },
-    { id: 'sept1', label: '1 сентября', icon: '📚' },
-    { id: 'sorry', label: 'Прости', icon: '😢' },
-    { id: 'other', label: 'Другое', icon: '🎁' }
+    { id: 'love', label: 'Любовь', icon: '❤️' },
+    { id: 'apology', label: 'Извинение', icon: '🙏' },
+    { id: 'funeral', label: 'Траур', icon: '🕯️' },
+    { id: 'other', label: 'Другое', icon: '🎈' }
 ]
+
+const getDeliveryStatusLabel = (status, method) => {
+    if (method !== 'pickup') return status.label
+    switch (status.id) {
+        case 'not_delivered': return 'Ждет выдачи'
+        case 'delivered': return 'Выдан' // Picked up
+        case 'postponed': return 'Отложен'
+        default: return status.label
+    }
+}
 
 const getStatusData = (arr, id) => arr.find(s => s.id === id) || arr[0]
 
@@ -51,6 +60,7 @@ export default function Sales() {
     const {
         sales, addSale, updateSale, deleteSale,
         products, couriers, florists, addCourier, addFlorist,
+        expenses, addExpense,
         calculateCostPrice
     } = useStore()
 
@@ -65,6 +75,10 @@ export default function Sales() {
     const [loading, setLoading] = useState(false)
     const [showProfit, setShowProfit] = useState(true)
     const [isLoyalCustomersOpen, setIsLoyalCustomersOpen] = useState(false)
+
+    // Quick Expense (Cashbox) State
+    const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
+    const [expenseData, setExpenseData] = useState({ amount: '', comment: '', type: 'expense' }) // type: 'expense' or 'incasso'
 
     // Date filter
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'today' })
@@ -110,6 +124,7 @@ export default function Sales() {
         courier_id: '',
         florist_id: '',
         sale_price: '',
+        delivery_method: 'delivery',
         payment_method: 'cash',
         payment_status: 'unpaid',
         delivery_status: 'not_delivered',
@@ -195,6 +210,46 @@ export default function Sales() {
     const periodTotal = filteredSales.reduce((a, s) => a + Number(s.sale_price || 0), 0)
     const periodProfit = filteredSales.reduce((a, s) => a + Number(s.profit || 0), 0)
 
+    // Split Sales (Salon vs Site)
+    const salonSales = filteredSales.filter(s => s.sales_channel === 'store')
+    const siteSales = filteredSales.filter(s => s.sales_channel !== 'store')
+
+    const salonTotal = salonSales.reduce((a, s) => a + Number(s.sale_price || 0), 0)
+    const salonProfit = salonSales.reduce((a, s) => a + Number(s.profit || 0), 0)
+
+    const siteTotal = siteSales.reduce((a, s) => a + Number(s.sale_price || 0), 0)
+    const siteProfit = siteSales.reduce((a, s) => a + Number(s.profit || 0), 0)
+
+    // Cashbox Balance Calculation
+    const cashBalance = useMemo(() => {
+        // Cash Sales (Store + Cash payment)
+        const cashSales = sales
+            .filter(s => s.sales_channel === 'store' && s.payment_method === 'cash')
+            .reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
+
+        // Cash Expenses (Source = cash_box)
+        const cashExpenses = expenses
+            .filter(e => e.payment_method === 'cash_box')
+            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+
+        // Initial Balance? Assuming 0 for now.
+        return cashSales - cashExpenses
+    }, [sales, expenses])
+
+    const handleQuickExpense = async () => {
+        if (!expenseData.amount) return
+
+        await addExpense({
+            amount: Number(expenseData.amount),
+            category: expenseData.type === 'incasso' ? 'salaries' : 'other', // Use proper categories
+            date: new Date().toISOString(),
+            comment: (expenseData.type === 'incasso' ? '💸 Инкассация: ' : '📤 Расход: ') + expenseData.comment,
+            payment_method: 'cash_box'
+        })
+        setIsExpenseModalOpen(false)
+        setExpenseData({ amount: '', comment: '', type: 'expense' })
+    }
+
     // Loyal customers calculation (by email)
     const loyalCustomers = useMemo(() => {
         const customerMap = {}
@@ -254,6 +309,7 @@ export default function Sales() {
             payment_status: sale.payment_status || 'unpaid',
             delivery_status: sale.delivery_status || 'not_delivered',
             sales_channel: sale.sales_channel || 'store',
+            delivery_method: sale.delivery_method || 'delivery',
             occasion: sale.occasion || ''
         })
         setProductSearch(sale.products?.name || '')
@@ -452,62 +508,38 @@ export default function Sales() {
                 </div>
             )}
 
-            {/* Stats & Filters */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '280px 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
-                {/* Total Card */}
-                <div className="card" style={{
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    color: 'white',
-                    padding: '1.5rem',
-                    borderRadius: '20px',
-                    boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.4)'
-                }}>
-                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи за период</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-                        +{periodTotal.toLocaleString('ru-RU')} lei
-                    </div>
-                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginTop: '0.5rem' }}>
-                        {filteredSales.length} заказов
-                    </div>
-                    {showProfit && (
-                        <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.15)', borderRadius: '12px' }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>Прибыль</div>
-                            <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{periodProfit.toLocaleString('ru-RU')} lei</div>
-                        </div>
-                    )}
+            {/* Filters Row (Moved Up) */}
+            <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {[
+                        { id: 'today', label: 'Сегодня' },
+                        { id: 'yesterday', label: 'Вчера' },
+                        { id: 'week', label: 'Неделя' },
+                        { id: 'month', label: 'Месяц' },
+                        { id: 'all', label: 'Все' }
+                    ].map(p => (
+                        <button
+                            key={p.id}
+                            onClick={() => applyPreset(p.id)}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                borderRadius: '99px',
+                                border: 'none',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                backgroundColor: dateFilter.preset === p.id ? 'var(--primary)' : '#f3f4f6',
+                                color: dateFilter.preset === p.id ? 'white' : 'var(--text-muted)',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            {p.label}
+                        </button>
+                    ))}
                 </div>
 
-                {/* Filters */}
-                <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '1rem' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        {[
-                            { id: 'today', label: 'Сегодня' },
-                            { id: 'yesterday', label: 'Вчера' },
-                            { id: 'week', label: 'Неделя' },
-                            { id: 'month', label: 'Месяц' },
-                            { id: 'all', label: 'Все' }
-                        ].map(p => (
-                            <button
-                                key={p.id}
-                                onClick={() => applyPreset(p.id)}
-                                style={{
-                                    padding: '0.5rem 1rem',
-                                    borderRadius: '99px',
-                                    border: 'none',
-                                    fontSize: '0.875rem',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    backgroundColor: dateFilter.preset === p.id ? 'var(--primary)' : '#f3f4f6',
-                                    color: dateFilter.preset === p.id ? 'white' : 'var(--text-muted)',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', gap: '0.5rem', alignItems: 'center' }}>
                         <input
                             type="date"
                             className="input"
@@ -515,7 +547,7 @@ export default function Sales() {
                             value={dateFilter.start}
                             onChange={(e) => setDateFilter({ ...dateFilter, start: e.target.value, preset: 'custom' })}
                         />
-                        {!isMobile && <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)' }}>→</div>}
+                        {!isMobile && <div style={{ color: 'var(--text-muted)' }}>→</div>}
                         <input
                             type="date"
                             className="input"
@@ -531,6 +563,122 @@ export default function Sales() {
                     </label>
                 </div>
             </div>
+
+            {/* Stats Cards (Now 4 Columns) */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                {/* Total */}
+                <div className="card" style={{
+                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                    color: 'white',
+                    padding: '1.5rem',
+                    borderRadius: '20px',
+                    boxShadow: '0 10px 25px -5px rgba(139, 92, 246, 0.4)'
+                }}>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи (Всего)</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                        +{periodTotal.toLocaleString('ru-RU')} lei
+                    </div>
+                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginTop: '0.5rem' }}>{filteredSales.length} заказов</div>
+                    {showProfit && (
+                        <div style={{ marginTop: '1rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.15)', borderRadius: '12px' }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>Прибыль</div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{periodProfit.toLocaleString('ru-RU')} lei</div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Site */}
+                <div className="card" style={{
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    color: 'white',
+                    padding: '1.5rem',
+                    borderRadius: '20px',
+                    boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)'
+                }}>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи (Сайт)</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                        +{siteTotal.toLocaleString('ru-RU')} lei
+                    </div>
+                </div>
+
+                {/* Salon */}
+                <div className="card" style={{
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: 'white',
+                    padding: '1.5rem',
+                    borderRadius: '20px',
+                    boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.4)'
+                }}>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи (Салон)</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                        +{salonTotal.toLocaleString('ru-RU')} lei
+                    </div>
+                </div>
+
+                {/* Cashbox (New) */}
+                <div className="card" style={{
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                    color: 'white',
+                    padding: '1.5rem',
+                    borderRadius: '20px',
+                    boxShadow: '0 10px 25px -5px rgba(245, 158, 11, 0.4)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between'
+                }}>
+                    <div>
+                        <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>💰 В кассе (Наличные)</div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                            {cashBalance.toLocaleString('ru-RU')} lei
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                        <button
+                            onClick={() => { setIsExpenseModalOpen(true); setExpenseData({ ...expenseData, type: 'expense' }) }}
+                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
+                            - Расход
+                        </button>
+                        <button
+                            onClick={() => { setIsExpenseModalOpen(true); setExpenseData({ ...expenseData, type: 'incasso' }) }}
+                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
+                            💸 Забрать
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Quick Expense Modal */}
+            <Modal
+                isOpen={isExpenseModalOpen}
+                onClose={() => setIsExpenseModalOpen(false)}
+                title={expenseData.type === 'incasso' ? '💸 Инкассация (Забрать деньги)' : '📤 Расход из кассы'}
+            >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                        <label className="label">Сумма (lei)</label>
+                        <input
+                            type="number"
+                            className="input"
+                            autoFocus
+                            value={expenseData.amount}
+                            onChange={(e) => setExpenseData({ ...expenseData, amount: e.target.value })}
+                        />
+                    </div>
+                    <div>
+                        <label className="label">Комментарий</label>
+                        <textarea
+                            className="input"
+                            rows={2}
+                            placeholder={expenseData.type === 'incasso' ? 'Выручка домой...' : 'Бензин, обед...'}
+                            value={expenseData.comment}
+                            onChange={(e) => setExpenseData({ ...expenseData, comment: e.target.value })}
+                        />
+                    </div>
+                    <button className="btn btn-primary" onClick={handleQuickExpense} style={{ marginTop: '0.5rem', justifyContent: 'center' }}>
+                        Подтвердить
+                    </button>
+                </div>
+            </Modal>
 
             {/* Delivery Date Filter Banner */}
             {deliveryDateFilter && (
@@ -736,7 +884,7 @@ export default function Sales() {
                                                     cursor: 'pointer'
                                                 }}
                                             >
-                                                {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                                {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{getDeliveryStatusLabel(s, sale.delivery_method)}</option>)}
                                             </select>
                                         </div>
 
@@ -903,12 +1051,14 @@ export default function Sales() {
                                 <input className="input" type="email" placeholder="email@example.com" value={formData.customer_email} onChange={(e) => setFormData({ ...formData, customer_email: e.target.value })} />
                             </div>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                            <div>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Телефон получателя</label>
-                                <input className="input" placeholder="+373..." value={formData.recipient_phone} onChange={(e) => setFormData({ ...formData, recipient_phone: e.target.value })} />
+                        {formData.delivery_method === 'delivery' && (
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Телефон получателя</label>
+                                    <input className="input" placeholder="+373..." value={formData.recipient_phone} onChange={(e) => setFormData({ ...formData, recipient_phone: e.target.value })} />
+                                </div>
                             </div>
-                        </div>
+                        )}
                         <div style={{ marginTop: '1rem' }}>
                             <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Текст открытки</label>
                             <textarea className="input" rows={2} placeholder="С днём рождения!" value={formData.card_text} onChange={(e) => setFormData({ ...formData, card_text: e.target.value })} style={{ resize: 'vertical' }} />
@@ -947,32 +1097,82 @@ export default function Sales() {
 
                     {/* Section 5: Delivery */}
                     <div style={{ background: '#eff6ff', padding: '1rem', borderRadius: '16px' }}>
-                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700 }}>🚚 Доставка</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
-                            <div>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Дата/время доставки</label>
-                                <input type="datetime-local" className="input" value={formData.delivery_date} onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })} />
-                            </div>
-                            <div>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Адрес доставки</label>
-                                <input className="input" placeholder="ул. Штефан чел Маре, 1" value={formData.delivery_address} onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h4 style={{ margin: 0, fontWeight: 700 }}>
+                                {formData.delivery_method === 'pickup' ? '🏃 Самовывоз' : '🚚 Доставка'}
+                            </h4>
+                            <div style={{ display: 'flex', background: 'white', borderRadius: '10px', padding: '3px', border: '1px solid #dbeafe', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, delivery_method: 'delivery' })}
+                                    style={{
+                                        padding: '0.4rem 0.8rem',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: formData.delivery_method === 'delivery' ? '#3b82f6' : 'transparent',
+                                        color: formData.delivery_method === 'delivery' ? 'white' : '#6b7280',
+                                        cursor: 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    🚚 Доставка
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, delivery_method: 'pickup' })}
+                                    style={{
+                                        padding: '0.4rem 0.8rem',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: formData.delivery_method === 'pickup' ? '#10b981' : 'transparent',
+                                        color: formData.delivery_method === 'pickup' ? 'white' : '#6b7280',
+                                        cursor: 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    🏃 Самовывоз
+                                </button>
                             </div>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
                             <div>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Курьер</label>
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    <select className="input" style={{ flex: 1 }} value={formData.courier_id} onChange={(e) => setFormData({ ...formData, courier_id: e.target.value })}>
-                                        <option value="">Не выбран</option>
-                                        {couriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                    <input className="input" placeholder="Новый курьер" value={newCourierName} onChange={(e) => setNewCourierName(e.target.value)} style={{ flex: 1, fontSize: '0.85rem' }} />
-                                    <button onClick={handleAddCourier} className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>+</button>
-                                </div>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>
+                                    {formData.delivery_method === 'pickup' ? 'Время самовывоза' : 'Дата/время доставки'}
+                                </label>
+                                <input type="datetime-local" className="input" value={formData.delivery_date} onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })} />
                             </div>
-                            <div>
+
+                            {formData.delivery_method === 'delivery' && (
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Адрес доставки</label>
+                                    <input className="input" placeholder="ул. Штефан чел Маре, 1" value={formData.delivery_address} onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })} />
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                            {formData.delivery_method === 'delivery' && (
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Курьер</label>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <select className="input" style={{ flex: 1 }} value={formData.courier_id} onChange={(e) => setFormData({ ...formData, courier_id: e.target.value })}>
+                                            <option value="">Не выбран</option>
+                                            {couriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                        <input className="input" placeholder="Новый курьер" value={newCourierName} onChange={(e) => setNewCourierName(e.target.value)} style={{ flex: 1, fontSize: '0.85rem' }} />
+                                        <button onClick={handleAddCourier} className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>+</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div style={isMobile ? {} : { gridColumn: formData.delivery_method === 'pickup' ? '1 / -1' : 'auto' }}>
                                 <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Флорист</label>
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     <select className="input" style={{ flex: 1 }} value={formData.florist_id} onChange={(e) => setFormData({ ...formData, florist_id: e.target.value })}>
@@ -987,7 +1187,9 @@ export default function Sales() {
                             </div>
                         </div>
                         <div style={{ marginTop: '1rem' }}>
-                            <label style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block' }}>Статус доставки</label>
+                            <label style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block' }}>
+                                {formData.delivery_method === 'pickup' ? 'Статус выдачи' : 'Статус доставки'}
+                            </label>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                 {DELIVERY_STATUSES.map(s => (
                                     <button
@@ -1005,7 +1207,7 @@ export default function Sales() {
                                             cursor: 'pointer'
                                         }}
                                     >
-                                        {s.label}
+                                        {getDeliveryStatusLabel(s, formData.delivery_method)}
                                     </button>
                                 ))}
                             </div>

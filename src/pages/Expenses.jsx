@@ -11,7 +11,13 @@ const EXPENSE_CATEGORIES = [
     { id: 'taxes', label: 'Налоги', icon: '📋', color: '#ef4444' },
     { id: 'utilities', label: 'Коммуналка', icon: '💡', color: '#10b981' },
     { id: 'logistics', label: 'Логистика', icon: '🚚', color: '#3b82f6' },
+    { id: 'logistics', label: 'Логистика', icon: '🚚', color: '#3b82f6' },
     { id: 'other', label: 'Прочее', icon: '📦', color: '#6b7280' }
+]
+
+const PAYMENT_SOURCES = [
+    { id: 'cash_box', label: 'Наличные (Салон)', icon: '💵' },
+    { id: 'card_account', label: 'Карта / Безнал', icon: '💳' }
 ]
 
 const getCategoryData = (categoryId) => EXPENSE_CATEGORIES.find(c => c.id === categoryId) || EXPENSE_CATEGORIES.find(c => c.id === 'other')
@@ -37,7 +43,8 @@ export default function Expenses() {
         amount: '',
         category: 'other',
         date: new Date().toISOString().split('T')[0],
-        comment: ''
+        comment: '',
+        payment_method: 'cash_box'
     })
 
     // --- Filters State ---
@@ -111,7 +118,8 @@ export default function Expenses() {
             amount: '',
             category: 'other',
             date: new Date().toISOString().split('T')[0],
-            comment: ''
+            comment: '',
+            payment_method: 'cash_box'
         })
         setIsModalOpen(true)
     }
@@ -123,7 +131,8 @@ export default function Expenses() {
             amount: expense.amount,
             category: expense.category,
             date: expense.date.split('T')[0],
-            comment: expense.comment || ''
+            comment: expense.comment || '',
+            payment_method: expense.payment_method || 'card_account' // Default to card for old records to avoid messing up cash
         })
         setIsModalOpen(true)
     }
@@ -142,7 +151,8 @@ export default function Expenses() {
             amount: Number(formData.amount),
             category: formData.category,
             date: formData.date,
-            comment: formData.comment
+            comment: formData.comment,
+            payment_method: formData.payment_method
         }
 
         let result
@@ -402,6 +412,7 @@ export default function Expenses() {
                             <tr>
                                 <th style={{ padding: '1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Дата</th>
                                 <th style={{ padding: '1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Категория</th>
+                                <th style={{ padding: '1rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>Тип</th>
                                 <th style={{ padding: '1rem', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)' }}>Комментарий</th>
                                 <th style={{ padding: '1rem', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)' }}>Сумма</th>
                                 <th style={{ padding: '1rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>Действия</th>
@@ -432,6 +443,9 @@ export default function Expenses() {
                                             }}>
                                                 {cat.icon} {cat.label}
                                             </span>
+                                        </td>
+                                        <td style={{ padding: '1rem', textAlign: 'center' }}>
+                                            {expense.payment_method === 'cash_box' ? '💵' : '💳'}
                                         </td>
                                         <td style={{ padding: '1rem', color: 'var(--text-muted)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {expense.comment || '—'}
@@ -533,6 +547,37 @@ export default function Expenses() {
                             onChange={e => setFormData({ ...formData, amount: e.target.value })}
                             style={{ fontSize: '1.25rem', padding: '1rem', fontWeight: 700 }}
                         />
+                    </div>
+
+                    {/* Payment Method */}
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Источник средств</label>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {PAYMENT_SOURCES.map(method => (
+                                <button
+                                    key={method.id}
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, payment_method: method.id })}
+                                    style={{
+                                        flex: 1,
+                                        padding: '0.75rem',
+                                        borderRadius: '12px',
+                                        border: formData.payment_method === method.id ? '2px solid var(--primary)' : '1px solid var(--border)',
+                                        background: formData.payment_method === method.id ? 'var(--primary-light)' : 'white',
+                                        color: formData.payment_method === method.id ? 'var(--primary)' : 'var(--text-main)',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '0.5rem'
+                                    }}
+                                >
+                                    <span>{method.icon}</span>
+                                    <span>{method.label}</span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* Category */}
