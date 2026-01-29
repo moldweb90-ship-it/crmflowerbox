@@ -24,17 +24,41 @@ export default function Layout() {
         if (isMobile) setIsSidebarOpen(false)
     }, [location, isMobile])
 
-    const navItems = [
-        { label: 'Дашборд', path: '/dashboard', icon: LayoutDashboard },
-        { label: 'Продажи', path: '/sales', icon: ShoppingCart },
-        { label: 'Цветы', path: '/flowers', icon: Flower2 },
-        { label: 'Доп. товары', path: '/goods', icon: Package },
-        { label: 'Букеты', path: '/products', icon: Layers },
-        { label: 'Категории', path: '/categories', icon: Layers },
-        { label: 'Поставки', path: '/supplies', icon: Truck },
-        { label: 'Расходы', path: '/expenses', icon: Receipt },
-        { label: 'Настройки', path: '/settings', icon: Settings },
+    // Navigation structure with groups
+    const navGroups = [
+        {
+            items: [
+                { label: 'Дашборд', path: '/dashboard', icon: LayoutDashboard },
+            ]
+        },
+        {
+            items: [
+                { label: 'Заказы', path: '/sales', icon: ShoppingCart },
+            ]
+        },
+        {
+            title: 'Каталог',
+            items: [
+                { label: 'Букеты', path: '/products', icon: Layers },
+                { label: 'Цветы', path: '/flowers', icon: Flower2 },
+                { label: 'Материалы', path: '/goods', icon: Package },
+                { label: 'Категории', path: '/categories', icon: Layers },
+            ]
+        },
+        {
+            items: [
+                { label: 'Поставки', path: '/supplies', icon: Truck },
+            ]
+        },
+        {
+            items: [
+                { label: 'Расходы', path: '/expenses', icon: Receipt },
+            ]
+        },
     ]
+
+    // Settings is separate (at bottom)
+    const settingsItem = { label: 'Настройки', path: '/settings', icon: Settings }
 
     const { logout } = useAuth()
     const navigate = useNavigate()
@@ -74,12 +98,12 @@ export default function Layout() {
                     zIndex: 40,
                     boxShadow: 'var(--shadow-sm)'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--secondary)', fontWeight: 800, fontSize: '1.25rem' }}>
+                    <Link to="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--secondary)', fontWeight: 800, fontSize: '1.25rem', textDecoration: 'none' }}>
                         <div style={{ background: 'var(--secondary)', color: 'white', padding: '6px', borderRadius: '12px' }}>
                             <Flower2 size={24} />
                         </div>
                         FlowerBox
-                    </div>
+                    </Link>
                     <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ border: 'none', background: 'none' }}>
                         {isSidebarOpen ? <X size={28} /> : <Menu size={28} />}
                     </button>
@@ -127,34 +151,93 @@ export default function Layout() {
 
                     {isMobile && <div style={{ height: '80px' }} />} {/* Spacer for mobile header */}
 
-                    <nav style={{ flex: 1, padding: '0 1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: isMobile ? '1rem' : '0' }}>
-                        {navItems.map((item) => {
-                            const isActive = location.pathname === item.path
-                            return (
-                                <Link
-                                    key={item.path}
-                                    to={item.path}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '1rem',
-                                        padding: '1rem 1.25rem',
-                                        borderRadius: '16px',
-                                        backgroundColor: isActive ? 'var(--secondary)' : 'transparent',
-                                        color: isActive ? '#FFFFFF' : 'var(--text-muted)',
-                                        fontWeight: isActive ? 600 : 500,
-                                        transition: 'all 0.2s',
-                                        textDecoration: 'none'
-                                    }}
-                                >
-                                    <item.icon size={22} style={{ opacity: isActive ? 1 : 0.7 }} />
-                                    {item.label}
-                                </Link>
-                            )
-                        })}
+                    <nav style={{ flex: 1, padding: '0 1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: isMobile ? '1rem' : '0' }}>
+                        {navGroups.map((group, groupIndex) => (
+                            <div key={groupIndex}>
+                                {/* Section title if exists */}
+                                {group.title && (
+                                    <div style={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: 700,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.08em',
+                                        color: 'var(--primary)',
+                                        padding: '0.75rem 1.25rem',
+                                        marginTop: groupIndex > 0 ? '0.5rem' : 0,
+                                        background: 'linear-gradient(90deg, rgba(232,93,66,0.08), transparent)',
+                                        borderLeft: '3px solid var(--primary)',
+                                        marginLeft: '0.5rem',
+                                        marginRight: '0.5rem',
+                                        borderRadius: '0 8px 8px 0'
+                                    }}>
+                                        {group.title}
+                                    </div>
+                                )}
+
+                                {/* Divider before group (except first) */}
+                                {!group.title && groupIndex > 0 && (
+                                    <div style={{
+                                        height: '1px',
+                                        background: 'var(--border)',
+                                        margin: '0.75rem 1rem'
+                                    }} />
+                                )}
+
+                                {/* Group items */}
+                                {group.items.map((item) => {
+                                    const isActive = location.pathname === item.path
+                                    return (
+                                        <Link
+                                            key={item.path}
+                                            to={item.path}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.875rem',
+                                                padding: '0.875rem 1.25rem',
+                                                borderRadius: '14px',
+                                                backgroundColor: isActive ? 'var(--secondary)' : 'transparent',
+                                                color: isActive ? '#FFFFFF' : '#374151',
+                                                fontWeight: isActive ? 600 : 500,
+                                                fontSize: '0.9rem',
+                                                transition: 'all 0.2s',
+                                                textDecoration: 'none'
+                                            }}
+                                        >
+                                            <item.icon size={20} style={{ opacity: isActive ? 1 : 0.85 }} />
+                                            {item.label}
+                                        </Link>
+                                    )
+                                })}
+                            </div>
+                        ))}
                     </nav>
 
-                    <div style={{ padding: '1.5rem' }}>
+                    {/* Bottom section: Settings + Logout */}
+                    <div style={{ padding: '1rem', borderTop: '1px solid var(--border)' }}>
+                        {/* Settings */}
+                        <Link
+                            to={settingsItem.path}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.875rem',
+                                padding: '0.875rem 1.25rem',
+                                borderRadius: '14px',
+                                backgroundColor: location.pathname === settingsItem.path ? 'var(--secondary)' : 'transparent',
+                                color: location.pathname === settingsItem.path ? '#FFFFFF' : '#374151',
+                                fontWeight: location.pathname === settingsItem.path ? 600 : 500,
+                                fontSize: '0.9rem',
+                                transition: 'all 0.2s',
+                                textDecoration: 'none',
+                                marginBottom: '0.5rem'
+                            }}
+                        >
+                            <settingsItem.icon size={20} style={{ opacity: location.pathname === settingsItem.path ? 1 : 0.85 }} />
+                            {settingsItem.label}
+                        </Link>
+
+                        {/* Logout */}
                         <button
                             className="btn"
                             onClick={handleLogout}
@@ -162,10 +245,11 @@ export default function Layout() {
                                 width: '100%',
                                 justifyContent: 'flex-start',
                                 color: 'var(--text-muted)',
-                                gap: '1rem',
-                                padding: '1rem 1.25rem',
-                                borderRadius: '16px',
-                                backgroundColor: '#F9FAFB'
+                                gap: '0.875rem',
+                                padding: '0.875rem 1.25rem',
+                                borderRadius: '14px',
+                                backgroundColor: '#F9FAFB',
+                                fontSize: '0.9rem'
                             }}
                         >
                             <LogOut size={20} />

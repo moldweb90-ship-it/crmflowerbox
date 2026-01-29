@@ -139,8 +139,15 @@ export default function Products() {
     }
 
     const handleSave = () => {
+        // Clean composition: remove items that no longer exist in flowers/goods
+        const cleanedComposition = formData.composition.filter(c => {
+            const list = c.type === 'flower' ? flowers : goods
+            return list.some(x => String(x.id) === String(c.id))
+        })
+
         const productData = {
             ...formData,
+            composition: cleanedComposition,
             price: finalPrice // Save the calculated price
         }
 
@@ -468,8 +475,8 @@ export default function Products() {
                                         const list = c.type === 'flower' ? flowers : goods
                                         // Use loose comparison or string conversion for safety
                                         const item = list.find(x => String(x.id) === String(c.id))
-                                        return item ? item.name : '?'
-                                    }).join(', ')}
+                                        return item ? item.name : null
+                                    }).filter(Boolean).join(', ') || 'Пусто'}
                                 </div>
 
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
