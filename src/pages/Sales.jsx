@@ -34,6 +34,17 @@ const SALES_CHANNELS = [
     { id: 'other', label: 'Другое', icon: '📦' }
 ]
 
+const OCCASIONS = [
+    { id: 'birthday', label: 'День Рождения', icon: '🎂' },
+    { id: 'anniversary', label: 'Юбилей', icon: '🎉' },
+    { id: 'wedding', label: 'Свадьба', icon: '💒' },
+    { id: 'valentines', label: '14 февраля', icon: '❤️' },
+    { id: 'march8', label: '8 марта', icon: '💐' },
+    { id: 'sept1', label: '1 сентября', icon: '📚' },
+    { id: 'sorry', label: 'Прости', icon: '😢' },
+    { id: 'other', label: 'Другое', icon: '🎁' }
+]
+
 const getStatusData = (arr, id) => arr.find(s => s.id === id) || arr[0]
 
 export default function Sales() {
@@ -53,6 +64,7 @@ export default function Sales() {
     const [editingSaleId, setEditingSaleId] = useState(null)
     const [loading, setLoading] = useState(false)
     const [showProfit, setShowProfit] = useState(true)
+    const [isLoyalCustomersOpen, setIsLoyalCustomersOpen] = useState(false)
 
     // Date filter
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'today' })
@@ -92,6 +104,7 @@ export default function Sales() {
         delivery_date: '',
         delivery_address: '',
         customer_phone: '',
+        customer_email: '',
         recipient_phone: '',
         card_text: '',
         courier_id: '',
@@ -100,7 +113,8 @@ export default function Sales() {
         payment_method: 'cash',
         payment_status: 'unpaid',
         delivery_status: 'not_delivered',
-        sales_channel: 'store'
+        sales_channel: 'store',
+        occasion: ''
     }
     const [formData, setFormData] = useState(emptyForm)
     const [productSearch, setProductSearch] = useState('')
@@ -181,6 +195,24 @@ export default function Sales() {
     const periodTotal = filteredSales.reduce((a, s) => a + Number(s.sale_price || 0), 0)
     const periodProfit = filteredSales.reduce((a, s) => a + Number(s.profit || 0), 0)
 
+    // Loyal customers calculation (by email)
+    const loyalCustomers = useMemo(() => {
+        const customerMap = {}
+        sales.forEach(sale => {
+            const email = sale.customer_email?.toLowerCase().trim()
+            if (!email) return
+            if (!customerMap[email]) {
+                customerMap[email] = { email, orderCount: 0, totalAmount: 0 }
+            }
+            customerMap[email].orderCount++
+            customerMap[email].totalAmount += Number(sale.sale_price || 0)
+        })
+        return Object.values(customerMap)
+            .filter(c => c.orderCount > 1) // Only repeat customers
+            .sort((a, b) => b.orderCount - a.orderCount)
+            .slice(0, 20) // TOP 20
+    }, [sales])
+
     // Selected product data
     const selectedProduct = products.find(p => p.id === formData.product_id)
     const costPrice = selectedProduct ? calculateCostPrice(selectedProduct.composition) : 0
@@ -212,6 +244,7 @@ export default function Sales() {
             delivery_date: sale.delivery_date?.slice(0, 16) || '',
             delivery_address: sale.delivery_address || '',
             customer_phone: sale.customer_phone || '',
+            customer_email: sale.customer_email || '',
             recipient_phone: sale.recipient_phone || '',
             card_text: sale.card_text || '',
             courier_id: sale.courier_id || '',
@@ -220,7 +253,8 @@ export default function Sales() {
             payment_method: sale.payment_method || 'cash',
             payment_status: sale.payment_status || 'unpaid',
             delivery_status: sale.delivery_status || 'not_delivered',
-            sales_channel: sale.sales_channel || 'store'
+            sales_channel: sale.sales_channel || 'store',
+            occasion: sale.occasion || ''
         })
         setProductSearch(sale.products?.name || '')
         setIsModalOpen(true)
@@ -344,7 +378,27 @@ export default function Sales() {
                     </h1>
                     <p style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.9rem' : '1rem' }}>Управление заказами и доставками</p>
                 </div>
-                <div style={{ display: 'flex', gap: '0.75rem', width: isMobile ? '100%' : 'auto' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', width: isMobile ? '100%' : 'auto', flexWrap: 'wrap' }}>
+                    <button
+                        className="btn"
+                        onClick={() => setIsLoyalCustomersOpen(true)}
+                        style={{ flex: isMobile ? 1 : 'none', justifyContent: 'center', padding: '0.5rem 1rem', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white', border: 'none' }}
+                    >
+                        👑 {isMobile ? '' : 'Постоянники'}
+                        {loyalCustomers.length > 0 && (
+                            <span style={{
+                                background: 'white',
+                                color: '#d97706',
+                                borderRadius: '99px',
+                                padding: '0.125rem 0.5rem',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                marginLeft: '0.5rem'
+                            }}>
+                                {loyalCustomers.length}
+                            </span>
+                        )}
+                    </button>
                     <button
                         className="btn"
                         onClick={() => setIsCalendarOpen(true)}
@@ -594,6 +648,21 @@ export default function Sales() {
                                                     #{sale.order_number}
                                                 </div>
                                             )}
+                                            {sale.occasion && (() => {
+                                                const occ = OCCASIONS.find(o => o.id === sale.occasion)
+                                                return occ ? (
+                                                    <span style={{
+                                                        background: '#fef3c7',
+                                                        color: '#92400e',
+                                                        padding: '0.2rem 0.5rem',
+                                                        borderRadius: '99px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 600
+                                                    }}>
+                                                        {occ.icon} {occ.label}
+                                                    </span>
+                                                ) : null
+                                            })()}
                                         </div>
 
                                         {/* Middle: Product + Dates + Address */}
@@ -830,6 +899,12 @@ export default function Sales() {
                                 <input className="input" placeholder="+373..." value={formData.customer_phone} onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })} />
                             </div>
                             <div>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Email заказчика</label>
+                                <input className="input" type="email" placeholder="email@example.com" value={formData.customer_email} onChange={(e) => setFormData({ ...formData, customer_email: e.target.value })} />
+                            </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                            <div>
                                 <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Телефон получателя</label>
                                 <input className="input" placeholder="+373..." value={formData.recipient_phone} onChange={(e) => setFormData({ ...formData, recipient_phone: e.target.value })} />
                             </div>
@@ -837,6 +912,36 @@ export default function Sales() {
                         <div style={{ marginTop: '1rem' }}>
                             <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Текст открытки</label>
                             <textarea className="input" rows={2} placeholder="С днём рождения!" value={formData.card_text} onChange={(e) => setFormData({ ...formData, card_text: e.target.value })} style={{ resize: 'vertical' }} />
+                        </div>
+
+                        {/* Occasion Tags */}
+                        <div style={{ marginTop: '1rem' }}>
+                            <label style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block' }}>Повод (тег)</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                {OCCASIONS.map(occ => (
+                                    <button
+                                        key={occ.id}
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, occasion: formData.occasion === occ.id ? '' : occ.id })}
+                                        style={{
+                                            padding: '0.375rem 0.75rem',
+                                            borderRadius: '99px',
+                                            border: formData.occasion === occ.id ? '2px solid var(--primary)' : '1px solid var(--border)',
+                                            background: formData.occasion === occ.id ? 'var(--primary-light)' : 'white',
+                                            color: formData.occasion === occ.id ? 'var(--primary)' : 'var(--text-main)',
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.25rem',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <span>{occ.icon}</span>
+                                        <span>{occ.label}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
@@ -1001,6 +1106,72 @@ export default function Sales() {
                         </button>
                     </div>
                 </div>
+            </Modal>
+
+            {/* Loyal Customers Modal */}
+            <Modal isOpen={isLoyalCustomersOpen} onClose={() => setIsLoyalCustomersOpen(false)} title="👑 ТОП Постоянных клиентов" maxWidth={isMobile ? '100%' : '600px'}>
+                <div style={{ marginBottom: '1rem' }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                        Клиенты с 2+ заказами (по email)
+                    </p>
+                </div>
+                {loyalCustomers.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🤷</div>
+                        <div>Пока нет постоянных клиентов</div>
+                        <div style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Добавляйте email при оформлении заказов</div>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {loyalCustomers.map((customer, idx) => (
+                            <div
+                                key={customer.email}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '1rem',
+                                    padding: '0.75rem 1rem',
+                                    background: idx < 3 ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : '#f8fafc',
+                                    borderRadius: '12px',
+                                    border: idx < 3 ? '1px solid #f59e0b' : '1px solid var(--border)'
+                                }}
+                            >
+                                <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    background: idx === 0 ? '#f59e0b' : idx === 1 ? '#9ca3af' : idx === 2 ? '#d97706' : 'var(--primary-light)',
+                                    color: idx < 3 ? 'white' : 'var(--primary)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontWeight: 700,
+                                    fontSize: '0.85rem',
+                                    flexShrink: 0
+                                }}>
+                                    {idx < 3 ? ['🥇', '🥈', '🥉'][idx] : idx + 1}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {customer.email}
+                                    </div>
+                                </div>
+                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                    <div style={{
+                                        fontWeight: 700,
+                                        color: 'var(--primary)',
+                                        fontSize: '0.9rem'
+                                    }}>
+                                        {customer.orderCount} заказ{customer.orderCount % 10 === 1 && customer.orderCount !== 11 ? '' : customer.orderCount % 10 >= 2 && customer.orderCount % 10 <= 4 && (customer.orderCount < 10 || customer.orderCount > 20) ? 'а' : 'ов'}
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                        {customer.totalAmount.toLocaleString('ru-RU')} lei
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </Modal>
 
             {/* Delivery Calendar Modal */}
