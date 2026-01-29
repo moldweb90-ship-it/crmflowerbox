@@ -5,6 +5,7 @@ import Inventory from './pages/Inventory'
 import Products from './pages/Products'
 import Settings from './pages/Settings'
 import Categories from './pages/Categories'
+import Supplies from './pages/Supplies'
 import { StoreProvider } from './context/StoreContext'
 import { AuthProvider } from './context/AuthContext'
 import Login from './pages/Login'
@@ -28,6 +29,7 @@ function App() {
                             <Route path="goods" element={<Inventory mode="goods" />} />
                             <Route path="products" element={<Products />} />
                             <Route path="categories" element={<Categories />} />
+                            <Route path="supplies" element={<Supplies />} />
                             <Route path="settings" element={<Settings />} />
                         </Route>
                     </Routes>

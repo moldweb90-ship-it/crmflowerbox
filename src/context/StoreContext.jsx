@@ -8,6 +8,8 @@ export function StoreProvider({ children }) {
     const [goods, setGoods] = useState([])
     const [categories, setCategories] = useState([])
     const [products, setProducts] = useState([])
+    const [suppliers, setSuppliers] = useState([])
+    const [supplies, setSupplies] = useState([])
     const [settings, setSettings] = useState({ markup_percentage: 30, delivery_cost: 500 })
     const [loading, setLoading] = useState(true)
 
@@ -19,13 +21,17 @@ export function StoreProvider({ children }) {
     const fetchAll = async () => {
         setLoading(true)
         try {
-            const [f, g, c, p, s] = await Promise.all([
+            const responses = await Promise.all([
                 supabase.from('flowers').select('*').order('created_at', { ascending: true }),
                 supabase.from('goods').select('*').order('created_at', { ascending: true }),
                 supabase.from('categories').select('*').order('created_at', { ascending: true }),
                 supabase.from('products').select('*').order('created_at', { ascending: true }),
+                supabase.from('suppliers').select('*').order('created_at', { ascending: true }),
+                supabase.from('supplies').select('*, suppliers(name)').order('date', { ascending: false }),
                 supabase.from('settings').select('*').single()
             ])
+
+            const [f, g, c, p, sup, supply, s] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -37,10 +43,9 @@ export function StoreProvider({ children }) {
                 }))
                 setProducts(mappedProducts)
             }
+            if (sup.data) setSuppliers(sup.data)
+            if (supply.data) setSupplies(supply.data)
             if (s.data) {
-                // Map underscore_case from DB to camelCase if needed, or just use snake_case in app
-                // For simplicity, let's keep using the keys as they come from DB (markup_percentage) 
-                // BUT the app expects camelCase (markupPercentage). Let's Normalize.
                 setSettings({
                     markupPercentage: Number(s.data.markup_percentage),
                     deliveryCost: Number(s.data.delivery_cost)
@@ -160,6 +165,85 @@ export function StoreProvider({ children }) {
 
         const { error } = await supabase.from('settings').update(dbUpdates).eq('id', 1)
         if (!error) setSettings({ ...settings, ...updates })
+        if (!error) setSettings({ ...settings, ...updates })
+    }
+
+    // Supplies
+    const saveSupply = async (supplierName, items) => {
+        try {
+            // 1. Get or Create Supplier
+            let supplierId
+            const existingSupplier = suppliers.find(s => s.name.toLowerCase() === supplierName.toLowerCase())
+
+            if (existingSupplier) {
+                supplierId = existingSupplier.id
+            } else {
+                const { data: newSup, error: supError } = await supabase.from('suppliers').insert([{ name: supplierName }]).select().single()
+                if (supError) throw supError
+                setSuppliers([...suppliers, newSup])
+                supplierId = newSup.id
+            }
+
+            // 2. Create Supply Record
+            const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+            const { data: newSupply, error: supplyError } = await supabase.from('supplies').insert([{
+                supplier_id: supplierId,
+                total_amount: totalAmount,
+                date: new Date().toISOString()
+            }]).select('*, suppliers(name)').single()
+
+            if (supplyError) throw supplyError
+            setSupplies([newSupply, ...supplies])
+
+            // 3. Insert Items & Update Flowers
+            const supplyItemsPayload = items.map(item => ({
+                supply_id: newSupply.id,
+                flower_id: item.flowerId,
+                quantity: item.quantity,
+                unit_cost: item.unitCost
+            }))
+
+            await supabase.from('supply_items').insert(supplyItemsPayload)
+
+            // 4. Update Flowers Cost & Price (One by one for now to trigger logic)
+            // Ideally should be a DB trigger, but we do client-side coordination for now
+            const updatedFlowers = [...flowers]
+
+            for (const item of items) {
+                const flower = flowers.find(f => f.id === item.flowerId)
+                if (flower) {
+                    const newCost = item.unitCost
+                    const markup = flower.markup_factor || 2
+                    const newPrice = newCost * markup
+
+                    // Update in DB
+                    await supabase.from('flowers').update({
+                        cost: newCost,
+                        price: newPrice
+                    }).eq('id', item.flowerId)
+
+                    // Update local state temporarily
+                    const idx = updatedFlowers.findIndex(f => f.id === item.flowerId)
+                    if (idx !== -1) {
+                        updatedFlowers[idx] = { ...updatedFlowers[idx], cost: newCost, price: newPrice }
+                    }
+                }
+            }
+            setFlowers(updatedFlowers)
+
+            // 5. Trigger Recalculate Logic to update Bouquets
+            // We can call recalculateAllProducts but we need latest flower prices (which we just updated in DB and State)
+            // Since recalculateAllProducts reads from 'products' and uses 'calculatePrice' which uses 'flowers' state...
+            // We must ensure 'flowers' state is fresh. We did setFlowers above.
+            setTimeout(() => {
+                recalculateAllProducts() // Async background update
+            }, 500)
+
+            return { success: true }
+        } catch (error) {
+            console.error('Supply Save Error:', error)
+            return { success: false, error }
+        }
     }
 
     // Calculation Helper (Remains same logic)
@@ -218,6 +302,7 @@ export function StoreProvider({ children }) {
             goods, addGood, updateGood, deleteGood,
             categories, addCategory, updateCategory, deleteCategory,
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
+            suppliers, supplies, saveSupply,
             settings, updateSettings,
             calculatePrice,
             loading
