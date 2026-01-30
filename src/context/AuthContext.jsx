@@ -4,19 +4,32 @@ import { supabase } from '../supabase'
 const AuthContext = createContext()
 
 export function AuthProvider({ children }) {
-    const [user, setUser] = useState(null)
-    const [loading, setLoading] = useState(true)
+    // Init user from localStorage to prevent blink
+    const [user, setUser] = useState(() => {
+        try {
+            const saved = localStorage.getItem('app_user')
+            return saved ? JSON.parse(saved) : null
+        } catch (e) {
+            return null
+        }
+    })
+    // If we have a user, we are not loading. If not, we wait for Supabase check.
+    const [loading, setLoading] = useState(!user)
 
     useEffect(() => {
         // Check active sessions and sets the user
         supabase.auth.getSession().then(({ data: { session } }) => {
-            setUser(session?.user ?? null)
+            const currentUser = session?.user ?? null
+            setUser(currentUser)
+            localStorage.setItem('app_user', JSON.stringify(currentUser))
             setLoading(false)
         })
 
         // Listen for changes on auth state (logged in, signed out, etc.)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUser(session?.user ?? null)
+            const currentUser = session?.user ?? null
+            setUser(currentUser)
+            localStorage.setItem('app_user', JSON.stringify(currentUser))
             setLoading(false)
         })
 

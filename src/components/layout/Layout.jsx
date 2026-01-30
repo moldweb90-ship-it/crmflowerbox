@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { usePermissions } from '../../context/PermissionContext'
 
 export default function Layout() {
     const location = useLocation()
@@ -58,8 +59,29 @@ export default function Layout() {
         },
     ]
 
-    // Settings is separate (at bottom)
+    // Filter groups based on permissions
+    const { checkAccess } = usePermissions()
+
+    const filteredNavGroups = navGroups.map(group => ({
+        ...group,
+        items: group.items.filter(item => {
+            // Map paths to permission keys
+            // /dashboard -> dashboard
+            // /sales -> sales
+            // /products -> products
+            // /flowers -> flowers
+            // /goods -> goods
+            // /categories -> categories
+            // /supplies -> supplies
+            // /stock -> stock
+            // /expenses -> expenses
+            const permKey = item.path.substring(1)
+            return checkAccess(permKey)
+        })
+    })).filter(group => group.items.length > 0)
+
     const settingsItem = { label: 'Настройки', path: '/settings', icon: Settings }
+    const showSettings = checkAccess('settings')
 
     const { logout } = useAuth()
     const navigate = useNavigate()
@@ -163,7 +185,7 @@ export default function Layout() {
                     {isMobile && <div style={{ height: '80px' }} />} {/* Spacer for mobile header */}
 
                     <nav style={{ flex: 1, padding: '0 1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: isMobile ? '1rem' : '0' }}>
-                        {navGroups.map((group, groupIndex) => (
+                        {filteredNavGroups.map((group, groupIndex) => (
                             <div key={groupIndex}>
                                 {/* Section title if exists */}
                                 {group.title && (
@@ -227,26 +249,28 @@ export default function Layout() {
                     {/* Bottom section: Settings + Logout */}
                     <div style={{ padding: '1rem', borderTop: '1px solid var(--border)' }}>
                         {/* Settings */}
-                        <Link
-                            to={settingsItem.path}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.875rem',
-                                padding: '0.875rem 1.25rem',
-                                borderRadius: '14px',
-                                backgroundColor: location.pathname === settingsItem.path ? 'var(--secondary)' : 'transparent',
-                                color: location.pathname === settingsItem.path ? '#FFFFFF' : '#374151',
-                                fontWeight: location.pathname === settingsItem.path ? 600 : 500,
-                                fontSize: '0.9rem',
-                                transition: 'all 0.2s',
-                                textDecoration: 'none',
-                                marginBottom: '0.5rem'
-                            }}
-                        >
-                            <settingsItem.icon size={20} style={{ opacity: location.pathname === settingsItem.path ? 1 : 0.85 }} />
-                            {settingsItem.label}
-                        </Link>
+                        {showSettings && (
+                            <Link
+                                to={settingsItem.path}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.875rem',
+                                    padding: '0.875rem 1.25rem',
+                                    borderRadius: '14px',
+                                    backgroundColor: location.pathname === settingsItem.path ? 'var(--secondary)' : 'transparent',
+                                    color: location.pathname === settingsItem.path ? '#FFFFFF' : '#374151',
+                                    fontWeight: location.pathname === settingsItem.path ? 600 : 500,
+                                    fontSize: '0.9rem',
+                                    transition: 'all 0.2s',
+                                    textDecoration: 'none',
+                                    marginBottom: '0.5rem'
+                                }}
+                            >
+                                <settingsItem.icon size={20} style={{ opacity: location.pathname === settingsItem.path ? 1 : 0.85 }} />
+                                {settingsItem.label}
+                            </Link>
+                        )}
 
                         {/* Logout */}
                         <button

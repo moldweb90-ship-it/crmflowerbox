@@ -2,7 +2,7 @@ import React from 'react'
 import { X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px' }) {
+export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', closeOnOverlayClick = true }) {
     return (
         <AnimatePresence>
             {isOpen && (
@@ -14,7 +14,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = '50
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)' }}
-                        onClick={onClose}
+                        onClick={() => closeOnOverlayClick && onClose()}
                     />
                     <motion.div
                         initial={{ scale: 0.95, opacity: 0 }}

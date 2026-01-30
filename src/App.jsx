@@ -11,36 +11,40 @@ import Expenses from './pages/Expenses'
 import Sales from './pages/Sales'
 import { StoreProvider } from './context/StoreContext'
 import { AuthProvider } from './context/AuthContext'
+import { PermissionProvider } from './context/PermissionContext'
 import Login from './pages/Login'
 import ProtectedRoute from './components/layout/ProtectedRoute'
+import RequirePermission from './components/layout/RequirePermission'
 
 function App() {
     return (
         <AuthProvider>
-            <StoreProvider>
-                <BrowserRouter>
-                    <Routes>
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/" element={
-                            <ProtectedRoute>
-                                <Layout />
-                            </ProtectedRoute>
-                        }>
-                            <Route index element={<Navigate to="/dashboard" replace />} />
-                            <Route path="dashboard" element={<Dashboard />} />
-                            <Route path="sales" element={<Sales />} />
-                            <Route path="flowers" element={<Inventory mode="flowers" />} />
-                            <Route path="goods" element={<Inventory mode="goods" />} />
-                            <Route path="products" element={<Products />} />
-                            <Route path="categories" element={<Categories />} />
-                            <Route path="supplies" element={<Supplies />} />
-                            <Route path="stock" element={<Stock />} />
-                            <Route path="expenses" element={<Expenses />} />
-                            <Route path="settings" element={<Settings />} />
-                        </Route>
-                    </Routes>
-                </BrowserRouter>
-            </StoreProvider>
+            <PermissionProvider>
+                <StoreProvider>
+                    <BrowserRouter>
+                        <Routes>
+                            <Route path="/login" element={<Login />} />
+                            <Route path="/" element={
+                                <ProtectedRoute>
+                                    <Layout />
+                                </ProtectedRoute>
+                            }>
+                                <Route index element={<Navigate to="/dashboard" replace />} />
+                                <Route path="dashboard" element={<RequirePermission permission="dashboard"><Dashboard /></RequirePermission>} />
+                                <Route path="sales" element={<RequirePermission permission="sales"><Sales /></RequirePermission>} />
+                                <Route path="flowers" element={<RequirePermission permission="flowers"><Inventory mode="flowers" /></RequirePermission>} />
+                                <Route path="goods" element={<RequirePermission permission="goods"><Inventory mode="goods" /></RequirePermission>} />
+                                <Route path="products" element={<RequirePermission permission="products"><Products /></RequirePermission>} />
+                                <Route path="categories" element={<RequirePermission permission="categories"><Categories /></RequirePermission>} />
+                                <Route path="supplies" element={<RequirePermission permission="supplies"><Supplies /></RequirePermission>} />
+                                <Route path="stock" element={<RequirePermission permission="stock"><Stock /></RequirePermission>} />
+                                <Route path="expenses" element={<RequirePermission permission="expenses"><Expenses /></RequirePermission>} />
+                                <Route path="settings" element={<RequirePermission permission="settings"><Settings /></RequirePermission>} />
+                            </Route>
+                        </Routes>
+                    </BrowserRouter>
+                </StoreProvider>
+            </PermissionProvider>
         </AuthProvider>
     )
 }

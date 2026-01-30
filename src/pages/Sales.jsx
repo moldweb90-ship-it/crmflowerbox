@@ -65,26 +65,6 @@ export default function Sales() {
     } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
-    const [isModalOpen, setIsModalOpen] = useState(false)
-    const [isCalendarOpen, setIsCalendarOpen] = useState(false)
-    const [isViewOpen, setIsViewOpen] = useState(false)
-    const [viewingSale, setViewingSale] = useState(null)
-    const [modalMode, setModalMode] = useState('add')
-    const [editingSaleId, setEditingSaleId] = useState(null)
-    const [loading, setLoading] = useState(false)
-    const [showProfit, setShowProfit] = useState(true)
-    const [isLoyalCustomersOpen, setIsLoyalCustomersOpen] = useState(false)
-
-    // Quick Expense (Cashbox) State
-    const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
-    const [expenseData, setExpenseData] = useState({ amount: '', comment: '', type: 'expense' }) // type: 'expense' or 'incasso'
-
-    // Date filter
-    const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'today' })
-    const [deliveryDateFilter, setDeliveryDateFilter] = useState(null) // For calendar click - filter by delivery date
-    const [orderSearch, setOrderSearch] = useState('') // For order number search from global search
-
     // Auto-open modal when navigated with ?add=true (from Dashboard)
     useEffect(() => {
         if (searchParams.get('add') === 'true') {
@@ -108,7 +88,38 @@ export default function Sales() {
             setSearchParams(searchParams, { replace: true })
         }
     }, [searchParams, setSearchParams])
+    // Persistent State
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
+    // Load initial state from localStorage if available
+    const savedState = (() => {
+        try {
+            const saved = localStorage.getItem('sales_form_draft')
+            return saved ? JSON.parse(saved) : null
+        } catch (e) {
+            return null
+        }
+    })()
+
+    const [isModalOpen, setIsModalOpen] = useState(savedState?.isOpen || false)
+    const [modalMode, setModalMode] = useState(savedState?.mode || 'add')
+    const [editingSaleId, setEditingSaleId] = useState(savedState?.editingId || null)
+
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+    const [isViewOpen, setIsViewOpen] = useState(false)
+    const [viewingSale, setViewingSale] = useState(null)
+    const [loading, setLoading] = useState(false)
+    const [showProfit, setShowProfit] = useState(true)
+    const [isLoyalCustomersOpen, setIsLoyalCustomersOpen] = useState(false)
+
+    // Quick Expense (Cashbox) State
+    const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
+    const [expenseData, setExpenseData] = useState({ amount: '', comment: '', type: 'expense' }) // type: 'expense' or 'incasso'
+
+    // Date filter
+    const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'today' })
+    const [deliveryDateFilter, setDeliveryDateFilter] = useState(null) // For calendar click - filter by delivery date
+    const [orderSearch, setOrderSearch] = useState('') // For order number search from global search
 
     // Form state
     const emptyForm = {
@@ -131,10 +142,24 @@ export default function Sales() {
         sales_channel: 'store',
         occasion: ''
     }
-    const [formData, setFormData] = useState(emptyForm)
+    const [formData, setFormData] = useState(savedState?.formData || emptyForm)
     const [productSearch, setProductSearch] = useState('')
     const [newCourierName, setNewCourierName] = useState('')
     const [newFloristName, setNewFloristName] = useState('')
+
+    // Persist draft to localStorage on change
+    useEffect(() => {
+        if (isModalOpen) {
+            localStorage.setItem('sales_form_draft', JSON.stringify({
+                isOpen: true,
+                mode: modalMode,
+                editingId: editingSaleId,
+                formData: formData
+            }))
+        } else {
+            localStorage.removeItem('sales_form_draft')
+        }
+    }, [isModalOpen, modalMode, editingSaleId, formData])
 
     // Calendar state
     const [calendarMonth, setCalendarMonth] = useState(new Date())
@@ -275,6 +300,14 @@ export default function Sales() {
     const profit = salePrice - costPrice
 
     // Product search
+    // Product search (init from saved formData if present)
+    useEffect(() => {
+        if (formData.product_id && !productSearch) {
+            const prod = products.find(p => p.id === formData.product_id)
+            if (prod) setProductSearch(prod.name)
+        }
+    }, [formData.product_id, products, productSearch])
+
     const filteredProducts = products.filter(p =>
         p.name?.toLowerCase().includes(productSearch.toLowerCase()) ||
         p.sku?.toLowerCase().includes(productSearch.toLowerCase())
@@ -312,7 +345,8 @@ export default function Sales() {
             delivery_method: sale.delivery_method || 'delivery',
             occasion: sale.occasion || ''
         })
-        setProductSearch(sale.products?.name || '')
+        const prod = products.find(p => p.id === sale.product_id) // Find product name
+        setProductSearch(prod?.name || '')
         setIsModalOpen(true)
     }
 
@@ -943,353 +977,186 @@ export default function Sales() {
             </button>
 
             {/* Add/Edit Sale Modal */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '75vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px" closeOnOverlayClick={false}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '75vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
 
-                    {/* Section 1: Product */}
-                    <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '16px' }}>
-                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            🌸 Букет
+                    {/* Section 1: Product & Price (Combined) */}
+                    <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '16px', border: '1px solid #e5e7eb' }}>
+                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
+                            🌸 Букет и Стоимость
                         </h4>
-                        <div style={{ position: 'relative' }}>
-                            <input
-                                className="input"
-                                placeholder="Поиск по названию или артикулу..."
-                                value={productSearch}
-                                onChange={(e) => { setProductSearch(e.target.value); setFormData({ ...formData, product_id: '' }) }}
-                                style={{ marginBottom: '0.5rem' }}
-                            />
-                            {productSearch && !formData.product_id && (
-                                <div style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    left: 0,
-                                    right: 0,
-                                    background: 'white',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: '12px',
-                                    boxShadow: '0 8px 25px rgba(0,0,0,0.1)',
-                                    zIndex: 10,
-                                    maxHeight: '200px',
-                                    overflowY: 'auto'
-                                }}>
-                                    {filteredProducts.map(p => (
-                                        <div
-                                            key={p.id}
-                                            onClick={() => handleSelectProduct(p)}
-                                            style={{
-                                                padding: '0.75rem 1rem',
-                                                cursor: 'pointer',
-                                                borderBottom: '1px solid var(--border)',
-                                                display: 'flex',
-                                                justifyContent: 'space-between'
-                                            }}
-                                        >
-                                            <span>{p.name}</span>
-                                            <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{p.price} lei</span>
-                                        </div>
-                                    ))}
-                                    {filteredProducts.length === 0 && (
-                                        <div style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'center' }}>Не найдено</div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                        {selectedProduct && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginTop: '0.75rem', padding: '0.75rem', background: 'white', borderRadius: '12px' }}>
-                                <div>
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Цена</div>
-                                    <div style={{ fontWeight: 700, color: 'var(--primary)' }}>{selectedProduct.price} lei</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Себестоимость</div>
-                                    <div style={{ fontWeight: 600 }}>{costPrice} lei</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Прибыль</div>
-                                    <div style={{ fontWeight: 700, color: '#10b981' }}>{profit} lei</div>
-                                </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '1rem', alignItems: 'start' }}>
+                            {/* Product Search */}
+                            <div style={{ position: 'relative' }}>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Букет</label>
+                                <input
+                                    className="input"
+                                    placeholder="Поиск по названию или артикулу..."
+                                    value={productSearch}
+                                    onChange={(e) => { setProductSearch(e.target.value); setFormData({ ...formData, product_id: '' }) }}
+                                    style={{ width: '100%' }}
+                                />
+                                {productSearch && !formData.product_id && (
+                                    <div style={{
+                                        position: 'absolute', top: '100%', left: 0, right: 0,
+                                        background: 'white', border: '1px solid var(--border)', borderRadius: '12px',
+                                        boxShadow: '0 8px 25px rgba(0,0,0,0.1)', zIndex: 10, maxHeight: '200px', overflowY: 'auto'
+                                    }}>
+                                        {filteredProducts.map(p => (
+                                            <div key={p.id} onClick={() => handleSelectProduct(p)} style={{ padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>{p.name}</span>
+                                                <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{p.price} lei</span>
+                                            </div>
+                                        ))}
+                                        {filteredProducts.length === 0 && <div style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'center' }}>Не найдено</div>}
+                                    </div>
+                                )}
+                                {selectedProduct && (
+                                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.8rem' }}>
+                                        <span style={{ color: '#6b7280' }}>Себест: <b>{costPrice} L</b></span>
+                                        <span style={{ color: '#10b981' }}>Прибыль: <b>{profit} L</b></span>
+                                    </div>
+                                )}
                             </div>
-                        )}
+
+                            {/* Sale Price */}
+                            <div>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Цена продажи (lei)</label>
+                                <input
+                                    type="number"
+                                    className="input"
+                                    placeholder={selectedProduct?.price || '0'}
+                                    value={formData.sale_price}
+                                    onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
+                                    style={{ fontSize: '1.1rem', fontWeight: 700, width: '100%' }}
+                                />
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Section 2: Price (Editable) */}
-                    <div>
-                        <label style={{ fontWeight: 600, marginBottom: '0.5rem', display: 'block' }}>💰 Цена продажи (lei)</label>
-                        <input
-                            type="number"
-                            className="input"
-                            placeholder={selectedProduct?.price || '0'}
-                            value={formData.sale_price}
-                            onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
-                            style={{ fontSize: '1.25rem', fontWeight: 700 }}
-                        />
-                    </div>
-
-                    {/* Section 3: Order Info */}
+                    {/* Section 2: Order Details (Compact) */}
                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
                         <div>
-                            <label style={{ fontWeight: 600, marginBottom: '0.5rem', display: 'block' }}>📝 Номер заказа</label>
-                            <input className="input" placeholder="12345" value={formData.order_number} onChange={(e) => setFormData({ ...formData, order_number: e.target.value })} />
+                            <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Номер заказа</label>
+                            <input className="input" placeholder="Авто" value={formData.order_number} onChange={(e) => setFormData({ ...formData, order_number: e.target.value })} />
                         </div>
                         <div>
-                            <label style={{ fontWeight: 600, marginBottom: '0.5rem', display: 'block' }}>📅 Дата заказа</label>
+                            <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Дата заказа</label>
                             <input type="datetime-local" className="input" value={formData.order_date} onChange={(e) => setFormData({ ...formData, order_date: e.target.value })} />
                         </div>
                     </div>
 
-                    {/* Section 4: Client */}
-                    <div style={{ background: '#f0fdf4', padding: '1rem', borderRadius: '16px' }}>
-                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700 }}>👤 Клиент</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+                    {/* Section 3: Client (One Row) */}
+                    <div style={{ background: '#f0fdf4', padding: '1rem', borderRadius: '16px', border: '1px solid #bbf7d0' }}>
+                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, color: '#166534' }}>👤 Клиент</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
                             <div>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Телефон заказчика</label>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#15803d' }}>Телефон клиента</label>
                                 <input className="input" placeholder="+373..." value={formData.customer_phone} onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })} />
                             </div>
                             <div>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Email заказчика</label>
-                                <input className="input" type="email" placeholder="email@example.com" value={formData.customer_email} onChange={(e) => setFormData({ ...formData, customer_email: e.target.value })} />
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#15803d' }}>Email</label>
+                                <input className="input" type="email" placeholder="example@mail.com" value={formData.customer_email} onChange={(e) => setFormData({ ...formData, customer_email: e.target.value })} />
                             </div>
-                        </div>
-                        {formData.delivery_method === 'delivery' && (
-                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                                <div>
-                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Телефон получателя</label>
-                                    <input className="input" placeholder="+373..." value={formData.recipient_phone} onChange={(e) => setFormData({ ...formData, recipient_phone: e.target.value })} />
-                                </div>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#15803d' }}>Телефон получателя</label>
+                                <input className="input" placeholder="+373..." value={formData.recipient_phone} onChange={(e) => setFormData({ ...formData, recipient_phone: e.target.value })} />
                             </div>
-                        )}
-                        <div style={{ marginTop: '1rem' }}>
-                            <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Текст открытки</label>
-                            <textarea className="input" rows={2} placeholder="С днём рождения!" value={formData.card_text} onChange={(e) => setFormData({ ...formData, card_text: e.target.value })} style={{ resize: 'vertical' }} />
                         </div>
 
-                        {/* Occasion Tags */}
-                        <div style={{ marginTop: '1rem' }}>
-                            <label style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block' }}>Повод (тег)</label>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                {OCCASIONS.map(occ => (
-                                    <button
-                                        key={occ.id}
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, occasion: formData.occasion === occ.id ? '' : occ.id })}
-                                        style={{
-                                            padding: '0.375rem 0.75rem',
-                                            borderRadius: '99px',
-                                            border: formData.occasion === occ.id ? '2px solid var(--primary)' : '1px solid var(--border)',
-                                            background: formData.occasion === occ.id ? 'var(--primary-light)' : 'white',
-                                            color: formData.occasion === occ.id ? 'var(--primary)' : 'var(--text-main)',
-                                            fontSize: '0.85rem',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.25rem',
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <span>{occ.icon}</span>
-                                        <span>{occ.label}</span>
-                                    </button>
-                                ))}
+                        {/* Card Text & Occasion */}
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#15803d' }}>Текст открытки</label>
+                                <input className="input" placeholder="С днём рождения!" value={formData.card_text} onChange={(e) => setFormData({ ...formData, card_text: e.target.value })} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#15803d' }}>Повод</label>
+                                <select className="input" value={formData.occasion} onChange={(e) => setFormData({ ...formData, occasion: e.target.value })}>
+                                    <option value="">Без повода</option>
+                                    {OCCASIONS.map(occ => <option key={occ.id} value={occ.id}>{occ.icon} {occ.label}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Section 4: Payment (One Row) */}
+                    <div style={{ background: '#fefce8', padding: '1rem', borderRadius: '16px', border: '1px solid #fde047' }}>
+                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, color: '#854d0e' }}>💳 Оплата</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Способ</label>
+                                <select className="input" value={formData.payment_method} onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}>
+                                    {PAYMENT_METHODS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Статус</label>
+                                <select className="input" value={formData.payment_status} onChange={(e) => setFormData({ ...formData, payment_status: e.target.value })}
+                                    style={{ background: getStatusData(PAYMENT_STATUSES, formData.payment_status).color + '20', color: getStatusData(PAYMENT_STATUSES, formData.payment_status).color, fontWeight: 600 }}
+                                >
+                                    {PAYMENT_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Канал продаж</label>
+                                <select className="input" value={formData.sales_channel} onChange={(e) => setFormData({ ...formData, sales_channel: e.target.value })}>
+                                    {SALES_CHANNELS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                                </select>
                             </div>
                         </div>
                     </div>
 
                     {/* Section 5: Delivery */}
-                    <div style={{ background: '#eff6ff', padding: '1rem', borderRadius: '16px' }}>
+                    <div style={{ background: '#eff6ff', padding: '1rem', borderRadius: '16px', border: '1px solid #bfdbfe' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <h4 style={{ margin: 0, fontWeight: 700 }}>
-                                {formData.delivery_method === 'pickup' ? '🏃 Самовывоз' : '🚚 Доставка'}
-                            </h4>
-                            <div style={{ display: 'flex', background: 'white', borderRadius: '10px', padding: '3px', border: '1px solid #dbeafe', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, delivery_method: 'delivery' })}
-                                    style={{
-                                        padding: '0.4rem 0.8rem',
-                                        borderRadius: '8px',
-                                        border: 'none',
-                                        background: formData.delivery_method === 'delivery' ? '#3b82f6' : 'transparent',
-                                        color: formData.delivery_method === 'delivery' ? 'white' : '#6b7280',
-                                        cursor: 'pointer',
-                                        fontSize: '0.8rem',
-                                        fontWeight: 600,
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    🚚 Доставка
+                            <h4 style={{ margin: 0, fontWeight: 700, color: '#1e40af' }}>🚚 Доставка</h4>
+                            <div style={{ display: 'flex', background: 'white', borderRadius: '8px', padding: '2px', border: '1px solid #dbeafe' }}>
+                                <button type="button" onClick={() => setFormData({ ...formData, delivery_method: 'delivery' })}
+                                    style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: 'none', background: formData.delivery_method === 'delivery' ? '#3b82f6' : 'transparent', color: formData.delivery_method === 'delivery' ? 'white' : '#6b7280', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
+                                    Доставка
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, delivery_method: 'pickup' })}
-                                    style={{
-                                        padding: '0.4rem 0.8rem',
-                                        borderRadius: '8px',
-                                        border: 'none',
-                                        background: formData.delivery_method === 'pickup' ? '#10b981' : 'transparent',
-                                        color: formData.delivery_method === 'pickup' ? 'white' : '#6b7280',
-                                        cursor: 'pointer',
-                                        fontSize: '0.8rem',
-                                        fontWeight: 600,
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    🏃 Самовывоз
+                                <button type="button" onClick={() => setFormData({ ...formData, delivery_method: 'pickup' })}
+                                    style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: 'none', background: formData.delivery_method === 'pickup' ? '#10b981' : 'transparent', color: formData.delivery_method === 'pickup' ? 'white' : '#6b7280', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
+                                    Самовывоз
                                 </button>
                             </div>
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
                             <div>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>
-                                    {formData.delivery_method === 'pickup' ? 'Время самовывоза' : 'Дата/время доставки'}
-                                </label>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Дата и время</label>
                                 <input type="datetime-local" className="input" value={formData.delivery_date} onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })} />
                             </div>
 
                             {formData.delivery_method === 'delivery' && (
                                 <div>
-                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Адрес доставки</label>
-                                    <input className="input" placeholder="ул. Штефан чел Маре, 1" value={formData.delivery_address} onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })} />
-                                </div>
-                            )}
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                            {formData.delivery_method === 'delivery' && (
-                                <div>
-                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Курьер</label>
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <select className="input" style={{ flex: 1 }} value={formData.courier_id} onChange={(e) => setFormData({ ...formData, courier_id: e.target.value })}>
-                                            <option value="">Не выбран</option>
-                                            {couriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                        <input className="input" placeholder="Новый курьер" value={newCourierName} onChange={(e) => setNewCourierName(e.target.value)} style={{ flex: 1, fontSize: '0.85rem' }} />
-                                        <button onClick={handleAddCourier} className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>+</button>
-                                    </div>
+                                    <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Адрес</label>
+                                    <input className="input" placeholder="ул. Пушкина 1" value={formData.delivery_address} onChange={(e) => setFormData({ ...formData, delivery_address: e.target.value })} />
                                 </div>
                             )}
 
-                            <div style={isMobile ? {} : { gridColumn: formData.delivery_method === 'pickup' ? '1 / -1' : 'auto' }}>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block' }}>Флорист</label>
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    <select className="input" style={{ flex: 1 }} value={formData.florist_id} onChange={(e) => setFormData({ ...formData, florist_id: e.target.value })}>
-                                        <option value="">Не выбран</option>
-                                        {florists.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                    </select>
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                    <input className="input" placeholder="Новый флорист" value={newFloristName} onChange={(e) => setNewFloristName(e.target.value)} style={{ flex: 1, fontSize: '0.85rem' }} />
-                                    <button onClick={handleAddFlorist} className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>+</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div style={{ marginTop: '1rem' }}>
-                            <label style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block' }}>
-                                {formData.delivery_method === 'pickup' ? 'Статус выдачи' : 'Статус доставки'}
-                            </label>
-                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                {DELIVERY_STATUSES.map(s => (
-                                    <button
-                                        key={s.id}
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, delivery_status: s.id })}
-                                        style={{
-                                            padding: '0.5rem 1rem',
-                                            borderRadius: '99px',
-                                            border: formData.delivery_status === s.id ? `2px solid ${s.color}` : '1px solid var(--border)',
-                                            background: formData.delivery_status === s.id ? `${s.color}15` : 'white',
-                                            color: formData.delivery_status === s.id ? s.color : 'var(--text-muted)',
-                                            fontWeight: 600,
-                                            fontSize: '0.8rem',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        {getDeliveryStatusLabel(s, formData.delivery_method)}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Section 6: Payment */}
-                    <div style={{ background: '#fefce8', padding: '1rem', borderRadius: '16px' }}>
-                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700 }}>💳 Оплата</h4>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block' }}>Способ оплаты</label>
-                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                {PAYMENT_METHODS.map(m => (
-                                    <button
-                                        key={m.id}
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, payment_method: m.id })}
-                                        style={{
-                                            padding: '0.5rem 1rem',
-                                            borderRadius: '12px',
-                                            border: formData.payment_method === m.id ? '2px solid var(--primary)' : '1px solid var(--border)',
-                                            background: formData.payment_method === m.id ? 'var(--primary)' : 'white',
-                                            color: formData.payment_method === m.id ? 'white' : 'var(--text-muted)',
-                                            fontWeight: 600,
-                                            fontSize: '0.85rem',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        {m.icon} {m.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div>
-                            <label style={{ fontSize: '0.85rem', marginBottom: '0.5rem', display: 'block' }}>Статус оплаты</label>
-                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                {PAYMENT_STATUSES.map(s => (
-                                    <button
-                                        key={s.id}
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, payment_status: s.id })}
-                                        style={{
-                                            padding: '0.5rem 1rem',
-                                            borderRadius: '99px',
-                                            border: formData.payment_status === s.id ? `2px solid ${s.color}` : '1px solid var(--border)',
-                                            background: formData.payment_status === s.id ? `${s.color}15` : 'white',
-                                            color: formData.payment_status === s.id ? s.color : 'var(--text-muted)',
-                                            fontWeight: 600,
-                                            fontSize: '0.8rem',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        {s.icon} {s.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Section 7: Sales Channel */}
-                    <div>
-                        <label style={{ fontWeight: 600, marginBottom: '0.5rem', display: 'block' }}>📣 Канал продаж</label>
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            {SALES_CHANNELS.map(c => (
-                                <button
-                                    key={c.id}
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, sales_channel: c.id })}
-                                    style={{
-                                        padding: '0.5rem 1rem',
-                                        borderRadius: '12px',
-                                        border: formData.sales_channel === c.id ? '2px solid var(--secondary)' : '1px solid var(--border)',
-                                        background: formData.sales_channel === c.id ? 'var(--secondary)' : 'white',
-                                        color: formData.sales_channel === c.id ? 'white' : 'var(--text-muted)',
-                                        fontWeight: 600,
-                                        fontSize: '0.85rem',
-                                        cursor: 'pointer'
-                                    }}
+                            {/* Status */}
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Статус</label>
+                                <select className="input" value={formData.delivery_status} onChange={(e) => setFormData({ ...formData, delivery_status: e.target.value })}
+                                    style={{ background: getStatusData(DELIVERY_STATUSES, formData.delivery_status).color + '20', color: getStatusData(DELIVERY_STATUSES, formData.delivery_status).color, fontWeight: 600 }}
                                 >
-                                    {c.icon} {c.label}
-                                </button>
-                            ))}
+                                    {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{getDeliveryStatusLabel(s, formData.delivery_method)}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Courier/Florist (Compact) */}
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>{formData.delivery_method === 'delivery' ? 'Курьер' : 'Флорист'}</label>
+                                <select className="input"
+                                    value={formData.delivery_method === 'delivery' ? formData.courier_id : formData.florist_id}
+                                    onChange={(e) => setFormData({ ...formData, [formData.delivery_method === 'delivery' ? 'courier_id' : 'florist_id']: e.target.value })}
+                                >
+                                    <option value="">Не выбран</option>
+                                    {(formData.delivery_method === 'delivery' ? couriers : florists).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                                </select>
+                            </div>
                         </div>
                     </div>
 

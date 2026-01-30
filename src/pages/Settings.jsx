@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
-import { Save, RefreshCw, Lock } from 'lucide-react'
+import { usePermissions } from '../context/PermissionContext'
+import { Save, RefreshCw, Lock, Users } from 'lucide-react'
 
 export default function Settings() {
     const { settings, updateSettings, recalculateAllProducts } = useStore()
     const { updatePassword } = useAuth()
+    const perms = usePermissions() || {}
+    const { role = 'user', getAllUsers = async () => { }, updateUserPermissions = async () => { } } = perms
+
+    if (!settings) return <div style={{ padding: '2rem' }}>Загрузка настроек...</div>
 
     const [markup, setMarkup] = useState(settings.markupPercentage || '')
     const [delivery, setDelivery] = useState(settings.deliveryCost || '')
     const [recalcCount, setRecalcCount] = useState(null)
+    const [activeTab, setActiveTab] = useState('general')
+
 
     // Sync form with settings when they load
     useEffect(() => {
@@ -63,12 +70,78 @@ export default function Settings() {
         }
     }
 
-    const [activeTab, setActiveTab] = useState('general')
+
+    // --- User Management Logic ---
+    const [usersList, setUsersList] = useState([])
+    const [loadingUsers, setLoadingUsers] = useState(false)
+
+    useEffect(() => {
+        if (activeTab === 'users' && (role === 'admin' || role === 'owner')) {
+            loadUsers()
+        }
+    }, [activeTab, role])
+
+    const loadUsers = async () => {
+        setLoadingUsers(true)
+        try {
+            const data = await getAllUsers()
+            setUsersList(data)
+        } catch (error) {
+            console.error(error)
+        } finally {
+            setLoadingUsers(false)
+        }
+    }
+
+    const availablePermissions = [
+        { key: 'dashboard', label: 'Дашборд' },
+        { key: 'sales', label: 'Заказы' },
+        { key: 'products', label: 'Букеты' },
+        { key: 'flowers', label: 'Цветы' },
+        { key: 'goods', label: 'Доп. товары' },
+        { key: 'categories', label: 'Категории' },
+        { key: 'supplies', label: 'Поставки' },
+        { key: 'stock', label: 'Склад' },
+        { key: 'expenses', label: 'Расходы' },
+        { key: 'settings', label: 'Настройки' },
+    ]
+
+    const handleTogglePermission = async (userId, permKey) => {
+        const userIndex = usersList.findIndex(u => u.id === userId)
+        if (userIndex === -1) return
+
+        const targetUser = usersList[userIndex]
+        const currentPerms = targetUser.permissions || []
+        let newPerms
+
+        if (currentPerms.includes(permKey)) {
+            newPerms = currentPerms.filter(p => p !== permKey)
+        } else {
+            newPerms = [...currentPerms, permKey]
+        }
+
+        // Optimistic Update
+        const updatedUser = { ...targetUser, permissions: newPerms }
+        const newUsersList = [...usersList]
+        newUsersList[userIndex] = updatedUser
+        setUsersList(newUsersList)
+
+        try {
+            await updateUserPermissions(userId, newPerms)
+        } catch (error) {
+            console.error('Failed to update permissions', error)
+            alert('Ошибка при сохранении прав!')
+            loadUsers() // Revert
+        }
+    }
+
+
 
     const tabs = [
         { id: 'general', label: 'Основные', icon: Save },
         { id: 'security', label: 'Безопасность', icon: Lock },
         { id: 'system', label: 'Система', icon: RefreshCw },
+        ...((role === 'admin' || role === 'owner') ? [{ id: 'users', label: 'Пользователи', icon: Users }] : [])
     ]
 
     return (
@@ -235,7 +308,67 @@ export default function Settings() {
                         )}
                     </div>
                 )}
+
+                {/* USERS TAB */}
+                {activeTab === 'users' && (
+                    <div className="card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
+                            <h2 style={{ fontSize: '1.25rem' }}>Управление доступом</h2>
+                            <button className="btn" onClick={loadUsers} disabled={loadingUsers} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                                <RefreshCw size={14} className={loadingUsers ? 'spin' : ''} /> Обновить
+                            </button>
+                        </div>
+
+                        {loadingUsers && usersList.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Загрузка пользователей...</div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                {usersList.map(user => (
+                                    <div key={user.id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem', background: '#f9fafb' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                            <div>
+                                                <div style={{ fontWeight: 600, fontSize: '1rem' }}>{user.email || 'Без email'}</div>
+                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                                                    Роль: <span style={{ background: user.role === 'admin' ? '#fce7f3' : '#e0f2fe', color: user.role === 'admin' ? '#be185d' : '#0369a1', padding: '2px 8px', borderRadius: '99px' }}>
+                                                        {user.role}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.5rem' }}>
+                                            {availablePermissions.map(perm => {
+                                                const hasAccess = (user.permissions || []).includes(perm.key)
+                                                return (
+                                                    <label key={perm.key} style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        fontSize: '0.9rem',
+                                                        cursor: 'pointer',
+                                                        padding: '0.4rem',
+                                                        borderRadius: '6px',
+                                                        background: hasAccess ? '#fff' : 'transparent',
+                                                        border: hasAccess ? '1px solid var(--primary)' : '1px solid transparent'
+                                                    }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={hasAccess}
+                                                            onChange={() => handleTogglePermission(user.id, perm.key)}
+                                                            disabled={user.role === 'admin' && perm.key === 'settings' && user.id === usersList.find(u => u.role === 'admin')?.id} // Prevent admin locking themselves out of settings potentially? Actually risky to user.
+                                                        />
+                                                        {perm.label}
+                                                    </label>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
-        </div>
+        </div >
     )
 }

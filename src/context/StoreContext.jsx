@@ -3,21 +3,47 @@ import { supabase } from '../supabase'
 
 const StoreContext = createContext()
 
+// Helper for localStorage persistence
+function usePersistedState(key, initialValue) {
+    const [state, setState] = useState(() => {
+        try {
+            const item = localStorage.getItem(key)
+            return item ? JSON.parse(item) : initialValue
+        } catch (error) {
+            console.error('Error reading localStorage key “' + key + '”:', error)
+            return initialValue
+        }
+    })
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(key, JSON.stringify(state))
+        } catch (error) {
+            console.error('Error writing localStorage key “' + key + '”:', error)
+        }
+    }, [key, state])
+
+    return [state, setState]
+}
+
 export function StoreProvider({ children }) {
-    const [flowers, setFlowers] = useState([])
-    const [goods, setGoods] = useState([])
-    const [categories, setCategories] = useState([])
-    const [products, setProducts] = useState([])
-    const [suppliers, setSuppliers] = useState([])
-    const [supplies, setSupplies] = useState([])
-    const [expenses, setExpenses] = useState([])
-    const [sales, setSales] = useState([])
-    const [couriers, setCouriers] = useState([])
-    const [florists, setFlorists] = useState([])
-    const [settings, setSettings] = useState({ markup_percentage: 30, delivery_cost: 500 })
-    const [stock, setStock] = useState([])
-    const [stockTransactions, setStockTransactions] = useState([])
-    const [loading, setLoading] = useState(true)
+    const [flowers, setFlowers] = usePersistedState('store_flowers', [])
+    const [goods, setGoods] = usePersistedState('store_goods', [])
+    const [categories, setCategories] = usePersistedState('store_categories', [])
+    const [products, setProducts] = usePersistedState('store_products', [])
+    const [suppliers, setSuppliers] = usePersistedState('store_suppliers', [])
+    const [supplies, setSupplies] = usePersistedState('store_supplies', [])
+    const [expenses, setExpenses] = usePersistedState('store_expenses', [])
+    const [sales, setSales] = usePersistedState('store_sales', [])
+    const [couriers, setCouriers] = usePersistedState('store_couriers', [])
+    const [florists, setFlorists] = usePersistedState('store_florists', [])
+    const [settings, setSettings] = usePersistedState('store_settings', { markup_percentage: 30, delivery_cost: 500 })
+    const [stock, setStock] = usePersistedState('store_stock', [])
+    const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
+
+    // Loading is false if we have products (assuming if we have products we have a cache)
+    // But we still fetch in background.
+    const [loading, setLoading] = useState(!localStorage.getItem('store_products'))
 
     // Initial Data Fetch
     useEffect(() => {
