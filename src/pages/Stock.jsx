@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
+import { useAuth } from '../context/AuthContext'
 import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import { supabase } from '../supabase'
@@ -11,6 +12,7 @@ export default function Stock() {
         getStockQty, getLowStockItems, getItemName
     } = useStore()
 
+    const { user } = useAuth()
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState('all') // 'all', 'flowers', 'goods', 'low'
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -25,6 +27,14 @@ export default function Stock() {
     const [itemId, setItemId] = useState('')
     const [editQty, setEditQty] = useState(0)
     const [editMinQty, setEditMinQty] = useState(5)
+    const [wasteReason, setWasteReason] = useState('Вялость')
+    const WASTE_REASONS = [
+        'Вялость',
+        'Брак поставщика',
+        'Ошибка флориста',
+        'Слом при сборке',
+        'Другое'
+    ]
 
     // Pagination for transactions
     const [currentPage, setCurrentPage] = useState(1)
@@ -180,10 +190,11 @@ export default function Stock() {
 
     const handleRecordWaste = async () => {
         if (!selectedItem || qty <= 0) return
-        await recordWaste(selectedItem.type, selectedItem.id, qty, notes || 'Брак')
+        await recordWaste(selectedItem.type, selectedItem.id, qty, notes || wasteReason, wasteReason, user?.id)
         setIsWasteModalOpen(false)
         setQty(1)
         setNotes('')
+        setWasteReason('Вялость')
         setSelectedItem(null)
     }
 
@@ -191,6 +202,7 @@ export default function Stock() {
         setSelectedItem(item)
         setQty(1)
         setNotes('')
+        setWasteReason('Вялость')
         setIsWasteModalOpen(true)
     }
 
@@ -226,7 +238,7 @@ export default function Stock() {
             alert('Этой позиции нет на складе.')
             return
         }
-        if (!window.confirm(`Удалить "${item.name}" со склада? Это действие нельзя отменить.`)) return
+        if (!window.confirm(`Удалить "${item.name}" со склада ? Это действие нельзя отменить.`)) return
 
         try {
             const { error } = await supabase.from('stock').delete().eq('id', item.stock_id)
@@ -237,13 +249,13 @@ export default function Stock() {
             window.location.reload()
         } catch (err) {
             console.error('Delete error:', err)
-            alert(`Ошибка удаления: ${err.message}`)
+            alert(`Ошибка удаления: ${err.message} `)
         }
     }
 
     // Undo waste transaction
     const handleUndoWaste = async (wasteItem) => {
-        if (!window.confirm(`Отменить списание "${wasteItem.itemName}"? Товар вернется на склад.`)) return
+        if (!window.confirm(`Отменить списание "${wasteItem.itemName}" ? Товар вернется на склад.`)) return
 
         try {
             // 1. Delete transaction
@@ -490,7 +502,7 @@ export default function Stock() {
                         ) : (
                             filteredInventory.map(item => (
                                 <div
-                                    key={`${item.type}-${item.id}`}
+                                    key={`${item.type} -${item.id} `}
                                     style={{
                                         display: 'grid',
                                         gridTemplateColumns: isMobile ? '2fr 1fr 1fr' : '3fr 1fr 1fr 1fr 1fr 100px',
@@ -653,7 +665,7 @@ export default function Stock() {
                                                 width: '32px',
                                                 height: '32px',
                                                 borderRadius: '50%',
-                                                background: `${typeInfo.color}15`,
+                                                background: `${typeInfo.color} 15`,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',

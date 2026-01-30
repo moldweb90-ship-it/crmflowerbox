@@ -40,6 +40,7 @@ export function StoreProvider({ children }) {
     const [settings, setSettings] = usePersistedState('store_settings', { markup_percentage: 30, delivery_cost: 500 })
     const [stock, setStock] = usePersistedState('store_stock', [])
     const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
+    const [customers, setCustomers] = usePersistedState('store_customers', [])
 
     // Loading is false if we have products (assuming if we have products we have a cache)
     // But we still fetch in background.
@@ -66,10 +67,11 @@ export function StoreProvider({ children }) {
                 supabase.from('florists').select('*').order('name', { ascending: true }),
                 supabase.from('settings').select('*').single(),
                 supabase.from('stock').select('*'),
-                supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(100)
+                supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(100),
+                supabase.from('customers').select('*').order('created_at', { ascending: false })
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, s, stk, stkTrans] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, s, stk, stkTrans, cust] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -95,6 +97,7 @@ export function StoreProvider({ children }) {
             }
             if (stk.data) setStock(stk.data)
             if (stkTrans.data) setStockTransactions(stkTrans.data)
+            if (cust.data) setCustomers(cust.data)
         } catch (error) {
             console.error('Error fetching data:', error)
         } finally {
@@ -231,6 +234,11 @@ export function StoreProvider({ children }) {
             const { error: err2 } = await supabase.from('sales').delete().neq('id', '00000000-0000-0000-0000-000000000000')
             if (err2) throw err2
             setSales([])
+
+            // Delete all stock transactions (Waste history)
+            const { error: err3 } = await supabase.from('stock_transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+            if (err3) throw err3
+            setStockTransactions([])
 
             return { success: true }
         } catch (error) {
@@ -504,34 +512,80 @@ export function StoreProvider({ children }) {
 
     // Sales
     const addSale = async (sale) => {
-        const { data, error } = await supabase.from('sales').insert([sale]).select('*, products(name, sku, composition), couriers(name), florists(name)')
-        if (data) {
-            setSales([data[0], ...sales])
+        try {
+            // 1. Найти или создать клиента по email/phone (только если они не пустые)
+            let customerId = sale.customer_id
+            const hasEmail = sale.customer_email && sale.customer_email.trim()
+            const hasPhone = sale.customer_phone && sale.customer_phone.trim()
+            
+            if (!customerId && (hasEmail || hasPhone)) {
+                const customerResult = await findOrCreateCustomer({
+                    name: sale.customer_name || sale.recipient_name || 'Клиент',
+                    email: sale.customer_email,
+                    phone: sale.customer_phone,
+                    occasion: sale.occasion
+                })
+                customerId = customerResult.customerId
+            }
 
-            // Auto-deduct stock from product composition
-            const saleData = data[0]
-            const product = products.find(p => p.id === sale.product_id)
-            if (product?.composition && product.composition.length > 0) {
-                for (const comp of product.composition) {
-                    const existing = stock.find(s => s.item_type === comp.type && s.item_id === comp.id)
-                    if (existing) {
-                        const newQty = Math.max(0, existing.quantity - (comp.qty || 1))
-                        await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
-                        setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+            // 2. Очистить все UUID поля от пустых строк
+            const salePayload = { ...sale }
+            
+            // Очищаем customer_id
+            if (customerId && typeof customerId === 'string' && customerId.length > 0) {
+                salePayload.customer_id = customerId
+            } else {
+                delete salePayload.customer_id
+            }
+            
+            // Очищаем другие UUID поля (product_id, courier_id, florist_id)
+            const uuidFields = ['product_id', 'courier_id', 'florist_id']
+            uuidFields.forEach(field => {
+                if (!salePayload[field] || salePayload[field] === '' || salePayload[field].trim() === '') {
+                    delete salePayload[field]
+                }
+            })
+            
+            const { data, error } = await supabase.from('sales').insert([salePayload]).select('*, products(name, sku, composition), couriers(name), florists(name)')
+            
+            if (error) throw error
+            
+            if (data) {
+                setSales([data[0], ...sales])
 
-                        // Log transaction
-                        await supabase.from('stock_transactions').insert([{
-                            item_type: comp.type,
-                            item_id: comp.id,
-                            quantity: -(comp.qty || 1),
-                            transaction_type: 'sale',
-                            reference_id: saleData.id
-                        }])
+                // 3. Обновить статистику клиента
+                if (customerId && sale.sale_price) {
+                    await updateCustomerStats(customerId, Number(sale.sale_price))
+                }
+
+                // 4. Auto-deduct stock from product composition
+                const saleData = data[0]
+                const product = products.find(p => p.id === sale.product_id)
+                if (product?.composition && product.composition.length > 0) {
+                    for (const comp of product.composition) {
+                        const existing = stock.find(s => s.item_type === comp.type && s.item_id === comp.id)
+                        if (existing) {
+                            const newQty = Math.max(0, existing.quantity - (comp.qty || 1))
+                            await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
+                            setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+
+                            // Log transaction
+                            await supabase.from('stock_transactions').insert([{
+                                item_type: comp.type,
+                                item_id: comp.id,
+                                quantity: -(comp.qty || 1),
+                                transaction_type: 'sale',
+                                reference_id: saleData.id
+                            }])
+                        }
                     }
                 }
             }
+            return { success: !error, error, data: data?.[0] }
+        } catch (error) {
+            console.error('Error in addSale:', error)
+            return { success: false, error }
         }
-        return { success: !error, error, data: data?.[0] }
     }
     const updateSale = async (id, updates) => {
         const { error } = await supabase.from('sales').update(updates).eq('id', id)
@@ -688,15 +742,14 @@ export function StoreProvider({ children }) {
         }
     }
 
-    // Remove from stock (sale or waste)
-    const removeFromStock = async (itemType, itemId, qty, transactionType = 'sale', referenceId = null, notes = null) => {
+    // Remove from stock (sale, waste, manual)
+    const removeFromStock = async (itemType, itemId, qty, transactionType = 'manual', referenceId = null, notes = null, reason = null, userId = null) => {
         try {
+            // 1. Get current stock
             const existing = stock.find(s => s.item_type === itemType && s.item_id === itemId)
-            if (!existing) {
-                console.warn(`Stock not found for ${itemType}:${itemId}`)
-                return { success: false, error: 'Stock not found' }
-            }
+            if (!existing || existing.quantity < qty) return { success: false, error: 'Not enough stock' }
 
+            // 2. Update stock record
             const newQty = Math.max(0, existing.quantity - qty)
             const { error } = await supabase
                 .from('stock')
@@ -714,7 +767,9 @@ export function StoreProvider({ children }) {
                     quantity: -qty,
                     transaction_type: transactionType,
                     reference_id: referenceId,
-                    notes
+                    notes,
+                    reason: reason,
+                    created_by: userId
                 }])
                 .select()
             if (txError) throw txError
@@ -728,8 +783,8 @@ export function StoreProvider({ children }) {
     }
 
     // Record waste (shorthand for removeFromStock with 'waste' type)
-    const recordWaste = async (itemType, itemId, qty, notes = '') => {
-        return removeFromStock(itemType, itemId, qty, 'waste', null, notes)
+    const recordWaste = async (itemType, itemId, qty, notes = '', reason = '', userId = null) => {
+        return removeFromStock(itemType, itemId, qty, 'waste', null, notes, reason, userId)
     }
 
     // Update minimum quantity threshold
@@ -759,6 +814,118 @@ export function StoreProvider({ children }) {
         return item?.name || 'Неизвестный товар'
     }
 
+    // ================== CUSTOMERS MANAGEMENT ==================
+
+    // Find or create customer by email or phone
+    const findOrCreateCustomer = async (customerData) => {
+        try {
+            const { name, email, phone, occasion } = customerData
+            
+            // Нормализация: пустые строки → null
+            const cleanEmail = email && email.trim() ? email.trim() : null
+            const cleanPhone = phone && phone.trim() ? phone.replace(/\s+/g, '').trim() : null
+            
+            // Если нет ни email, ни phone - не создаём клиента
+            if (!cleanEmail && !cleanPhone) {
+                return { customerId: null, isNew: false }
+            }
+            
+            // Поиск существующего клиента
+            let customer = null
+            
+            if (cleanEmail) {
+                const { data } = await supabase.from('customers').select('*').eq('email', cleanEmail).single()
+                customer = data
+            }
+            
+            if (!customer && cleanPhone) {
+                const { data } = await supabase.from('customers').select('*').eq('phone', cleanPhone).single()
+                customer = data
+            }
+            
+            // Если нашли - возвращаем ID
+            if (customer) {
+                return { customerId: customer.id, isNew: false }
+            }
+            
+            // Если нет - создаём нового
+            const { data: newCustomer, error } = await supabase.from('customers').insert([{
+                name: name || 'Клиент',
+                email: cleanEmail,
+                phone: cleanPhone,
+                status: 'regular'
+            }]).select().single()
+            
+            if (error) throw error
+            
+            if (newCustomer) {
+                setCustomers([newCustomer, ...customers])
+                return { customerId: newCustomer.id, isNew: true }
+            }
+            
+            return { customerId: null, isNew: false }
+        } catch (error) {
+            console.error('Error in findOrCreateCustomer:', error)
+            return { customerId: null, isNew: false }
+        }
+    }
+
+    // Update customer stats after order
+    const updateCustomerStats = async (customerId, orderAmount) => {
+        try {
+            const customer = customers.find(c => c.id === customerId)
+            if (!customer) return
+            
+            const newTotalOrders = (customer.total_orders || 0) + 1
+            const newTotalSpent = (customer.total_spent || 0) + orderAmount
+            const newAverageCheck = newTotalSpent / newTotalOrders
+            
+            const { error } = await supabase.from('customers').update({
+                total_orders: newTotalOrders,
+                total_spent: newTotalSpent,
+                average_check: newAverageCheck,
+                last_order_date: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }).eq('id', customerId)
+            
+            if (!error) {
+                setCustomers(customers.map(c => c.id === customerId ? {
+                    ...c,
+                    total_orders: newTotalOrders,
+                    total_spent: newTotalSpent,
+                    average_check: newAverageCheck,
+                    last_order_date: new Date().toISOString()
+                } : c))
+            }
+        } catch (error) {
+            console.error('Error updating customer stats:', error)
+        }
+    }
+
+    // Update customer
+    const updateCustomer = async (id, updates) => {
+        try {
+            const { error } = await supabase.from('customers').update({
+                ...updates,
+                updated_at: new Date().toISOString()
+            }).eq('id', id)
+            
+            if (!error) {
+                setCustomers(customers.map(c => c.id === id ? { ...c, ...updates } : c))
+                return { success: true }
+            }
+            return { success: false, error }
+        } catch (error) {
+            console.error('Error updating customer:', error)
+            return { success: false, error }
+        }
+    }
+
+    // Get customer orders
+    const getCustomerOrders = (customerId) => {
+        return sales.filter(s => s.customer_id === customerId)
+    }
+
     return (
         <StoreContext.Provider value={{
             flowers, addFlower, updateFlower, deleteFlower,
@@ -773,6 +940,7 @@ export function StoreProvider({ children }) {
             settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,
             stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
+            customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, getCustomerOrders,
             loading
         }}>
             {children}

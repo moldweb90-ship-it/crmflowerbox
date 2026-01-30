@@ -79,6 +79,16 @@ export default function Sales() {
             searchParams.delete('calendar')
             setSearchParams(searchParams, { replace: true })
         }
+        if (searchParams.get('salon') === 'true') {
+            // New Salon Sale
+            setSalonFormData(prev => ({
+                ...emptySalonForm,
+                // If needed, preset fields here
+            }))
+            setIsSalonModalOpen(true)
+            searchParams.delete('salon')
+            setSearchParams(searchParams, { replace: true })
+        }
         // Handle order number search from global search
         const orderParam = searchParams.get('order')
         if (orderParam) {
