@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse, Users } from 'lucide-react'
+import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse, Users, Bell } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { usePermissions } from '../../context/PermissionContext'
 
@@ -34,8 +34,9 @@ export default function Layout() {
         },
         {
             items: [
-                { label: 'Заказы', path: '/sales', icon: ShoppingCart },
-                { label: 'Клиенты', path: '/customers', icon: Users },
+                { label: 'Заказы', path: '/sales', icon: ShoppingCart, primary: true },
+                { label: 'Клиенты', path: '/customers', icon: Users, primary: true },
+                { label: 'Напоминания', path: '/reminders', icon: Bell, permission: 'customers' },
             ]
         },
         {
@@ -66,17 +67,7 @@ export default function Layout() {
     const filteredNavGroups = navGroups.map(group => ({
         ...group,
         items: group.items.filter(item => {
-            // Map paths to permission keys
-            // /dashboard -> dashboard
-            // /sales -> sales
-            // /products -> products
-            // /flowers -> flowers
-            // /goods -> goods
-            // /categories -> categories
-            // /supplies -> supplies
-            // /stock -> stock
-            // /expenses -> expenses
-            const permKey = item.path.substring(1)
+            const permKey = item.permission || item.path.substring(1)
             return checkAccess(permKey)
         })
     })).filter(group => group.items.length > 0)
@@ -146,7 +137,7 @@ export default function Layout() {
 
             {/* Sidebar */}
             <aside style={{
-                width: '280px',
+                width: '240px',
                 backgroundColor: 'transparent', /* Transparent to show body bg or just white floating? Let's go white fixed */
                 backgroundColor: isMobile ? 'white' : 'transparent',
                 display: 'flex',
@@ -158,13 +149,13 @@ export default function Layout() {
                 zIndex: 30,
                 transform: isMobile && !isSidebarOpen ? 'translateX(-100%)' : 'translateX(0)',
                 transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                padding: isMobile ? '0' : '1.5rem', /* Add padding for desktop floating look */
+                padding: isMobile ? '0' : '0.75rem',
             }}>
                 {/* Desktop Sidebar Content Container */}
                 <div style={{
                     backgroundColor: '#FFFFFF',
                     height: '100%',
-                    borderRadius: isMobile ? '0' : '24px',
+                    borderRadius: isMobile ? '0' : '16px',
                     display: 'flex',
                     flexDirection: 'column',
                     boxShadow: isMobile ? 'none' : 'var(--shadow-sm)',
@@ -175,34 +166,34 @@ export default function Layout() {
                     // Actually, let's make it fixed left attached but styled internally.
                 }}>
                     {!isMobile && (
-                        <Link to="/dashboard" style={{ padding: '2rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', textDecoration: 'none', color: 'inherit' }}>
-                            <div style={{ background: 'var(--secondary)', color: 'white', padding: '8px', borderRadius: '14px', display: 'flex' }}>
-                                <Flower2 size={24} />
+                        <Link to="/dashboard" style={{ padding: '1rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none', color: 'inherit' }}>
+                            <div style={{ background: 'var(--secondary)', color: 'white', padding: '6px', borderRadius: '10px', display: 'flex' }}>
+                                <Flower2 size={20} />
                             </div>
-                            <span style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>FlowerBox</span>
+                            <span style={{ fontSize: '1.1rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>FlowerBox</span>
                         </Link>
                     )}
 
                     {isMobile && <div style={{ height: '80px' }} />} {/* Spacer for mobile header */}
 
-                    <nav style={{ flex: 1, padding: '0 1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: isMobile ? '1rem' : '0' }}>
+                    <nav style={{ flex: 1, padding: '0 0.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.125rem', marginTop: isMobile ? '0.5rem' : '0' }}>
                         {filteredNavGroups.map((group, groupIndex) => (
                             <div key={groupIndex}>
                                 {/* Section title if exists */}
                                 {group.title && (
                                     <div style={{
-                                        fontSize: '0.7rem',
+                                        fontSize: '0.65rem',
                                         fontWeight: 700,
                                         textTransform: 'uppercase',
                                         letterSpacing: '0.08em',
                                         color: 'var(--primary)',
-                                        padding: '0.75rem 1.25rem',
-                                        marginTop: groupIndex > 0 ? '0.5rem' : 0,
+                                        padding: '0.4rem 0.75rem',
+                                        marginTop: groupIndex > 0 ? '0.35rem' : 0,
                                         background: 'linear-gradient(90deg, rgba(232,93,66,0.08), transparent)',
                                         borderLeft: '3px solid var(--primary)',
-                                        marginLeft: '0.5rem',
-                                        marginRight: '0.5rem',
-                                        borderRadius: '0 8px 8px 0'
+                                        marginLeft: '0.35rem',
+                                        marginRight: '0.35rem',
+                                        borderRadius: '0 6px 6px 0'
                                     }}>
                                         {group.title}
                                     </div>
@@ -213,13 +204,14 @@ export default function Layout() {
                                     <div style={{
                                         height: '1px',
                                         background: 'var(--border)',
-                                        margin: '0.75rem 1rem'
+                                        margin: '0.4rem 0.5rem'
                                     }} />
                                 )}
 
                                 {/* Group items */}
                                 {group.items.map((item) => {
                                     const isActive = location.pathname === item.path
+                                    const isPrimary = item.primary && !isActive
                                     return (
                                         <Link
                                             key={item.path}
@@ -227,18 +219,18 @@ export default function Layout() {
                                             style={{
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '0.875rem',
-                                                padding: '0.875rem 1.25rem',
-                                                borderRadius: '14px',
+                                                gap: '0.5rem',
+                                                padding: '0.5rem 0.75rem',
+                                                borderRadius: '10px',
                                                 backgroundColor: isActive ? 'var(--secondary)' : 'transparent',
-                                                color: isActive ? '#FFFFFF' : '#374151',
-                                                fontWeight: isActive ? 600 : 500,
-                                                fontSize: '0.9rem',
+                                                color: isActive ? '#FFFFFF' : isPrimary ? 'var(--primary)' : '#374151',
+                                                fontWeight: isActive ? 600 : isPrimary ? 600 : 500,
+                                                fontSize: '0.85rem',
                                                 transition: 'all 0.2s',
                                                 textDecoration: 'none'
                                             }}
                                         >
-                                            <item.icon size={20} style={{ opacity: isActive ? 1 : 0.85 }} />
+                                            <item.icon size={18} strokeWidth={isPrimary ? 2.5 : 2} />
                                             {item.label}
                                         </Link>
                                     )
@@ -248,7 +240,7 @@ export default function Layout() {
                     </nav>
 
                     {/* Bottom section: Settings + Logout */}
-                    <div style={{ padding: '1rem', borderTop: '1px solid var(--border)' }}>
+                    <div style={{ padding: '0.5rem', borderTop: '1px solid var(--border)' }}>
                         {/* Settings */}
                         {showSettings && (
                             <Link
@@ -256,19 +248,19 @@ export default function Layout() {
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.875rem',
-                                    padding: '0.875rem 1.25rem',
-                                    borderRadius: '14px',
+                                    gap: '0.5rem',
+                                    padding: '0.5rem 0.75rem',
+                                    borderRadius: '10px',
                                     backgroundColor: location.pathname === settingsItem.path ? 'var(--secondary)' : 'transparent',
                                     color: location.pathname === settingsItem.path ? '#FFFFFF' : '#374151',
                                     fontWeight: location.pathname === settingsItem.path ? 600 : 500,
-                                    fontSize: '0.9rem',
+                                    fontSize: '0.85rem',
                                     transition: 'all 0.2s',
                                     textDecoration: 'none',
-                                    marginBottom: '0.5rem'
+                                    marginBottom: '0.25rem'
                                 }}
                             >
-                                <settingsItem.icon size={20} style={{ opacity: location.pathname === settingsItem.path ? 1 : 0.85 }} />
+                                <settingsItem.icon size={18} style={{ opacity: location.pathname === settingsItem.path ? 1 : 0.85 }} />
                                 {settingsItem.label}
                             </Link>
                         )}
@@ -281,14 +273,14 @@ export default function Layout() {
                                 width: '100%',
                                 justifyContent: 'flex-start',
                                 color: 'var(--text-muted)',
-                                gap: '0.875rem',
-                                padding: '0.875rem 1.25rem',
-                                borderRadius: '14px',
+                                gap: '0.5rem',
+                                padding: '0.5rem 0.75rem',
+                                borderRadius: '10px',
                                 backgroundColor: '#F9FAFB',
-                                fontSize: '0.9rem'
+                                fontSize: '0.85rem'
                             }}
                         >
-                            <LogOut size={20} />
+                            <LogOut size={18} />
                             Выйти
                         </button>
                     </div>
@@ -315,7 +307,7 @@ export default function Layout() {
             {/* Main Content */}
             <main style={{
                 flex: 1,
-                marginLeft: isMobile ? 0 : '310px', // 280px sidebar + 30px gap
+                marginLeft: isMobile ? 0 : '270px', // 240px sidebar + 30px gap
                 padding: isMobile ? '90px 1rem 2rem 1rem' : '1.5rem 2rem 2rem 0', // Desktop: Top padding handled by header, right padding
                 width: '100%',
                 maxWidth: '1600px', // Prevent too wide on huge screens

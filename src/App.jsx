@@ -10,6 +10,7 @@ import Stock from './pages/Stock'
 import Expenses from './pages/Expenses'
 import Sales from './pages/Sales'
 import Customers from './pages/Customers'
+import Reminders from './pages/Reminders'
 import { StoreProvider } from './context/StoreContext'
 import { AuthProvider } from './context/AuthContext'
 import { PermissionProvider } from './context/PermissionContext'
@@ -41,6 +42,7 @@ function App() {
                                 <Route path="stock" element={<RequirePermission permission="stock"><Stock /></RequirePermission>} />
                                 <Route path="expenses" element={<RequirePermission permission="expenses"><Expenses /></RequirePermission>} />
                                 <Route path="customers" element={<RequirePermission permission="customers"><Customers /></RequirePermission>} />
+                                <Route path="reminders" element={<RequirePermission permission="customers"><Reminders /></RequirePermission>} />
                                 <Route path="settings" element={<RequirePermission permission="settings"><Settings /></RequirePermission>} />
                             </Route>
                         </Routes>

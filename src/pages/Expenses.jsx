@@ -11,7 +11,6 @@ const EXPENSE_CATEGORIES = [
     { id: 'taxes', label: 'Налоги', icon: '📋', color: '#ef4444' },
     { id: 'utilities', label: 'Коммуналка', icon: '💡', color: '#10b981' },
     { id: 'logistics', label: 'Логистика', icon: '🚚', color: '#3b82f6' },
-    { id: 'logistics', label: 'Логистика', icon: '🚚', color: '#3b82f6' },
     { id: 'other', label: 'Прочее', icon: '📦', color: '#6b7280' }
 ]
 

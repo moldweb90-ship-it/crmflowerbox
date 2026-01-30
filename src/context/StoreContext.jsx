@@ -41,6 +41,7 @@ export function StoreProvider({ children }) {
     const [stock, setStock] = usePersistedState('store_stock', [])
     const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
     const [customers, setCustomers] = usePersistedState('store_customers', [])
+    const [customerImportantDates, setCustomerImportantDates] = usePersistedState('store_customer_dates', [])
 
     // Loading is false if we have products (assuming if we have products we have a cache)
     // But we still fetch in background.
@@ -103,6 +104,24 @@ export function StoreProvider({ children }) {
         } finally {
             setLoading(false)
         }
+    }
+
+    // Загрузка customer_important_dates отдельно (таблица может не существовать)
+    useEffect(() => {
+        supabase.from('customer_important_dates').select('*')
+            .then(({ data }) => { if (data) setCustomerImportantDates(data) })
+            .catch(() => {})
+    }, [])
+
+    const refreshCustomersAndDates = async () => {
+        try {
+            const [cRes, dRes] = await Promise.all([
+                supabase.from('customers').select('*').order('created_at', { ascending: false }),
+                supabase.from('customer_important_dates').select('*').then(r => r).catch(() => ({ data: null }))
+            ])
+            if (cRes?.data) setCustomers(cRes.data)
+            if (dRes?.data) setCustomerImportantDates(dRes.data)
+        } catch (e) { console.warn(e) }
     }
 
     // --- Actions ---
@@ -518,6 +537,7 @@ export function StoreProvider({ children }) {
             const hasEmail = sale.customer_email && sale.customer_email.trim()
             const hasPhone = sale.customer_phone && sale.customer_phone.trim()
             
+            let customerData = null
             if (!customerId && (hasEmail || hasPhone)) {
                 const customerResult = await findOrCreateCustomer({
                     name: sale.customer_name || sale.recipient_name || 'Клиент',
@@ -526,6 +546,9 @@ export function StoreProvider({ children }) {
                     occasion: sale.occasion
                 })
                 customerId = customerResult.customerId
+                customerData = customerResult.customer
+            } else if (customerId) {
+                customerData = customers.find(c => c.id === customerId)
             }
 
             // 2. Очистить все UUID поля от пустых строк
@@ -551,15 +574,36 @@ export function StoreProvider({ children }) {
             if (error) throw error
             
             if (data) {
-                setSales([data[0], ...sales])
+                const saleData = data[0]
+                setSales([saleData, ...sales])
 
                 // 3. Обновить статистику клиента
                 if (customerId && sale.sale_price) {
-                    await updateCustomerStats(customerId, Number(sale.sale_price))
+                    await updateCustomerStats(customerId, Number(sale.sale_price), customerData)
                 }
 
+                // 3.0 Синхронизация клиента в state (чтобы сразу отображался на вкладке Клиенты)
+                if (customerId) {
+                    const { data: fresh } = await supabase.from('customers').select('*').eq('id', customerId).single()
+                    if (fresh) {
+                        setCustomers(prev => prev.some(c => c.id === customerId) ? prev.map(c => c.id === customerId ? fresh : c) : [fresh, ...prev])
+                    }
+                }
+
+                // 3.1 Сохранить важную дату из повода + даты доставки (не блокируем заказ при ошибке)
+                try {
+                    const dateOccasions = { birthday: 'birthday', anniversary: 'anniversary', wedding: 'wedding' }
+                    const dateType = dateOccasions[sale.occasion]
+                    const deliveryDateStr = sale.delivery_date?.split('T')[0]
+                    if (customerId && dateType && deliveryDateStr) {
+                        await saveImportantDate(customerId, dateType, deliveryDateStr, saleData.id)
+                        if (dateType === 'birthday') {
+                            await updateCustomer(customerId, { birthday: deliveryDateStr })
+                        }
+                    }
+                } catch (e) { console.warn('Could not save important date:', e) }
+
                 // 4. Auto-deduct stock from product composition
-                const saleData = data[0]
                 const product = products.find(p => p.id === sale.product_id)
                 if (product?.composition && product.composition.length > 0) {
                     for (const comp of product.composition) {
@@ -817,38 +861,31 @@ export function StoreProvider({ children }) {
     // ================== CUSTOMERS MANAGEMENT ==================
 
     // Find or create customer by email or phone
-    const findOrCreateCustomer = async (customerData) => {
+    const findOrCreateCustomer = async (input) => {
         try {
-            const { name, email, phone, occasion } = customerData
+            const { name, email, phone } = input
             
-            // Нормализация: пустые строки → null
             const cleanEmail = email && email.trim() ? email.trim() : null
             const cleanPhone = phone && phone.trim() ? phone.replace(/\s+/g, '').trim() : null
             
-            // Если нет ни email, ни phone - не создаём клиента
             if (!cleanEmail && !cleanPhone) {
-                return { customerId: null, isNew: false }
+                return { customerId: null, isNew: false, customer: null }
             }
             
-            // Поиск существующего клиента
             let customer = null
-            
             if (cleanEmail) {
                 const { data } = await supabase.from('customers').select('*').eq('email', cleanEmail).single()
                 customer = data
             }
-            
             if (!customer && cleanPhone) {
                 const { data } = await supabase.from('customers').select('*').eq('phone', cleanPhone).single()
                 customer = data
             }
             
-            // Если нашли - возвращаем ID
             if (customer) {
-                return { customerId: customer.id, isNew: false }
+                return { customerId: customer.id, isNew: false, customer }
             }
             
-            // Если нет - создаём нового
             const { data: newCustomer, error } = await supabase.from('customers').insert([{
                 name: name || 'Клиент',
                 email: cleanEmail,
@@ -860,30 +897,31 @@ export function StoreProvider({ children }) {
             
             if (newCustomer) {
                 setCustomers([newCustomer, ...customers])
-                return { customerId: newCustomer.id, isNew: true }
+                return { customerId: newCustomer.id, isNew: true, customer: newCustomer }
             }
             
-            return { customerId: null, isNew: false }
+            return { customerId: null, isNew: false, customer: null }
         } catch (error) {
             console.error('Error in findOrCreateCustomer:', error)
-            return { customerId: null, isNew: false }
+            return { customerId: null, isNew: false, customer: null }
         }
     }
 
     // Update customer stats after order
-    const updateCustomerStats = async (customerId, orderAmount) => {
+    const updateCustomerStats = async (customerId, orderAmount, customerFromResult = null) => {
         try {
-            const customer = customers.find(c => c.id === customerId)
-            if (!customer) return
+            const customer = customerFromResult || customers.find(c => c.id === customerId)
+            const currentOrders = customer ? (customer.total_orders || 0) : 0
+            const currentSpent = customer ? (customer.total_spent || 0) : 0
+            const currentStatus = customer?.status || 'regular'
             
-            const newTotalOrders = (customer.total_orders || 0) + 1
-            const newTotalSpent = (customer.total_spent || 0) + orderAmount
+            const newTotalOrders = currentOrders + 1
+            const newTotalSpent = currentSpent + orderAmount
             const newAverageCheck = newTotalSpent / newTotalOrders
             
             // Автоматическое присвоение VIP статуса
-            // Критерии: 10+ заказов ИЛИ 5000+ lei потрачено
-            let newStatus = customer.status
-            if (customer.status !== 'blacklist') {
+            let newStatus = currentStatus
+            if (currentStatus !== 'blacklist') {
                 if (newTotalOrders >= 10 || newTotalSpent >= 5000) {
                     newStatus = 'vip'
                 }
@@ -899,14 +937,14 @@ export function StoreProvider({ children }) {
             }).eq('id', customerId)
             
             if (!error) {
-                setCustomers(customers.map(c => c.id === customerId ? {
-                    ...c,
-                    total_orders: newTotalOrders,
-                    total_spent: newTotalSpent,
-                    average_check: newAverageCheck,
-                    status: newStatus,
-                    last_order_date: new Date().toISOString()
-                } : c))
+                setCustomers(prev => {
+                    const idx = prev.findIndex(c => c.id === customerId)
+                    const updated = { total_orders: newTotalOrders, total_spent: newTotalSpent, average_check: newAverageCheck, status: newStatus, last_order_date: new Date().toISOString() }
+                    if (idx >= 0) {
+                        return prev.map(c => c.id === customerId ? { ...c, ...updated } : c)
+                    }
+                    return [{ ...(customer || {}), id: customerId, ...updated }, ...prev]
+                })
             }
         } catch (error) {
             console.error('Error updating customer stats:', error)
@@ -935,6 +973,119 @@ export function StoreProvider({ children }) {
     // Get customer orders
     const getCustomerOrders = (customerId) => {
         return sales.filter(s => s.customer_id === customerId)
+    }
+
+    // Save/update important date (birthday, anniversary, wedding)
+    const saveImportantDate = async (customerId, dateType, eventDate, sourceSaleId = null) => {
+        try {
+            const payload = {
+                customer_id: customerId,
+                date_type: dateType,
+                event_date: eventDate,
+                updated_at: new Date().toISOString()
+            }
+            if (sourceSaleId) payload.source_sale_id = sourceSaleId
+
+            const { data, error } = await supabase.from('customer_important_dates')
+                .upsert(payload, { onConflict: 'customer_id,date_type' })
+                .select()
+
+            if (!error && data?.[0]) {
+                const existing = customerImportantDates.filter(d => !(d.customer_id === customerId && d.date_type === dateType))
+                setCustomerImportantDates([data[0], ...existing])
+                return { success: true }
+            }
+            return { success: false, error }
+        } catch (err) {
+            console.error('Error saving important date:', err)
+            return { success: false, error: err }
+        }
+    }
+
+    // Delete important date
+    const deleteImportantDate = async (id) => {
+        try {
+            const { error } = await supabase.from('customer_important_dates').delete().eq('id', id)
+            if (!error) {
+                setCustomerImportantDates(customerImportantDates.filter(d => d.id !== id))
+                return { success: true }
+            }
+            return { success: false, error }
+        } catch (err) {
+            console.error('Error deleting important date:', err)
+            return { success: false, error: err }
+        }
+    }
+
+    // Get important dates for customer (from customer_important_dates + birthday fallback)
+    const getCustomerImportantDates = (customerId) => {
+        const fromTable = customerImportantDates.filter(d => d.customer_id === customerId)
+        const customer = customers.find(c => c.id === customerId)
+        const hasBirthdayInTable = fromTable.some(d => d.date_type === 'birthday')
+        if (!hasBirthdayInTable && customer?.birthday) {
+            return [{ date_type: 'birthday', event_date: customer.birthday, fromCustomer: true }, ...fromTable]
+        }
+        return fromTable
+    }
+
+    // Get upcoming reminders (next N days, for all customers)
+    const getUpcomingReminders = (daysAhead = 60, typeFilter = null) => {
+        const now = new Date()
+        const results = []
+        const typeLabels = { birthday: '🎂 ДР', anniversary: '🎉 Юбилей', wedding: '💒 Свадьба', other: '🎈 Другое' }
+
+        customerImportantDates.forEach(d => {
+            const [y, m, day] = (d.event_date || '').split('-').map(Number)
+            if (!m || !day) return
+            if (typeFilter && d.date_type !== typeFilter) return
+
+            for (let yOffset = 0; yOffset <= 1; yOffset++) {
+                const eventThisYear = new Date(now.getFullYear() + yOffset, m - 1, day)
+                const diffDays = Math.ceil((eventThisYear - now) / (1000 * 60 * 60 * 24))
+                if (diffDays >= 0 && diffDays <= daysAhead) {
+                    const customer = customers.find(c => c.id === d.customer_id)
+                    if (customer) {
+                        results.push({
+                            ...d,
+                            customer,
+                            daysUntil: diffDays,
+                            displayDate: eventThisYear.toISOString().split('T')[0],
+                            typeLabel: typeLabels[d.date_type] || d.date_type
+                        })
+                    }
+                }
+            }
+        })
+
+        if (customers.some(c => c.birthday)) {
+            customers.forEach(c => {
+                if (!c.birthday || typeFilter === 'anniversary' || typeFilter === 'wedding') return
+                const existing = customerImportantDates.some(d => d.customer_id === c.id && d.date_type === 'birthday')
+                if (existing) return
+
+                const [y, m, day] = (c.birthday || '').split('-').map(Number)
+                if (!m || !day) return
+
+                for (let yOffset = 0; yOffset <= 1; yOffset++) {
+                    const eventThisYear = new Date(now.getFullYear() + yOffset, m - 1, day)
+                    const diffDays = Math.ceil((eventThisYear - now) / (1000 * 60 * 60 * 24))
+                    if (diffDays >= 0 && diffDays <= daysAhead) {
+                        results.push({
+                            customer_id: c.id,
+                            customer: c,
+                            date_type: 'birthday',
+                            event_date: c.birthday,
+                            daysUntil: diffDays,
+                            displayDate: eventThisYear.toISOString().split('T')[0],
+                            typeLabel: '🎂 ДР',
+                            fromCustomer: true
+                        })
+                    }
+                }
+            })
+        }
+
+        return results.sort((a, b) => a.daysUntil - b.daysUntil)
     }
 
     // Delete customer
@@ -986,7 +1137,8 @@ export function StoreProvider({ children }) {
             calculatePrice, calculateCostPrice,
             stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
             customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, deleteCustomer, getCustomerOrders,
-            loading
+            customerImportantDates, saveImportantDate, deleteImportantDate, getCustomerImportantDates, getUpcomingReminders,
+            refreshCustomersAndDates, loading
         }}>
             {children}
         </StoreContext.Provider>

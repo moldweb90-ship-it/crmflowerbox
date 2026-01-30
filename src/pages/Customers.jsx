@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Users, Search, Phone, Mail, Star, Ban, User, TrendingUp, Calendar, Package, ChevronRight, Edit2, Heart, Trash2 } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Users, Search, Phone, Mail, Star, Ban, User, TrendingUp, Calendar, Package, ChevronRight, Edit2, Heart, Trash2, Plus } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 const STATUS_OPTIONS = [
@@ -10,7 +11,9 @@ const STATUS_OPTIONS = [
 ]
 
 export default function Customers() {
-    const { customers, updateCustomer, deleteCustomer, getCustomerOrders, sales } = useStore()
+    const { customers, updateCustomer, deleteCustomer, getCustomerOrders, getCustomerImportantDates, saveImportantDate, deleteImportantDate, refreshCustomersAndDates } = useStore()
+    const location = useLocation()
+    const navigate = useNavigate()
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
     const [selectedCustomer, setSelectedCustomer] = useState(null)
@@ -22,6 +25,20 @@ export default function Customers() {
         window.addEventListener('resize', handleResize)
         return () => window.removeEventListener('resize', handleResize)
     }, [])
+
+    useEffect(() => { if (location.pathname === '/customers') refreshCustomersAndDates() }, [location.pathname])
+
+    useEffect(() => {
+        const openId = location.state?.openCustomerId
+        if (openId && customers.length) {
+            const customer = customers.find(c => c.id === openId)
+            if (customer) {
+                setSelectedCustomer(customer)
+                setIsViewOpen(true)
+            }
+            navigate(location.pathname, { replace: true, state: {} })
+        }
+    }, [location.state?.openCustomerId, customers])
 
     // Фильтрация клиентов
     const filteredCustomers = useMemo(() => {
@@ -290,17 +307,28 @@ export default function Customers() {
 
             {/* Карточка клиента */}
             <Modal isOpen={isViewOpen} onClose={() => setIsViewOpen(false)} title="Карточка клиента" maxWidth="900px">
-                {selectedCustomer && <CustomerCard customer={selectedCustomer} onUpdate={handleUpdateStatus} onUpdatePreferences={handleUpdatePreferences} onDelete={handleDeleteCustomer} getCustomerOrders={getCustomerOrders} />}
+                {selectedCustomer && <CustomerCard customer={selectedCustomer} onUpdate={handleUpdateStatus} onUpdatePreferences={handleUpdatePreferences} onDelete={handleDeleteCustomer} getCustomerOrders={getCustomerOrders} getImportantDates={getCustomerImportantDates} onSaveDate={saveImportantDate} onDeleteDate={deleteImportantDate} />}
             </Modal>
         </div>
     )
 }
 
+const DATE_TYPE_OPTIONS = [
+    { id: 'birthday', label: 'День рождения', icon: '🎂' },
+    { id: 'anniversary', label: 'Юбилей', icon: '🎉' },
+    { id: 'wedding', label: 'Свадьба', icon: '💒' },
+    { id: 'other', label: 'Другое', icon: '🎈' }
+]
+
 // Компонент карточки клиента
-function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCustomerOrders }) {
+function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCustomerOrders, getImportantDates, onSaveDate, onDeleteDate }) {
     const [editPreferences, setEditPreferences] = useState(false)
     const [preferences, setPreferences] = useState(customer.preferences || '')
+    const [isAddingDate, setIsAddingDate] = useState(false)
+    const [newDateType, setNewDateType] = useState('birthday')
+    const [newDateValue, setNewDateValue] = useState('')
     const orders = getCustomerOrders(customer.id)
+    const importantDates = getImportantDates(customer.id)
     const statusData = STATUS_OPTIONS.find(s => s.id === customer.status) || STATUS_OPTIONS[0]
     const StatusIcon = statusData.icon
 
@@ -440,6 +468,72 @@ function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCu
                 ) : (
                     <div style={{ padding: '1rem', background: '#fef3c7', borderRadius: '8px', minHeight: '60px', whiteSpace: 'pre-wrap' }}>
                         {customer.preferences || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Предпочтения не указаны</span>}
+                    </div>
+                )}
+            </div>
+
+            {/* Важные даты */}
+            <div className="card" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Calendar size={18} color="#e879f9" /> Важные даты
+                    </h4>
+                    {!isAddingDate && (
+                        <button
+                            onClick={() => { setIsAddingDate(true); setNewDateValue(''); setNewDateType('birthday') }}
+                            style={{ padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid #e879f9', background: '#fdf4ff', color: '#c026d3', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                        >
+                            <Plus size={14} /> Добавить
+                        </button>
+                    )}
+                </div>
+                {isAddingDate && (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Тип</label>
+                            <select className="input" value={newDateType} onChange={(e) => setNewDateType(e.target.value)} style={{ padding: '0.5rem' }}>
+                                {DATE_TYPE_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.icon} {o.label}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Дата</label>
+                            <input type="date" className="input" value={newDateValue} onChange={(e) => setNewDateValue(e.target.value)} style={{ padding: '0.5rem' }} />
+                        </div>
+                        <button
+                            onClick={async () => {
+                                if (!newDateValue) return
+                                await onSaveDate(customer.id, newDateType, newDateValue)
+                                setIsAddingDate(false)
+                                setNewDateValue('')
+                            }}
+                            style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: '#c026d3', color: 'white', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                            Сохранить
+                        </button>
+                        <button onClick={() => setIsAddingDate(false)} style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer' }}>
+                            Отмена
+                        </button>
+                    </div>
+                )}
+                {importantDates.length === 0 ? (
+                    <div style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                        Нет важных дат. Добавьте ДР, юбилей или свадьбу — они появятся в Напоминаниях.
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {importantDates.map(d => {
+                            const typeInfo = DATE_TYPE_OPTIONS.find(t => t.id === d.date_type) || DATE_TYPE_OPTIONS[3]
+                            return (
+                                <div key={d.id || d.event_date + d.date_type} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: '#fdf4ff', borderRadius: '8px', border: '1px solid #f5d0fe' }}>
+                                    <span>{typeInfo.icon} {typeInfo.label}: {d.event_date ? new Date(d.event_date).toLocaleDateString('ru-RU') : '—'}</span>
+                                    {d.id && !d.fromCustomer && (
+                                        <button onClick={() => onDeleteDate(d.id)} style={{ padding: '0.25rem', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }} title="Удалить">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        })}
                     </div>
                 )}
             </div>

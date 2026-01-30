@@ -2,7 +2,7 @@
 import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
-import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock } from 'lucide-react'
+import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone } from 'lucide-react'
 
 const STALE_DAYS = 7
 
@@ -39,7 +39,7 @@ function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies
 }
 
 export default function Dashboard() {
-    const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, getItemName } = useStore()
+    const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, customers, getItemName } = useStore()
     const navigate = useNavigate()
 
     // Waste Analytics — один период 30 дней для списаний и выручки
@@ -124,6 +124,49 @@ export default function Dashboard() {
         staleList.sort((a, b) => b.days - a.days)
         return { totalStockValue, staleList }
     }, [stock, stockTransactions, supplies, flowers, goods])
+
+    // Клиенты: New vs Old (по ЗАКАЗАМ: 1-й заказ = новый, 2+ = повторный) + Кого теряем
+    const customerStats = React.useMemo(() => {
+        const now = new Date()
+        const thirtyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30, 0, 0, 0, 0)
+        const ninetyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90, 0, 0, 0, 0)
+
+        const salesWithCustomer = sales.filter(s => s.customer_id).map(s => ({
+            ...s,
+            orderDate: new Date(s.order_date || s.created_at)
+        })).sort((a, b) => a.orderDate - b.orderDate)
+
+        const salesInPeriod = salesWithCustomer.filter(s => s.orderDate >= thirtyDaysAgo)
+
+        let newCount = 0
+        let returningCount = 0
+        salesInPeriod.forEach(sale => {
+            const ordersBeforeThis = salesWithCustomer.filter(s =>
+                s.customer_id === sale.customer_id && s.orderDate < sale.orderDate
+            )
+            if (ordersBeforeThis.length === 0) {
+                newCount++
+            } else {
+                returningCount++
+            }
+        })
+
+        const totalOrders = newCount + returningCount
+        const returningPercent = totalOrders > 0 ? Math.round((returningCount / totalOrders) * 100) : 0
+
+        const lostCustomers = customers.filter(c => {
+            const orders = c.total_orders || 0
+            if (orders < 2) return false
+            const lastOrder = c.last_order_date ? new Date(c.last_order_date) : null
+            if (!lastOrder) return false
+            return lastOrder < ninetyDaysAgo
+        }).map(c => ({
+            ...c,
+            daysSinceOrder: Math.floor((now - new Date(c.last_order_date)) / (24 * 60 * 60 * 1000))
+        })).sort((a, b) => b.daysSinceOrder - a.daysSinceOrder)
+
+        return { newCount, returningCount, returningPercent, lostCustomers }
+    }, [sales, customers])
 
     const totalValue = products.reduce((acc, p) => acc + (p.price || 0), 0)
     const totalItems = flowers.length + goods.length
@@ -332,10 +375,10 @@ export default function Dashboard() {
                 </Link>
             </div>
 
-            {/* Два блока 50/50 на ПК: Аналитика списаний + Движение склада */}
+            {/* Три блока на ПК: Аналитика списаний + Движение склада + Клиенты */}
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr',
                 gap: '1.5rem',
                 marginBottom: '4rem'
             }}>
@@ -440,6 +483,76 @@ export default function Dashboard() {
                                 </div>
                             ) : (
                                 <div style={{ fontSize: '0.8rem', color: '#16a34a' }}>Зависших позиций нет</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Клиенты (LTV и Возвращаемость) */}
+                <div>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', marginLeft: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Users size={20} color="#8b5cf6" />
+                        Клиенты (30 дней)
+                    </h2>
+                    <div className="card" style={{
+                        background: 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)',
+                        border: '1px solid #C4B5FD',
+                        padding: '1.25rem',
+                        height: isMobile ? 'auto' : '100%',
+                        minHeight: isMobile ? 0 : '140px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1rem'
+                    }}>
+                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '100px' }}>
+                                <div style={{ padding: '0.5rem', background: '#8b5cf6', borderRadius: '50%', color: 'white' }}>
+                                    <UserPlus size={16} />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5b21b6' }}>Новые</div>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#4c1d95' }}>{customerStats.newCount}</div>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '100px' }}>
+                                <div style={{ padding: '0.5rem', background: '#a78bfa', borderRadius: '50%', color: 'white' }}>
+                                    <RotateCcw size={16} />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5b21b6' }}>Повторные</div>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#4c1d95' }}>{customerStats.returningCount}</div>
+                                    <div style={{ fontSize: '0.7rem', color: customerStats.returningPercent >= 25 ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
+                                        {customerStats.returningPercent}% · норма 25%+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ borderTop: '1px solid #ddd6fe', paddingTop: '0.75rem', flex: 1, minHeight: 0 }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7c3aed', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <Phone size={14} /> Кого теряем (3+ мес без заказов)
+                            </div>
+                            {customerStats.lostCustomers.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: isMobile ? 'none' : '100px', overflowY: 'auto' }}>
+                                    {customerStats.lostCustomers.slice(0, 6).map(c => (
+                                        <Link
+                                            key={c.id}
+                                            to="/customers"
+                                            style={{
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem',
+                                                background: '#f5f3ff', padding: '0.35rem 0.5rem', borderRadius: '8px', border: '1px solid #e9d5ff',
+                                                textDecoration: 'none', color: 'inherit', cursor: 'pointer'
+                                            }}
+                                        >
+                                            <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{c.name}</span>
+                                            <span style={{ color: '#7c3aed', fontWeight: 700, flexShrink: 0 }}>{Math.floor(c.daysSinceOrder / 30)} мес</span>
+                                        </Link>
+                                    ))}
+                                    {customerStats.lostCustomers.length > 6 && (
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>+ ещё {customerStats.lostCustomers.length - 6} → <Link to="/customers" style={{ color: 'var(--primary)', fontWeight: 600 }}>Клиенты</Link></div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: '0.8rem', color: '#16a34a' }}>Потерянных клиентов нет</div>
                             )}
                         </div>
                     </div>
