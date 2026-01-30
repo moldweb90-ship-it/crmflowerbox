@@ -61,7 +61,8 @@ export default function Sales() {
         sales, addSale, updateSale, deleteSale,
         products, couriers, florists, addCourier, addFlorist,
         expenses, addExpense,
-        calculateCostPrice
+        calculateCostPrice,
+        flowers, goods, stock, settings, removeFromStock
     } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
@@ -115,6 +116,29 @@ export default function Sales() {
     // Quick Expense (Cashbox) State
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
     const [expenseData, setExpenseData] = useState({ amount: '', comment: '', type: 'expense' }) // type: 'expense' or 'incasso'
+
+    // FAB Menu State
+    const [isFabOpen, setIsFabOpen] = useState(false)
+
+    // Salon Sale Modal State
+    const [isSalonModalOpen, setIsSalonModalOpen] = useState(false)
+    const emptySalonForm = {
+        custom_name: '',
+        composition: [], // [{ type: 'flower'|'good', item_id, name, quantity, purchase_price, sale_price }]
+        order_date: new Date().toISOString().slice(0, 16),
+        payment_method: 'cash',
+        payment_status: 'paid',
+        florist_id: '',
+        needs_delivery: false,
+        delivery_date: '',
+        delivery_address: '',
+        delivery_status: 'not_delivered',
+        courier_id: ''
+    }
+    const [salonFormData, setSalonFormData] = useState(emptySalonForm)
+    const [editingSalonSaleId, setEditingSalonSaleId] = useState(null)
+    const [salonItemSearch, setSalonItemSearch] = useState('')
+    const [showSalonItemDropdown, setShowSalonItemDropdown] = useState(false)
 
     // Date filter
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'today' })
@@ -323,31 +347,52 @@ export default function Sales() {
     }
 
     const handleEditClick = (sale) => {
-        setModalMode('edit')
-        setEditingSaleId(sale.id)
-        setFormData({
-            product_id: sale.product_id || '',
-            order_number: sale.order_number || '',
-            order_date: sale.order_date?.slice(0, 16) || '',
-            delivery_date: sale.delivery_date?.slice(0, 16) || '',
-            delivery_address: sale.delivery_address || '',
-            customer_phone: sale.customer_phone || '',
-            customer_email: sale.customer_email || '',
-            recipient_phone: sale.recipient_phone || '',
-            card_text: sale.card_text || '',
-            courier_id: sale.courier_id || '',
-            florist_id: sale.florist_id || '',
-            sale_price: sale.sale_price || '',
-            payment_method: sale.payment_method || 'cash',
-            payment_status: sale.payment_status || 'unpaid',
-            delivery_status: sale.delivery_status || 'not_delivered',
-            sales_channel: sale.sales_channel || 'store',
-            delivery_method: sale.delivery_method || 'delivery',
-            occasion: sale.occasion || ''
-        })
-        const prod = products.find(p => p.id === sale.product_id) // Find product name
-        setProductSearch(prod?.name || '')
-        setIsModalOpen(true)
+        // Check if this is a custom/salon sale
+        if (sale.is_custom) {
+            // Open Salon Sale modal for editing
+            setEditingSalonSaleId(sale.id)
+            setSalonFormData({
+                custom_name: sale.custom_name || '',
+                composition: sale.custom_composition || [],
+                order_date: sale.order_date?.slice(0, 16) || new Date().toISOString().slice(0, 16),
+                payment_method: sale.payment_method || 'cash',
+                payment_status: sale.payment_status || 'paid',
+                florist_id: sale.florist_id || '',
+                needs_delivery: sale.delivery_method === 'delivery',
+                delivery_date: sale.delivery_date?.slice(0, 16) || '',
+                delivery_address: sale.delivery_address || '',
+                delivery_status: sale.delivery_status || 'not_delivered',
+                courier_id: sale.courier_id || ''
+            })
+            setIsSalonModalOpen(true)
+        } else {
+            // Open regular Site Sale modal for editing
+            setModalMode('edit')
+            setEditingSaleId(sale.id)
+            setFormData({
+                product_id: sale.product_id || '',
+                order_number: sale.order_number || '',
+                order_date: sale.order_date?.slice(0, 16) || '',
+                delivery_date: sale.delivery_date?.slice(0, 16) || '',
+                delivery_address: sale.delivery_address || '',
+                customer_phone: sale.customer_phone || '',
+                customer_email: sale.customer_email || '',
+                recipient_phone: sale.recipient_phone || '',
+                card_text: sale.card_text || '',
+                courier_id: sale.courier_id || '',
+                florist_id: sale.florist_id || '',
+                sale_price: sale.sale_price || '',
+                payment_method: sale.payment_method || 'cash',
+                payment_status: sale.payment_status || 'unpaid',
+                delivery_status: sale.delivery_status || 'not_delivered',
+                sales_channel: sale.sales_channel || 'store',
+                delivery_method: sale.delivery_method || 'delivery',
+                occasion: sale.occasion || ''
+            })
+            const prod = products.find(p => p.id === sale.product_id)
+            setProductSearch(prod?.name || '')
+            setIsModalOpen(true)
+        }
     }
 
     const handleDeleteClick = async (id) => {
@@ -850,7 +895,7 @@ export default function Sales() {
                                         {/* Middle: Product + Dates + Address */}
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.35rem' }}>
-                                                {sale.products?.name || 'Букет'}
+                                                {sale.is_custom ? (sale.custom_name || 'Индивидуальный букет') : (sale.products?.name || 'Букет')}
                                             </div>
 
                                             {/* Dates row */}
@@ -949,32 +994,109 @@ export default function Sales() {
                 )}
             </div>
 
-            {/* Floating Add Button */}
-            <button
-                onClick={openNewSaleModal}
-                style={{
-                    position: 'fixed',
-                    bottom: isMobile ? '90px' : '2rem',
-                    right: '2rem',
-                    width: '64px',
-                    height: '64px',
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, var(--primary) 0%, #ec4899 100%)',
-                    color: 'white',
-                    border: 'none',
-                    boxShadow: '0 8px 25px rgba(236, 72, 153, 0.4)',
-                    cursor: 'pointer',
+            {/* Floating Add Button with Expanding Menu */}
+            <div style={{ position: 'fixed', bottom: isMobile ? '90px' : '2rem', right: '2rem', zIndex: 50 }}>
+                {/* Overlay to close menu */}
+                {isFabOpen && (
+                    <div
+                        onClick={() => setIsFabOpen(false)}
+                        style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 49 }}
+                    />
+                )}
+
+                {/* Expanded Options */}
+                <div style={{
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 50,
-                    transition: 'transform 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-                <Plus size={32} />
-            </button>
+                    flexDirection: 'column',
+                    gap: '0.75rem',
+                    position: 'absolute',
+                    bottom: '80px',
+                    right: '0',
+                    zIndex: 51,
+                    opacity: isFabOpen ? 1 : 0,
+                    transform: isFabOpen ? 'translateY(0)' : 'translateY(20px)',
+                    pointerEvents: isFabOpen ? 'auto' : 'none',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}>
+                    {/* Site Sale Button */}
+                    <button
+                        onClick={() => { setIsFabOpen(false); openNewSaleModal() }}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.75rem 1.25rem',
+                            background: 'white',
+                            border: 'none',
+                            borderRadius: '999px',
+                            boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            fontWeight: 600,
+                            fontSize: '0.9rem',
+                            color: '#374151',
+                            transition: 'transform 0.2s, box-shadow 0.2s'
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.2)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(0,0,0,0.15)' }}
+                    >
+                        <span style={{ fontSize: '1.25rem' }}>🌐</span>
+                        Продажа Сайт
+                    </button>
+
+                    {/* Salon Sale Button */}
+                    <button
+                        onClick={() => { setIsFabOpen(false); setIsSalonModalOpen(true) }}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.75rem 1.25rem',
+                            background: 'linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%)',
+                            border: 'none',
+                            borderRadius: '999px',
+                            boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            fontWeight: 600,
+                            fontSize: '0.9rem',
+                            color: 'white',
+                            transition: 'transform 0.2s, box-shadow 0.2s'
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(139, 92, 246, 0.5)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(139, 92, 246, 0.4)' }}
+                    >
+                        <span style={{ fontSize: '1.25rem' }}>🏪</span>
+                        Продажа Салон
+                    </button>
+                </div>
+
+                {/* Main FAB Button */}
+                <button
+                    onClick={() => setIsFabOpen(!isFabOpen)}
+                    style={{
+                        width: '64px',
+                        height: '64px',
+                        borderRadius: '50%',
+                        background: isFabOpen
+                            ? 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)'
+                            : 'linear-gradient(135deg, var(--primary) 0%, #ec4899 100%)',
+                        color: 'white',
+                        border: 'none',
+                        boxShadow: isFabOpen
+                            ? '0 8px 25px rgba(107, 114, 128, 0.4)'
+                            : '0 8px 25px rgba(236, 72, 153, 0.4)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                        transform: isFabOpen ? 'rotate(45deg)' : 'rotate(0deg)'
+                    }}
+                >
+                    <Plus size={32} />
+                </button>
+            </div>
 
             {/* Add/Edit Sale Modal */}
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px" closeOnOverlayClick={false}>
@@ -1680,6 +1802,425 @@ export default function Sales() {
                         </div>
                     </div>
                 )}
+            </Modal>
+
+            {/* Salon Sale Modal */}
+            <Modal
+                isOpen={isSalonModalOpen}
+                onClose={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch('') }}
+                title={editingSalonSaleId ? '✏️ Редактирование продажи' : '🏪 Продажа в Салоне'}
+                maxWidth="700px"
+                closeOnOverlayClick={false}
+            >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '75vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
+
+                    {/* Bouquet Name */}
+                    <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '16px', border: '1px solid #e5e7eb' }}>
+                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
+                            💐 Название букета
+                        </h4>
+                        <input
+                            type="text"
+                            value={salonFormData.custom_name}
+                            onChange={(e) => setSalonFormData({ ...salonFormData, custom_name: e.target.value })}
+                            placeholder="Например: Весенний микс, Розовые пионы..."
+                            className="input"
+                            style={{ width: '100%' }}
+                        />
+                    </div>
+
+                    {/* Composition Builder */}
+                    <div style={{ background: '#faf5ff', padding: '1rem', borderRadius: '16px', border: '1px solid #e9d5ff' }}>
+                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#7c3aed' }}>
+                            🌸 Состав букета
+                        </h4>
+
+                        {/* Existing items */}
+                        {salonFormData.composition.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                                {salonFormData.composition.map((item, idx) => (
+                                    <div key={idx} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.75rem',
+                                        padding: '0.75rem',
+                                        background: 'white',
+                                        borderRadius: '12px',
+                                        border: '1px solid #e5e7eb'
+                                    }}>
+                                        <span style={{ fontSize: '1.25rem' }}>{item.type === 'flower' ? '🌸' : '📦'}</span>
+                                        <span style={{ flex: 1, fontWeight: 500 }}>{item.name}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <button
+                                                onClick={() => {
+                                                    const newComp = [...salonFormData.composition]
+                                                    if (newComp[idx].quantity > 1) {
+                                                        newComp[idx].quantity -= 1
+                                                        setSalonFormData({ ...salonFormData, composition: newComp })
+                                                    }
+                                                }}
+                                                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                                            >−</button>
+                                            <span style={{ minWidth: '24px', textAlign: 'center', fontWeight: 600 }}>{item.quantity}</span>
+                                            <button
+                                                onClick={() => {
+                                                    const newComp = [...salonFormData.composition]
+                                                    newComp[idx].quantity += 1
+                                                    setSalonFormData({ ...salonFormData, composition: newComp })
+                                                }}
+                                                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                                            >+</button>
+                                        </div>
+                                        <span style={{ minWidth: '80px', textAlign: 'right', fontWeight: 600, color: '#7c3aed' }}>
+                                            {(item.price * item.quantity).toFixed(0)} lei
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                const newComp = salonFormData.composition.filter((_, i) => i !== idx)
+                                                setSalonFormData({ ...salonFormData, composition: newComp })
+                                            }}
+                                            style={{ width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer' }}
+                                        >×</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Add item search */}
+                        <div style={{ position: 'relative' }}>
+                            <input
+                                type="text"
+                                value={salonItemSearch}
+                                onChange={(e) => { setSalonItemSearch(e.target.value); setShowSalonItemDropdown(true) }}
+                                onFocus={() => setShowSalonItemDropdown(true)}
+                                placeholder="Поиск: введите название цветка или товара..."
+                                className="input"
+                                style={{ width: '100%' }}
+                            />
+                            {showSalonItemDropdown && salonItemSearch && (
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    right: 0,
+                                    background: 'white',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: '12px',
+                                    boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                                    maxHeight: '200px',
+                                    overflowY: 'auto',
+                                    zIndex: 100
+                                }}>
+                                    {/* Search in flowers */}
+                                    {flowers.filter(f => f.name.toLowerCase().includes(salonItemSearch.toLowerCase())).map(flower => (
+                                        <div
+                                            key={`flower-${flower.id}`}
+                                            onClick={() => {
+                                                const existingIdx = salonFormData.composition.findIndex(c => c.type === 'flower' && c.item_id === flower.id)
+                                                if (existingIdx >= 0) {
+                                                    const newComp = [...salonFormData.composition]
+                                                    newComp[existingIdx].quantity += 1
+                                                    setSalonFormData({ ...salonFormData, composition: newComp })
+                                                } else {
+                                                    setSalonFormData({
+                                                        ...salonFormData,
+                                                        composition: [...salonFormData.composition, {
+                                                            type: 'flower',
+                                                            item_id: flower.id,
+                                                            name: flower.name,
+                                                            quantity: 1,
+                                                            cost: flower.cost || 0,
+                                                            price: flower.price || 0
+                                                        }]
+                                                    })
+                                                }
+                                                setSalonItemSearch('')
+                                                setShowSalonItemDropdown(false)
+                                            }}
+                                            style={{ padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid #f3f4f6' }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = '#faf5ff'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                                        >
+                                            <span>🌸</span>
+                                            <span style={{ flex: 1 }}>{flower.name}</span>
+                                            <span style={{ color: '#7c3aed', fontWeight: 600 }}>{flower.price || 0} lei</span>
+                                        </div>
+                                    ))}
+                                    {/* Search in goods */}
+                                    {goods.filter(g => g.name.toLowerCase().includes(salonItemSearch.toLowerCase())).map(good => (
+                                        <div
+                                            key={`good-${good.id}`}
+                                            onClick={() => {
+                                                const existingIdx = salonFormData.composition.findIndex(c => c.type === 'good' && c.item_id === good.id)
+                                                if (existingIdx >= 0) {
+                                                    const newComp = [...salonFormData.composition]
+                                                    newComp[existingIdx].quantity += 1
+                                                    setSalonFormData({ ...salonFormData, composition: newComp })
+                                                } else {
+                                                    setSalonFormData({
+                                                        ...salonFormData,
+                                                        composition: [...salonFormData.composition, {
+                                                            type: 'good',
+                                                            item_id: good.id,
+                                                            name: good.name,
+                                                            quantity: 1,
+                                                            cost: good.cost || 0,
+                                                            price: good.price || 0
+                                                        }]
+                                                    })
+                                                }
+                                                setSalonItemSearch('')
+                                                setShowSalonItemDropdown(false)
+                                            }}
+                                            style={{ padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid #f3f4f6' }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = '#faf5ff'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                                        >
+                                            <span>📦</span>
+                                            <span style={{ flex: 1 }}>{good.name}</span>
+                                            <span style={{ color: '#7c3aed', fontWeight: 600 }}>{good.price || 0} lei</span>
+                                        </div>
+                                    ))}
+                                    {flowers.filter(f => f.name.toLowerCase().includes(salonItemSearch.toLowerCase())).length === 0 &&
+                                        goods.filter(g => g.name.toLowerCase().includes(salonItemSearch.toLowerCase())).length === 0 && (
+                                            <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af' }}>Ничего не найдено</div>
+                                        )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Price Summary */}
+                        {salonFormData.composition.length > 0 && (() => {
+                            const costPrice = salonFormData.composition.reduce((sum, item) => sum + (item.cost * item.quantity), 0)
+                            const salePrice = salonFormData.composition.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+                            const margin = salePrice - costPrice
+                            const marginPercent = costPrice > 0 ? ((margin / costPrice) * 100).toFixed(0) : 0
+                            return (
+                                <div style={{ marginTop: '1rem', padding: '1rem', background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)', borderRadius: '16px' }}>
+                                    {/* Big Sale Price */}
+                                    <div style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
+                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', marginBottom: '0.25rem' }}>Цена продажи</div>
+                                        <div style={{ fontSize: '2rem', fontWeight: 800, color: 'white', letterSpacing: '-0.02em' }}>{salePrice.toFixed(0)} lei</div>
+                                    </div>
+                                    {/* Cost and Margin Row */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.15)', borderRadius: '8px' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.8rem' }}>Себест: <b>{costPrice.toFixed(0)} L</b></span>
+                                        <span style={{ color: '#a7f3d0', fontSize: '0.8rem', fontWeight: 600 }}>Маржа: {margin.toFixed(0)} L ({marginPercent}%)</span>
+                                    </div>
+                                </div>
+                            )
+                        })()}
+                    </div>
+
+                    {/* Order Details */}
+                    <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '16px', border: '1px solid #e5e7eb' }}>
+                        <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
+                            📋 Детали заказа
+                        </h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+                            <div>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Дата заказа</label>
+                                <input
+                                    type="datetime-local"
+                                    value={salonFormData.order_date}
+                                    onChange={(e) => setSalonFormData({ ...salonFormData, order_date: e.target.value })}
+                                    className="input"
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Флорист</label>
+                                <select
+                                    value={salonFormData.florist_id}
+                                    onChange={(e) => setSalonFormData({ ...salonFormData, florist_id: e.target.value })}
+                                    className="input"
+                                    style={{ width: '100%' }}
+                                >
+                                    <option value="">Выберите флориста</option>
+                                    {florists.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Способ оплаты</label>
+                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    {[
+                                        { id: 'cash', label: '💵 Наличные' },
+                                        { id: 'paynet', label: '📱 Paynet' },
+                                        { id: 'card_transfer', label: '💳 Карта' }
+                                    ].map(pm => (
+                                        <button
+                                            key={pm.id}
+                                            type="button"
+                                            onClick={() => setSalonFormData({ ...salonFormData, payment_method: pm.id })}
+                                            style={{
+                                                padding: '0.5rem 0.75rem',
+                                                borderRadius: '8px',
+                                                border: salonFormData.payment_method === pm.id ? '2px solid #7c3aed' : '1px solid #d1d5db',
+                                                background: salonFormData.payment_method === pm.id ? '#faf5ff' : 'white',
+                                                cursor: 'pointer',
+                                                fontWeight: salonFormData.payment_method === pm.id ? 600 : 400,
+                                                fontSize: '0.85rem'
+                                            }}
+                                        >{pm.label}</button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Статус оплаты</label>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    {[
+                                        { id: 'paid', label: '✓ Оплачен', color: '#10b981' },
+                                        { id: 'unpaid', label: '✗ Не оплачен', color: '#ef4444' }
+                                    ].map(ps => (
+                                        <button
+                                            key={ps.id}
+                                            type="button"
+                                            onClick={() => setSalonFormData({ ...salonFormData, payment_status: ps.id })}
+                                            style={{
+                                                padding: '0.5rem 0.75rem',
+                                                borderRadius: '8px',
+                                                border: salonFormData.payment_status === ps.id ? `2px solid ${ps.color}` : '1px solid #d1d5db',
+                                                background: salonFormData.payment_status === ps.id ? `${ps.color}15` : 'white',
+                                                color: salonFormData.payment_status === ps.id ? ps.color : '#374151',
+                                                cursor: 'pointer',
+                                                fontWeight: salonFormData.payment_status === ps.id ? 600 : 400,
+                                                fontSize: '0.85rem'
+                                            }}
+                                        >{ps.label}</button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Delivery Toggle */}
+                    <div style={{ background: '#fffbeb', padding: '1rem', borderRadius: '16px', border: '1px solid #fde68a' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={salonFormData.needs_delivery}
+                                onChange={(e) => setSalonFormData({ ...salonFormData, needs_delivery: e.target.checked })}
+                                style={{ width: '20px', height: '20px', accentColor: '#f59e0b' }}
+                            />
+                            <span style={{ fontWeight: 600, color: '#92400e' }}>🚚 Нужна доставка</span>
+                        </label>
+
+                        {salonFormData.needs_delivery && (
+                            <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Дата и время доставки</label>
+                                    <input
+                                        type="datetime-local"
+                                        value={salonFormData.delivery_date}
+                                        onChange={(e) => setSalonFormData({ ...salonFormData, delivery_date: e.target.value })}
+                                        className="input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Курьер</label>
+                                    <select
+                                        value={salonFormData.courier_id}
+                                        onChange={(e) => setSalonFormData({ ...salonFormData, courier_id: e.target.value })}
+                                        className="input"
+                                        style={{ width: '100%' }}
+                                    >
+                                        <option value="">Выберите курьера</option>
+                                        {couriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                                <div style={{ gridColumn: isMobile ? '1' : '1 / -1' }}>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Адрес доставки</label>
+                                    <input
+                                        type="text"
+                                        value={salonFormData.delivery_address}
+                                        onChange={(e) => setSalonFormData({ ...salonFormData, delivery_address: e.target.value })}
+                                        placeholder="Улица, дом, квартира..."
+                                        className="input"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Статус доставки</label>
+                                    <select
+                                        value={salonFormData.delivery_status}
+                                        onChange={(e) => setSalonFormData({ ...salonFormData, delivery_status: e.target.value })}
+                                        className="input"
+                                        style={{ width: '100%' }}
+                                    >
+                                        {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
+                        <button
+                            className="btn"
+                            onClick={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch('') }}
+                            style={{ padding: '0.75rem 1.5rem' }}
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            className="btn btn-primary"
+                            disabled={!salonFormData.custom_name || salonFormData.composition.length === 0 || loading}
+                            onClick={async () => {
+                                setLoading(true)
+                                try {
+                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (item.cost * item.quantity), 0)
+                                    const salePrice = salonFormData.composition.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+
+                                    // Create/Update sale record
+                                    const saleData = {
+                                        is_custom: true,
+                                        custom_name: salonFormData.custom_name,
+                                        custom_composition: salonFormData.composition,
+                                        order_date: salonFormData.order_date,
+                                        payment_method: salonFormData.payment_method,
+                                        payment_status: salonFormData.payment_status,
+                                        florist_id: salonFormData.florist_id || null,
+                                        cost_price: costPrice,
+                                        sale_price: salePrice,
+                                        delivery_method: salonFormData.needs_delivery ? 'delivery' : 'pickup',
+                                        delivery_date: salonFormData.needs_delivery ? salonFormData.delivery_date : null,
+                                        delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
+                                        delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
+                                        courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
+                                        sales_channel: 'store'
+                                    }
+
+                                    if (editingSalonSaleId) {
+                                        // Update existing sale
+                                        await updateSale(editingSalonSaleId, saleData)
+                                    } else {
+                                        // Create new sale
+                                        await addSale(saleData)
+                                        // Deduct from stock only for new sales
+                                        for (const item of salonFormData.composition) {
+                                            await removeFromStock(item.type, item.item_id, item.quantity, 'sale')
+                                        }
+                                    }
+
+                                    setIsSalonModalOpen(false)
+                                    setSalonFormData(emptySalonForm)
+                                    setEditingSalonSaleId(null)
+                                    setSalonItemSearch('')
+                                } catch (error) {
+                                    console.error('Error saving salon sale:', error)
+                                    alert('Ошибка при сохранении продажи: ' + error.message)
+                                } finally {
+                                    setLoading(false)
+                                }
+                            }}
+                            style={{ padding: '0.75rem 1.5rem' }}
+                        >
+                            {loading ? 'Сохранение...' : '💾 Сохранить'}
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     )

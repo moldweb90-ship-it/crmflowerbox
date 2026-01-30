@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Receipt, Plus, Calendar, DollarSign, X, Edit2, Trash2, Filter } from 'lucide-react'
+import { Receipt, Plus, Calendar, DollarSign, X, Edit2, Trash2, Filter, RotateCcw, EyeOff } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 // Expense Categories
@@ -83,6 +83,8 @@ export default function Expenses() {
 
     const filteredExpenses = useMemo(() => {
         return expenses.filter(expense => {
+            if (expense.is_hidden) return false // Filter out hidden expenses
+
             // Category Filter
             if (categoryFilter !== 'all' && expense.category !== categoryFilter) return false
 
@@ -137,8 +139,34 @@ export default function Expenses() {
         setIsModalOpen(true)
     }
 
+    const handleReturnClick = async (expense) => {
+        if (!expense.amount || Number(expense.amount) <= 0) return
+
+        if (window.confirm('Создать возврат средств?')) {
+            setLoading(true)
+            const result = await addExpense({
+                amount: -Math.abs(Number(expense.amount)),
+                category: expense.category,
+                date: new Date().toISOString(),
+                comment: `Возврат: ${expense.comment || ''}`,
+                payment_method: expense.payment_method || 'cash_box'
+            })
+            setLoading(false)
+            if (!result.success) alert('Ошибка: ' + result.error?.message)
+        }
+    }
+
+    const handleHideClick = async (expense) => {
+        if (window.confirm('👁️ Скрыть запись из списка?\n\nДеньги ОСТАНУТСЯ списанными (баланс не изменится). Запись просто исчезнет из этого списка.\n\nИспользуйте это, если хотите "забыть" о расходе, но не возвращать деньги.')) {
+            const result = await updateExpense(expense.id, { is_hidden: true })
+            if (!result.success) {
+                alert('Ошибка: Не удалось скрыть запись. Возможно, вы не выполнили SQL команду для добавления поля is_hidden.\n\n' + JSON.stringify(result.error))
+            }
+        }
+    }
+
     const handleDeleteClick = async (id) => {
-        if (window.confirm('Вы уверены, что хотите удалить этот расход?')) {
+        if (window.confirm('⚠️ Удалить запись о расходе?\n\nЭто полностью сотрёт информацию, и деньги ВЕРНУТСЯ в баланс.\n\nЕсли хотите просто убрать запись с глаз, но оставить деньги списанными — нажмите "Отмена" и используйте кнопку с ГЛАЗОМ.')) {
             await deleteExpense(id)
         }
     }
@@ -455,8 +483,16 @@ export default function Expenses() {
                                         </td>
                                         <td style={{ padding: '1rem', textAlign: 'center' }}>
                                             <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
+                                                {Number(expense.amount) > 0 && (
+                                                    <button onClick={() => handleReturnClick(expense)} style={{ padding: '0.5rem', border: 'none', background: '#dcfce7', color: '#166534', borderRadius: '8px', cursor: 'pointer' }} title="Оформить возврат (создать запись)">
+                                                        <RotateCcw size={16} />
+                                                    </button>
+                                                )}
                                                 <button onClick={() => handleEditClick(expense)} style={{ padding: '0.5rem', border: 'none', background: '#f3f4f6', borderRadius: '8px', cursor: 'pointer' }}>
                                                     <Edit2 size={16} />
+                                                </button>
+                                                <button onClick={() => handleHideClick(expense)} style={{ padding: '0.5rem', border: 'none', background: '#e0f2fe', color: '#0284c7', borderRadius: '8px', cursor: 'pointer' }} title="Скрыть (без возврата денег)">
+                                                    <EyeOff size={16} />
                                                 </button>
                                                 <button onClick={() => handleDeleteClick(expense.id)} style={{ padding: '0.5rem', border: 'none', background: '#fee2e2', color: '#ef4444', borderRadius: '8px', cursor: 'pointer' }}>
                                                     <Trash2 size={16} />
@@ -514,7 +550,13 @@ export default function Expenses() {
                                     </div>
                                 )}
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', paddingTop: '0.5rem' }}>
+                                    {Number(expense.amount) > 0 && (
+                                        <button onClick={() => handleReturnClick(expense)} style={{ padding: '0.4rem 0.8rem', background: '#dcfce7', color: '#166534', borderRadius: '8px', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }} title="Оформить возврат">
+                                            ↩️
+                                        </button>
+                                    )}
                                     <button onClick={() => handleEditClick(expense)} style={{ padding: '0.4rem 0.8rem', background: '#f3f4f6', borderRadius: '8px', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}>✏️</button>
+                                    <button onClick={() => handleHideClick(expense)} style={{ padding: '0.4rem 0.8rem', background: '#e0f2fe', color: '#0284c7', borderRadius: '8px', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }} title="Скрыть">👁️</button>
                                     <button onClick={() => handleDeleteClick(expense.id)} style={{ padding: '0.4rem 0.8rem', background: '#fee2e2', color: '#ef4444', borderRadius: '8px', fontSize: '0.8rem', border: 'none', cursor: 'pointer' }}>🗑️</button>
                                 </div>
                             </div>
