@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
 import { usePermissions } from '../context/PermissionContext'
-import { Save, RefreshCw, Lock, Users } from 'lucide-react'
+import { Save, RefreshCw, Lock, Users, Trash2 } from 'lucide-react'
 
 export default function Settings() {
-    const { settings, updateSettings, recalculateAllProducts } = useStore()
+    const { settings, updateSettings, recalculateAllProducts, resetSystemData } = useStore()
     const { updatePassword } = useAuth()
     const perms = usePermissions() || {}
     const { role = 'user', getAllUsers = async () => { }, updateUserPermissions = async () => { } } = perms
@@ -306,6 +306,43 @@ export default function Settings() {
                                 Успешно обновлено товаров: <strong>{recalcCount}</strong>
                             </div>
                         )}
+
+                        <div style={{ marginTop: '3rem', paddingTop: '2rem', borderTop: '1px dashed #ef4444' }}>
+                            <h3 style={{ fontSize: '1.1rem', color: '#ef4444', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Trash2 size={20} />
+                                Опасная зона
+                            </h3>
+                            <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '12px', padding: '1.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h4 style={{ color: '#991b1b', marginBottom: '0.5rem' }}>Техническое обнуление кассы</h4>
+                                        <p style={{ fontSize: '0.875rem', color: '#b91c1c' }}>
+                                            Удаляет <strong>ВСЕ</strong> продажи и расходы. Касса станет 0.<br />
+                                            Используйте только для очистки тестовых данных.
+                                        </p>
+                                    </div>
+                                    <button
+                                        className="btn"
+                                        onClick={async () => {
+                                            if (window.confirm('⚠️ ВЫ УВЕРЕНЫ?\n\nЭто удалит ВСЮ историю продаж и расходов.\nЭто действие необратимо!')) {
+                                                if (window.confirm('Правда удалить всё? Подтвердите второй раз.')) {
+                                                    const result = await resetSystemData()
+                                                    if (result.success) {
+                                                        alert('Система очищена. Касса = 0.')
+                                                        window.location.reload()
+                                                    } else {
+                                                        alert('Ошибка очистки: ' + result.error?.message)
+                                                    }
+                                                }
+                                            }
+                                        }} style={{ background: '#ef4444', color: 'white', border: 'none' }}
+                                    >
+                                        <Trash2 size={16} style={{ marginRight: '0.5rem' }} />
+                                        Очистить всё
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
 

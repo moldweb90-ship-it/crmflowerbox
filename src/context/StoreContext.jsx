@@ -219,6 +219,26 @@ export function StoreProvider({ children }) {
         }
     }
 
+    // System Reset
+    const resetSystemData = async () => {
+        try {
+            // Delete all expenses (using Nil UUID to bypass "filter required" check with a valid UUID)
+            const { error: err1 } = await supabase.from('expenses').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+            if (err1) throw err1
+            setExpenses([])
+
+            // Delete all sales
+            const { error: err2 } = await supabase.from('sales').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+            if (err2) throw err2
+            setSales([])
+
+            return { success: true }
+        } catch (error) {
+            console.error('Reset failed:', error)
+            return { success: false, error }
+        }
+    }
+
     // Supplies
     const saveSupply = async (supplierName, items) => {
         try {
@@ -750,7 +770,7 @@ export function StoreProvider({ children }) {
             sales, addSale, updateSale, deleteSale,
             couriers, addCourier,
             florists, addFlorist,
-            settings, updateSettings,
+            settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,
             stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
             loading
