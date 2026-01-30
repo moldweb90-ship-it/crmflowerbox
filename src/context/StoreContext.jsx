@@ -880,10 +880,20 @@ export function StoreProvider({ children }) {
             const newTotalSpent = (customer.total_spent || 0) + orderAmount
             const newAverageCheck = newTotalSpent / newTotalOrders
             
+            // Автоматическое присвоение VIP статуса
+            // Критерии: 10+ заказов ИЛИ 5000+ lei потрачено
+            let newStatus = customer.status
+            if (customer.status !== 'blacklist') {
+                if (newTotalOrders >= 10 || newTotalSpent >= 5000) {
+                    newStatus = 'vip'
+                }
+            }
+            
             const { error } = await supabase.from('customers').update({
                 total_orders: newTotalOrders,
                 total_spent: newTotalSpent,
                 average_check: newAverageCheck,
+                status: newStatus,
                 last_order_date: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             }).eq('id', customerId)
@@ -894,6 +904,7 @@ export function StoreProvider({ children }) {
                     total_orders: newTotalOrders,
                     total_spent: newTotalSpent,
                     average_check: newAverageCheck,
+                    status: newStatus,
                     last_order_date: new Date().toISOString()
                 } : c))
             }
@@ -926,6 +937,40 @@ export function StoreProvider({ children }) {
         return sales.filter(s => s.customer_id === customerId)
     }
 
+    // Delete customer
+    const deleteCustomer = async (id) => {
+        try {
+            // Проверяем, есть ли у клиента заказы
+            const customerOrders = sales.filter(s => s.customer_id === id)
+            
+            if (customerOrders.length > 0) {
+                // Если есть заказы, отвязываем их от клиента (устанавливаем customer_id в null)
+                const orderIds = customerOrders.map(o => o.id)
+                const { error: unlinkError } = await supabase
+                    .from('sales')
+                    .update({ customer_id: null })
+                    .in('id', orderIds)
+                
+                if (unlinkError) throw unlinkError
+                
+                // Обновляем локальное состояние заказов
+                setSales(sales.map(s => orderIds.includes(s.id) ? { ...s, customer_id: null } : s))
+            }
+            
+            // Удаляем клиента
+            const { error } = await supabase.from('customers').delete().eq('id', id)
+            
+            if (!error) {
+                setCustomers(customers.filter(c => c.id !== id))
+                return { success: true }
+            }
+            return { success: false, error }
+        } catch (error) {
+            console.error('Error deleting customer:', error)
+            return { success: false, error }
+        }
+    }
+
     return (
         <StoreContext.Provider value={{
             flowers, addFlower, updateFlower, deleteFlower,
@@ -940,7 +985,7 @@ export function StoreProvider({ children }) {
             settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,
             stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
-            customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, getCustomerOrders,
+            customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, deleteCustomer, getCustomerOrders,
             loading
         }}>
             {children}

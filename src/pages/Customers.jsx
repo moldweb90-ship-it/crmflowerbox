@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Users, Search, Phone, Mail, Star, Ban, User, TrendingUp, Calendar, Package, ChevronRight, Edit2, Heart } from 'lucide-react'
+import { Users, Search, Phone, Mail, Star, Ban, User, TrendingUp, Calendar, Package, ChevronRight, Edit2, Heart, Trash2 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 const STATUS_OPTIONS = [
@@ -10,7 +10,7 @@ const STATUS_OPTIONS = [
 ]
 
 export default function Customers() {
-    const { customers, updateCustomer, getCustomerOrders, sales } = useStore()
+    const { customers, updateCustomer, deleteCustomer, getCustomerOrders, sales } = useStore()
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
     const [selectedCustomer, setSelectedCustomer] = useState(null)
@@ -32,12 +32,16 @@ export default function Customers() {
         }
 
         if (search) {
-            const lowerSearch = search.toLowerCase()
-            result = result.filter(c =>
-                c.name?.toLowerCase().includes(lowerSearch) ||
-                c.email?.toLowerCase().includes(lowerSearch) ||
-                c.phone?.toLowerCase().includes(lowerSearch)
-            )
+            const lowerSearch = search.toLowerCase().replace(/\s+/g, '') // убираем пробелы для поиска по телефону
+            result = result.filter(c => {
+                const name = c.name?.toLowerCase() || ''
+                const email = c.email?.toLowerCase() || ''
+                const phone = c.phone?.toLowerCase().replace(/\s+/g, '') || '' // убираем пробелы из телефона
+                
+                return name.includes(search.toLowerCase()) || 
+                       email.includes(search.toLowerCase()) || 
+                       phone.includes(lowerSearch)
+            })
         }
 
         return result.sort((a, b) => (b.total_spent || 0) - (a.total_spent || 0))
@@ -66,6 +70,18 @@ export default function Customers() {
 
     const handleUpdatePreferences = async (customerId, preferences) => {
         await updateCustomer(customerId, { preferences })
+    }
+
+    const handleDeleteCustomer = async (customerId) => {
+        if (!confirm('Удалить клиента? Связанные заказы останутся, но будут отвязаны от клиента.')) return
+        
+        const result = await deleteCustomer(customerId)
+        if (result.success) {
+            setIsViewOpen(false)
+            setSelectedCustomer(null)
+        } else {
+            alert('Ошибка при удалении клиента')
+        }
     }
 
     return (
@@ -274,14 +290,14 @@ export default function Customers() {
 
             {/* Карточка клиента */}
             <Modal isOpen={isViewOpen} onClose={() => setIsViewOpen(false)} title="Карточка клиента" maxWidth="900px">
-                {selectedCustomer && <CustomerCard customer={selectedCustomer} onUpdate={handleUpdateStatus} onUpdatePreferences={handleUpdatePreferences} getCustomerOrders={getCustomerOrders} />}
+                {selectedCustomer && <CustomerCard customer={selectedCustomer} onUpdate={handleUpdateStatus} onUpdatePreferences={handleUpdatePreferences} onDelete={handleDeleteCustomer} getCustomerOrders={getCustomerOrders} />}
             </Modal>
         </div>
     )
 }
 
 // Компонент карточки клиента
-function CustomerCard({ customer, onUpdate, onUpdatePreferences, getCustomerOrders }) {
+function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCustomerOrders }) {
     const [editPreferences, setEditPreferences] = useState(false)
     const [preferences, setPreferences] = useState(customer.preferences || '')
     const orders = getCustomerOrders(customer.id)
@@ -348,7 +364,7 @@ function CustomerCard({ customer, onUpdate, onUpdatePreferences, getCustomerOrde
                     </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
                     <div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Заказов</div>
                         <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{customer.total_orders || 0}</div>
@@ -362,6 +378,30 @@ function CustomerCard({ customer, onUpdate, onUpdatePreferences, getCustomerOrde
                         <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{Math.round(customer.average_check || 0).toLocaleString()} lei</div>
                     </div>
                 </div>
+                
+                {customer.status !== 'vip' && customer.status !== 'blacklist' && (
+                    <div style={{ 
+                        padding: '0.75rem 1rem', 
+                        background: '#fef3c7', 
+                        borderRadius: '8px', 
+                        fontSize: '0.85rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        border: '1px solid #fbbf24'
+                    }}>
+                        <Star size={16} color="#f59e0b" />
+                        <div>
+                            <strong>До VIP статуса:</strong> {
+                                (customer.total_orders || 0) < 10 && (customer.total_spent || 0) < 5000 
+                                    ? `${10 - (customer.total_orders || 0)} заказов или ${5000 - Math.round(customer.total_spent || 0)} lei`
+                                    : (customer.total_orders || 0) < 10
+                                        ? `${10 - (customer.total_orders || 0)} заказов`
+                                        : `${5000 - Math.round(customer.total_spent || 0)} lei`
+                            }
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Предпочтения */}
@@ -435,6 +475,44 @@ function CustomerCard({ customer, onUpdate, onUpdatePreferences, getCustomerOrde
                         ))}
                     </div>
                 )}
+            </div>
+
+            {/* Кнопка удаления */}
+            <div style={{ 
+                padding: '1rem', 
+                borderTop: '1px solid var(--border)', 
+                display: 'flex', 
+                justifyContent: 'flex-end',
+                marginTop: '1rem'
+            }}>
+                <button
+                    onClick={() => onDelete(customer.id)}
+                    style={{
+                        padding: '0.75rem 1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid #ef4444',
+                        background: 'white',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        fontWeight: 600,
+                        fontSize: '0.9rem',
+                        transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#ef4444'
+                        e.currentTarget.style.color = 'white'
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'white'
+                        e.currentTarget.style.color = '#ef4444'
+                    }}
+                >
+                    <Trash2 size={16} />
+                    Удалить клиента
+                </button>
             </div>
         </div>
     )
