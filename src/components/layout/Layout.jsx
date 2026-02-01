@@ -139,7 +139,6 @@ export default function Layout() {
             {/* Sidebar */}
             <aside style={{
                 width: '240px',
-                backgroundColor: 'transparent', /* Transparent to show body bg or just white floating? Let's go white fixed */
                 backgroundColor: isMobile ? 'white' : 'transparent',
                 display: 'flex',
                 flexDirection: 'column',

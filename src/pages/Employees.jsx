@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { useStore } from '../context/StoreContext'
-import { Users, Calendar, DollarSign, Plus, Edit2, ChevronLeft, ChevronRight, Phone, Trash2, Search, Upload, Banknote, Gift, Wallet, List, RotateCcw } from 'lucide-react'
+import { Users, Calendar, DollarSign, Plus, Edit2, ChevronLeft, ChevronRight, Phone, Trash2, Search, Upload, Banknote, Gift, Wallet, List, RotateCcw, Clock } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 const ROLES = [
@@ -21,10 +23,13 @@ const LEVELS = [
 export default function Employees() {
     const { employees, shifts, sales, addEmployee, updateEmployee, deleteEmployee, addShift, removeShift, getPayrollForPeriod, getPayrollEnriched, addEmployeePayment, updateEmployeePayment, deleteEmployeePayment, clearEmployeePaymentsForPeriod, getPaymentsForPeriod, uploadEmployeePhoto, getFloristAutoLevel } = useStore()
 
-    const [tab, setTab] = useState('list')
+    const [searchParams, setSearchParams] = useSearchParams()
+    const tab = searchParams.get('tab') || 'list'
+    const setTab = (t) => setSearchParams({ tab: t })
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingEmployee, setEditingEmployee] = useState(null)
+    const [historyModal, setHistoryModal] = useState(null)
     const [scheduleMonth, setScheduleMonth] = useState(new Date())
     const [payrollDateStart, setPayrollDateStart] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10) })
     const [payrollDateEnd, setPayrollDateEnd] = useState(() => { const d = new Date(); return d.toISOString().slice(0, 10) })
@@ -221,37 +226,61 @@ export default function Employees() {
             </div>
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', background: '#f3f4f6', padding: '4px', borderRadius: '12px', flexWrap: 'wrap' }}>
+            <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                marginBottom: '1.5rem',
+                background: '#f1f5f9',
+                padding: '0.35rem',
+                borderRadius: '16px',
+                width: 'fit-content'
+            }}>
                 {[
                     { id: 'list', label: 'Список', icon: Users },
                     { id: 'schedule', label: 'График', icon: Calendar },
-                    { id: 'payroll', label: 'Зарплата', icon: DollarSign }
-                ].map(t => (
-                    <button
-                        key={t.id}
-                        onClick={() => setTab(t.id)}
-                        style={{
-                            flex: 1,
-                            minWidth: '90px',
-                            padding: '0.6rem 1rem',
-                            borderRadius: '10px',
-                            border: 'none',
-                            background: tab === t.id ? 'white' : 'transparent',
-                            boxShadow: tab === t.id ? 'var(--shadow-sm)' : 'none',
-                            fontWeight: 600,
-                            fontSize: '0.9rem',
-                            color: tab === t.id ? 'var(--primary)' : '#6b7280',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.4rem'
-                        }}
-                    >
-                        <t.icon size={18} />
-                        {t.label}
-                    </button>
-                ))}
+                    { id: 'payroll', label: 'Зарплаты', icon: DollarSign }
+                ].map((t) => {
+                    const isActive = tab === t.id
+                    return (
+                        <button
+                            key={t.id}
+                            onClick={() => setTab(t.id)}
+                            style={{
+                                position: 'relative',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.6rem 1.25rem',
+                                borderRadius: '12px',
+                                border: 'none',
+                                background: 'transparent',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem',
+                                fontWeight: isActive ? 600 : 500,
+                                color: isActive ? '#0f172a' : '#64748b',
+                                transition: 'color 0.2s',
+                                zIndex: 1
+                            }}
+                        >
+                            {isActive && (
+                                <motion.div
+                                    layoutId="activeTab"
+                                    style={{
+                                        position: 'absolute',
+                                        inset: 0,
+                                        background: 'white',
+                                        borderRadius: '12px',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                                        zIndex: -1
+                                    }}
+                                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                />
+                            )}
+                            <t.icon size={18} style={{ position: 'relative', zIndex: 2 }} strokeWidth={isActive ? 2.5 : 2} />
+                            <span style={{ position: 'relative', zIndex: 2 }}>{t.label}</span>
+                        </button>
+                    )
+                })}
             </div>
 
             {/* List Tab */}
@@ -348,7 +377,28 @@ export default function Employees() {
                                                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{ROLES.find(r => r.id === emp.role)?.label}</span>
                                                 <span style={{ color: level.color, fontWeight: 700 }}>{level.icon}</span>
                                             </div>
-                                            {emp.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}><Phone size={14} /> {emp.phone}</div>}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
+                                                {emp.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}><Phone size={14} /> {emp.phone}</div>}
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setHistoryModal(emp) }}
+                                                    style={{
+                                                        padding: '6px',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid #e2e8f0',
+                                                        background: 'white',
+                                                        color: '#64748b',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 600
+                                                    }}
+                                                    title="История смен"
+                                                >
+                                                    <Clock size={14} /> История
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 )
@@ -358,77 +408,217 @@ export default function Employees() {
                 </div>
             )}
 
-            {/* Schedule Tab */}
-            {tab === 'schedule' && (
-                <div className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <h3 style={{ margin: 0, fontWeight: 700 }}>Табель смен</h3>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <button onClick={() => setScheduleMonth(new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() - 1))} style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer' }}><ChevronLeft size={20} /></button>
-                            <span style={{ fontWeight: 600, minWidth: '160px', textAlign: 'center' }}>{scheduleMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</span>
-                            <button onClick={() => setScheduleMonth(new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() + 1))} style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer' }}><ChevronRight size={20} /></button>
-                        </div>
-                    </div>
-                    <div style={{ overflowX: 'visible' }}>
-                        <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            {/* History Modal */}
+            {historyModal && (
+                <Modal isOpen onClose={() => setHistoryModal(null)} title={`История смен: ${historyModal.name}`} maxWidth="600px">
+                    <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                             <thead>
-                                <tr>
-                                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid var(--border)', position: 'sticky', left: 0, background: 'white', zIndex: 2, minWidth: 120 }}>Сотрудник</th>
-                                    {scheduleDays.map((d, i) => (
-                                        d ? (
-                                            <th key={d.toISOString()} title={`${d.toLocaleDateString('ru-RU')}`} style={{
-                                                textAlign: 'center', padding: '0.35rem', borderBottom: '2px solid var(--border)', width: 32,
-                                                background: d.toDateString() === new Date().toDateString() ? '#eff6ff' : (d.getDay() === 0 || d.getDay() === 6) ? '#f8fafc' : 'white',
-                                                color: (d.getDay() === 0 || d.getDay() === 6) ? '#94a3b8' : 'inherit',
-                                                borderLeft: (d.getDay() === 0 || d.getDay() === 6) ? '1px dashed #e2e8f0' : 'none'
-                                            }}>
-                                                <div style={{ fontWeight: 700, fontSize: '0.8rem' }}>{d.getDate()}</div>
-                                                <div style={{ fontSize: '0.6rem', opacity: 0.9 }}>{d.toLocaleDateString('ru-RU', { weekday: 'short' }).replace('.', '')}</div>
-                                            </th>
-                                        ) : (
-                                            <th key={`empty-${i}`} style={{ width: 32, minWidth: 32, padding: '0.2rem', borderBottom: '2px solid var(--border)', background: '#f8fafc' }} />
-                                        )
-                                    ))}
+                                <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#64748b' }}>Дата</th>
+                                    <th style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b' }}>Начало</th>
+                                    <th style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b' }}>Конец</th>
+                                    <th style={{ textAlign: 'right', padding: '0.75rem', color: '#64748b' }}>Длительность</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {activeEmployees.filter(e => e.role === 'florist').map(emp => (
-                                    <tr key={emp.id}>
-                                        <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', position: 'sticky', left: 0, background: 'white', fontWeight: 600 }}>{emp.name}</td>
-                                        {scheduleDays.map((d, i) => {
-                                            const isWeekend = d && (d.getDay() === 0 || d.getDay() === 6)
-                                            const isToday = d && d.toDateString() === new Date().toDateString()
-                                            return (
-                                            <td key={i} style={{
-                                                padding: '0.25rem', borderBottom: '1px solid var(--border)', textAlign: 'center',
-                                                background: isToday ? '#eff6ff' : isWeekend ? '#f8fafc' : 'transparent'
+                                {shifts
+                                    .filter(s => s.employee_id === historyModal.id)
+                                    .sort((a, b) => new Date(b.shift_date) - new Date(a.shift_date) || new Date(b.start_time) - new Date(a.start_time))
+                                    .map(s => {
+                                        const start = s.start_time ? new Date(s.start_time) : null
+                                        const end = s.end_time ? new Date(s.end_time) : null
+                                        const duration = start && end ? (end - start) : 0
+                                        const h = Math.floor(duration / 3600000)
+                                        const m = Math.floor((duration % 3600000) / 60000)
+
+                                        return (
+                                            <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{ padding: '0.75rem' }}>
+                                                    <div style={{ fontWeight: 600 }}>{new Date(s.shift_date).toLocaleDateString()}</div>
+                                                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{new Date(s.shift_date).toLocaleDateString('ru-RU', { weekday: 'long' })}</div>
+                                                </td>
+                                                <td style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 500 }}>
+                                                    {start ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                </td>
+                                                <td style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 500 }}>
+                                                    {end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (
+                                                        <span style={{ color: '#16a34a', fontWeight: 600, fontSize: '0.75rem', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>Активна</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '0.75rem', textAlign: 'right', color: '#64748b' }}>
+                                                    {end ? `${h}ч ${m}м` : '—'}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                {shifts.filter(s => s.employee_id === historyModal.id).length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>История пуста</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Schedule Tab */}
+            {tab === 'schedule' && (
+                <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    <div style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', background: '#fff' }}>
+                        <h3 style={{ margin: 0, fontWeight: 700, fontSize: '1.25rem' }}>Табель смен</h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: '#f8fafc', padding: '4px', borderRadius: '12px' }}>
+                            <button onClick={() => setScheduleMonth(new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() - 1))} className="btn-icon" style={{ borderRadius: '8px' }}><ChevronLeft size={20} /></button>
+                            <span style={{ fontWeight: 600, minWidth: '140px', textAlign: 'center', fontSize: '0.95rem' }}>{scheduleMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</span>
+                            <button onClick={() => setScheduleMonth(new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() + 1))} className="btn-icon" style={{ borderRadius: '8px' }}><ChevronRight size={20} /></button>
+                        </div>
+                    </div>
+
+                    <div style={{ overflowX: 'auto', position: 'relative' }}>
+                        <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
+                            <thead>
+                                <tr>
+                                    <th style={{
+                                        textAlign: 'left',
+                                        padding: '1rem',
+                                        position: 'sticky',
+                                        left: 0,
+                                        background: 'white',
+                                        zIndex: 10,
+                                        borderBottom: '1px solid var(--border)',
+                                        borderRight: '1px solid var(--border)',
+                                        minWidth: '220px'
+                                    }}>Сотрудник</th>
+                                    {scheduleDays.map((d, i) => {
+                                        if (!d) return <th key={`empty-${i}`} style={{ background: '#f8fafc', borderBottom: '1px solid var(--border)' }} />
+                                        const isWeekend = d.getDay() === 0 || d.getDay() === 6
+                                        const isToday = d.toDateString() === new Date().toDateString()
+                                        return (
+                                            <th key={d.toISOString()} style={{
+                                                textAlign: 'center',
+                                                padding: '0.75rem 0.25rem',
+                                                borderBottom: '1px solid var(--border)',
+                                                borderRight: '1px solid #f1f5f9',
+                                                background: isToday ? '#eff6ff' : isWeekend ? '#f8fafc' : 'white',
+                                                minWidth: '42px',
+                                                color: isWeekend ? '#ef4444' : '#64748b'
                                             }}>
-                                                {d && (
-                                                    <button
-                                                        onClick={() => toggleShift(emp.id, d)}
-                                                        style={{
-                                                            width: 24,
-                                                            height: 24,
-                                                            borderRadius: '6px',
-                                                            border: 'none',
-                                                            background: isWorkingToday(emp.id, d) ? 'var(--primary)' : '#f3f4f6',
-                                                            color: isWorkingToday(emp.id, d) ? 'white' : '#9ca3af',
-                                                            cursor: 'pointer',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: 600
-                                                        }}
-                                                    >
-                                                        {isWorkingToday(emp.id, d) ? '✓' : ''}
-                                                    </button>
-                                                )}
-                                            </td>
-                                        )})}
+                                                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '2px' }}>
+                                                    {d.toLocaleDateString('ru-RU', { weekday: 'short' }).replace('.', '')}
+                                                </div>
+                                                <div style={{ fontSize: '1rem', fontWeight: 700, color: isToday ? 'var(--primary)' : 'inherit' }}>
+                                                    {d.getDate()}
+                                                </div>
+                                            </th>
+                                        )
+                                    })}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {activeEmployees.filter(e => e.role === 'florist' || e.role === 'manager').map(emp => (
+                                    <tr key={emp.id}>
+                                        <td style={{
+                                            padding: '0.75rem 1rem',
+                                            position: 'sticky',
+                                            left: 0,
+                                            background: 'white',
+                                            zIndex: 10,
+                                            borderBottom: '1px solid var(--border)',
+                                            borderRight: '1px solid var(--border)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.75rem'
+                                        }}>
+                                            <div style={{
+                                                width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden',
+                                                background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: '0.85rem', fontWeight: 700, color: '#64748b', border: '1px solid #e2e8f0'
+                                            }}>
+                                                {emp.photo_url ? <img src={emp.photo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : emp.name[0]}
+                                            </div>
+                                            <span style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap' }}>{emp.name}</span>
+                                        </td>
+                                        {scheduleDays.map((d, i) => {
+                                            if (!d) return <td key={i} style={{ background: '#fcfcfc', borderBottom: '1px solid var(--border)' }} />
+                                            const isWorking = isWorkingToday(emp.id, d)
+                                            const isWeekend = d.getDay() === 0 || d.getDay() === 6
+                                            const isToday = d.toDateString() === new Date().toDateString()
+
+                                            return (
+                                                <td
+                                                    key={i}
+                                                    onClick={() => toggleShift(emp.id, d)}
+                                                    style={{
+                                                        padding: 0,
+                                                        borderBottom: '1px solid var(--border)',
+                                                        borderRight: '1px solid #f1f5f9',
+                                                        textAlign: 'center',
+                                                        background: isWeekend ? '#fbfcfe' : 'white',
+                                                        cursor: 'pointer',
+                                                        transition: 'background 0.1s'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        if (!isWorking) e.currentTarget.style.background = '#f1f5f9'
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        if (!isWorking) e.currentTarget.style.background = isWeekend ? '#fbfcfe' : 'white'
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        height: '100%',
+                                                        width: '100%',
+                                                        minHeight: '48px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}>
+
+                                                        {isWorking && (
+                                                            <motion.div
+                                                                initial={{ scale: 0.5, opacity: 0 }}
+                                                                animate={{ scale: 1, opacity: 1 }}
+                                                                style={{
+                                                                    width: '28px',
+                                                                    height: '28px',
+                                                                    background: 'var(--primary)',
+                                                                    borderRadius: '8px',
+                                                                    boxShadow: '0 2px 5px rgba(236, 72, 153, 0.3)',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center'
+                                                                }}
+                                                            >
+                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                                                </svg>
+                                                            </motion.div>
+                                                        )}
+                                                        {!isWorking && isToday && (
+                                                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#cbd5e1' }} />
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            )
+                                        })}
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>Нажмите на ячейку, чтобы добавить или убрать смену</p>
+                    <div style={{ padding: '1rem', background: '#f8fafc', borderTop: '1px solid var(--border)', fontSize: '0.85rem', color: '#64748b', display: 'flex', gap: '1.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ width: '20px', height: '20px', background: 'var(--primary)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+                            <span>Рабочая смена</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ width: '20px', height: '20px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white' }}></div>
+                            <span>Выходной</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ color: '#ef4444', fontWeight: 600 }}>ВС</span> <span>Воскресенье</span>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -451,7 +641,7 @@ export default function Employees() {
                                 ].map(({ label, set }) => (
                                     <button key={label} onClick={set} style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer' }}>{label}</button>
                                 ))}
-                            <button onClick={async () => { if (window.confirm('Удалить ВСЕ выплаты и смены за выбранный период? Расходы останутся — удалите вручную во вкладке Расходы.')) { const r = await clearEmployeePaymentsForPeriod(new Date(payrollDateStart), new Date(payrollDateEnd)); const msg = r.totalPayments === 0 && r.totalShifts === 0 ? 'Нет данных за период' : `Удалено: ${r.deletedPayments} выплат, ${r.deletedShifts} смен`; alert(msg) } }} style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #dc2626', background: 'white', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}><RotateCcw size={14} /> Очистка</button>
+                                <button onClick={async () => { if (window.confirm('Удалить ВСЕ выплаты и смены за выбранный период? Расходы останутся — удалите вручную во вкладке Расходы.')) { const r = await clearEmployeePaymentsForPeriod(new Date(payrollDateStart), new Date(payrollDateEnd)); const msg = r.totalPayments === 0 && r.totalShifts === 0 ? 'Нет данных за период' : `Удалено: ${r.deletedPayments} выплат, ${r.deletedShifts} смен`; alert(msg) } }} style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #dc2626', background: 'white', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}><RotateCcw size={14} /> Очистка</button>
                             </div>
                         </div>
                     </div>
