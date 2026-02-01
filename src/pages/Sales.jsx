@@ -61,7 +61,7 @@ export default function Sales() {
         sales, addSale, updateSale, deleteSale,
         products, couriers, florists, addCourier, addFlorist,
         expenses, addExpense,
-        calculateCostPrice,
+        calculateCostPrice, calculatePrice,
         flowers, goods, stock, settings, removeFromStock
     } = useStore()
 
@@ -180,6 +180,9 @@ export default function Sales() {
     const [productSearch, setProductSearch] = useState('')
     const [newCourierName, setNewCourierName] = useState('')
     const [newFloristName, setNewFloristName] = useState('')
+    const [siteComposition, setSiteComposition] = useState([])
+    const [siteItemSearch, setSiteItemSearch] = useState('')
+    const [showSiteItemDropdown, setShowSiteItemDropdown] = useState(false)
 
     // Persist draft to localStorage on change
     useEffect(() => {
@@ -329,8 +332,16 @@ export default function Sales() {
 
     // Selected product data
     const selectedProduct = products.find(p => p.id === formData.product_id)
-    const costPrice = selectedProduct ? calculateCostPrice(selectedProduct.composition) : 0
-    const salePrice = Number(formData.sale_price) || (selectedProduct?.price || 0)
+    const costPrice = siteComposition.length > 0
+        ? siteComposition.reduce((s, i) => s + (i.cost * i.quantity), 0) + Number(settings.deliveryCost || 0)
+        : (selectedProduct ? calculateCostPrice(selectedProduct.composition) : 0)
+    const calculatedSalePrice = siteComposition.length > 0
+        ? (() => {
+            const base = siteComposition.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
+            return Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
+        })()
+        : (selectedProduct?.price || 0)
+    const salePrice = Number(formData.sale_price) || calculatedSalePrice
     const profit = salePrice - costPrice
 
     // Product search
@@ -353,6 +364,9 @@ export default function Sales() {
         setEditingSaleId(null)
         setFormData({ ...emptyForm, order_date: new Date().toISOString().slice(0, 16) })
         setProductSearch('')
+        setSiteComposition([])
+        setSiteItemSearch('')
+        setShowSiteItemDropdown(false)
         setIsModalOpen(true)
     }
 
@@ -401,6 +415,13 @@ export default function Sales() {
             })
             const prod = products.find(p => p.id === sale.product_id)
             setProductSearch(prod?.name || '')
+            if (sale.custom_composition && sale.custom_composition.length > 0) {
+                setSiteComposition(sale.custom_composition)
+            } else if (prod) {
+                setSiteComposition(productToEditableComposition(prod.composition || []))
+            } else {
+                setSiteComposition([])
+            }
             setIsModalOpen(true)
         }
     }
@@ -411,11 +432,34 @@ export default function Sales() {
         }
     }
 
+    const productToEditableComposition = (composition) => {
+        if (!Array.isArray(composition)) return []
+        return composition.map(c => {
+            const list = c.type === 'flower' ? flowers : goods
+            const item = list.find(x => x.id === c.id)
+            return {
+                type: c.type,
+                item_id: c.id,
+                name: item?.name || '?',
+                quantity: c.qty || 1,
+                cost: item?.cost ?? item?.purchase_price ?? 0,
+                price: item?.price ?? 0
+            }
+        })
+    }
+
     const handleSelectProduct = (product) => {
+        const comp = productToEditableComposition(product.composition || [])
+        setSiteComposition(comp)
+        const basePrice = comp.length > 0
+            ? comp.reduce((s, i) => s + (i.price * i.quantity), 0) + (settings.deliveryCost || 0)
+            : (product.price || 0)
+        const withMarkup = basePrice + (basePrice * ((settings.markupPercentage || 0) / 100))
+        const roundedPrice = Math.round(withMarkup / 10) * 10
         setFormData({
             ...formData,
             product_id: product.id,
-            sale_price: product.price || ''
+            sale_price: comp.length > 0 ? String(roundedPrice) : (product.price || '')
         })
         setProductSearch(product.name)
     }
@@ -443,13 +487,19 @@ export default function Sales() {
             alert('Выберите букет')
             return
         }
+        if (siteComposition.length === 0) {
+            alert('Добавьте хотя бы одну позицию в состав')
+            return
+        }
 
         setLoading(true)
+        const salePrice = Number(formData.sale_price) || calculatedSalePrice
         const payload = {
             ...formData,
-            sale_price: Number(formData.sale_price) || (selectedProduct?.price || 0),
+            sale_price: salePrice,
             cost_price: costPrice,
-            profit: Number(formData.sale_price || selectedProduct?.price || 0) - costPrice
+            profit: salePrice - costPrice,
+            custom_composition: siteComposition.length > 0 ? siteComposition : undefined
         }
 
         let result
@@ -462,6 +512,8 @@ export default function Sales() {
 
         if (result.success) {
             setIsModalOpen(false)
+            setSiteComposition([])
+            setSiteItemSearch('')
         } else {
             alert('Ошибка: ' + (result.error?.message || ''))
         }
@@ -1109,7 +1161,7 @@ export default function Sales() {
             </div>
 
             {/* Add/Edit Sale Modal */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px" closeOnOverlayClick={false}>
+            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSiteComposition([]); setSiteItemSearch(''); setShowSiteItemDropdown(false) }} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px" closeOnOverlayClick={false}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '75vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
 
                     {/* Section 1: Product & Price (Combined) */}
@@ -1125,7 +1177,7 @@ export default function Sales() {
                                     className="input"
                                     placeholder="Поиск по названию или артикулу..."
                                     value={productSearch}
-                                    onChange={(e) => { setProductSearch(e.target.value); setFormData({ ...formData, product_id: '' }) }}
+                                    onChange={(e) => { setProductSearch(e.target.value); setFormData({ ...formData, product_id: '' }); setSiteComposition([]) }}
                                     style={{ width: '100%' }}
                                 />
                                 {productSearch && !formData.product_id && (
@@ -1157,13 +1209,73 @@ export default function Sales() {
                                 <input
                                     type="number"
                                     className="input"
-                                    placeholder={selectedProduct?.price || '0'}
+                                    placeholder={calculatedSalePrice || '0'}
                                     value={formData.sale_price}
                                     onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
                                     style={{ fontSize: '1.1rem', fontWeight: 700, width: '100%' }}
                                 />
                             </div>
                         </div>
+
+                        {/* Состав букета (редактируемый) */}
+                        {selectedProduct && (
+                            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#6b7280', marginBottom: '0.5rem' }}>Состав (можно изменить)</div>
+                                {siteComposition.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                        {siteComposition.map((item, idx) => (
+                                            <div key={`${item.type}-${item.item_id}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: '#f9fafb', borderRadius: '8px' }}>
+                                                <span style={{ flex: 1, fontWeight: 500 }}>{item.type === 'flower' ? '🌸' : '📦'} {item.name}</span>
+                                                <input type="number" min={1} value={item.quantity} onChange={(e) => {
+                                                    const v = Math.max(1, parseInt(e.target.value) || 1)
+                                                    const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: v } : c)
+                                                    setSiteComposition(newComp)
+                                                    const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
+                                                    setFormData({ ...formData, sale_price: String(Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10) })
+                                                }} style={{ width: '60px', padding: '0.35rem', textAlign: 'center' }} />
+                                                <span style={{ minWidth: '50px', fontWeight: 600 }}>{item.price * item.quantity} L</span>
+                                                <button type="button" onClick={() => {
+                                                    const newComp = siteComposition.filter((_, i) => i !== idx)
+                                                    setSiteComposition(newComp)
+                                                    if (newComp.length > 0) {
+                                                        const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
+                                                        setFormData({ ...formData, sale_price: String(Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10) })
+                                                    } else setFormData({ ...formData, sale_price: '' })
+                                                }} style={{ padding: '0.25rem', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : null}
+                                <div style={{ position: 'relative' }}>
+                                    <input className="input" placeholder="Добавить цветок или товар..." value={siteItemSearch} onChange={(e) => { setSiteItemSearch(e.target.value); setShowSiteItemDropdown(true) }} onFocus={() => setShowSiteItemDropdown(true)} style={{ width: '100%', fontSize: '0.9rem' }} />
+                                    {showSiteItemDropdown && siteItemSearch && (
+                                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 8px 25px rgba(0,0,0,0.1)', zIndex: 20, maxHeight: '200px', overflowY: 'auto' }}>
+                                            {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).map(flower => (
+                                                <div key={`f-${flower.id}`} onClick={() => {
+                                                    const ex = siteComposition.findIndex(c => c.type === 'flower' && c.item_id === flower.id)
+                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: c.quantity + 1 } : c) : [...siteComposition, { type: 'flower', item_id: flower.id, name: flower.name, quantity: 1, cost: flower.cost || 0, price: flower.price || 0 }]
+                                                    setSiteComposition(newComp)
+                                                    const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
+                                                    setFormData({ ...formData, sale_price: String(Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10) })
+                                                    setSiteItemSearch(''); setShowSiteItemDropdown(false)
+                                                }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>🌸 {flower.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{flower.price} L</span></div>
+                                            ))}
+                                            {goods.filter(g => g.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).map(good => (
+                                                <div key={`g-${good.id}`} onClick={() => {
+                                                    const ex = siteComposition.findIndex(c => c.type === 'good' && c.item_id === good.id)
+                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: c.quantity + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
+                                                    setSiteComposition(newComp)
+                                                    const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
+                                                    setFormData({ ...formData, sale_price: String(Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10) })
+                                                    setSiteItemSearch(''); setShowSiteItemDropdown(false)
+                                                }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>📦 {good.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{good.price} L</span></div>
+                                            ))}
+                                            {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).length === 0 && goods.filter(g => g.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).length === 0 && <div style={{ padding: '1rem', color: '#9ca3af', textAlign: 'center' }}>Ничего не найдено</div>}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Section 2: Order Details (Compact) */}
@@ -1278,15 +1390,20 @@ export default function Sales() {
                                 </select>
                             </div>
 
-                            {/* Courier/Florist (Compact) */}
+                            {formData.delivery_method === 'delivery' && (
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Курьер</label>
+                                    <select className="input" value={formData.courier_id} onChange={(e) => setFormData({ ...formData, courier_id: e.target.value })}>
+                                        <option value="">Не выбран</option>
+                                        {couriers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                                    </select>
+                                </div>
+                            )}
                             <div>
-                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>{formData.delivery_method === 'delivery' ? 'Курьер' : 'Флорист'}</label>
-                                <select className="input"
-                                    value={formData.delivery_method === 'delivery' ? formData.courier_id : formData.florist_id}
-                                    onChange={(e) => setFormData({ ...formData, [formData.delivery_method === 'delivery' ? 'courier_id' : 'florist_id']: e.target.value })}
-                                >
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Флорист (кто делал)</label>
+                                <select className="input" value={formData.florist_id} onChange={(e) => setFormData({ ...formData, florist_id: e.target.value })}>
                                     <option value="">Не выбран</option>
-                                    {(formData.delivery_method === 'delivery' ? couriers : florists).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                                    {florists.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
                                 </select>
                             </div>
                         </div>
@@ -1299,7 +1416,7 @@ export default function Sales() {
                         </button>
                         <button
                             className="btn btn-primary"
-                            disabled={loading || !formData.product_id}
+                            disabled={loading || !formData.product_id || (selectedProduct && siteComposition.length === 0)}
                             onClick={handleSaveSale}
                             style={{ flex: 2, justifyContent: 'center', padding: '1rem', fontSize: '1.1rem' }}
                         >

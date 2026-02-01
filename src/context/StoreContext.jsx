@@ -37,6 +37,9 @@ export function StoreProvider({ children }) {
     const [sales, setSales] = usePersistedState('store_sales', [])
     const [couriers, setCouriers] = usePersistedState('store_couriers', [])
     const [florists, setFlorists] = usePersistedState('store_florists', [])
+    const [employees, setEmployees] = usePersistedState('store_employees', [])
+    const [shifts, setShifts] = usePersistedState('store_shifts', [])
+    const [employeePayments, setEmployeePayments] = usePersistedState('store_employee_payments', [])
     const [settings, setSettings] = usePersistedState('store_settings', { markup_percentage: 30, delivery_cost: 500 })
     const [stock, setStock] = usePersistedState('store_stock', [])
     const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
@@ -63,16 +66,19 @@ export function StoreProvider({ children }) {
                 supabase.from('suppliers').select('*').order('created_at', { ascending: true }),
                 supabase.from('supplies').select('*, suppliers(name)').order('date', { ascending: false }),
                 supabase.from('expenses').select('*').order('date', { ascending: false }),
-                supabase.from('sales').select('*, products(name, sku, composition), couriers(name), florists(name)').order('order_date', { ascending: false }),
+                supabase.from('sales').select('*, products(name, sku, composition)').order('order_date', { ascending: false }),
                 supabase.from('couriers').select('*').order('name', { ascending: true }),
                 supabase.from('florists').select('*').order('name', { ascending: true }),
+                supabase.from('employees').select('*').order('name', { ascending: true }).then(r => r).catch(() => ({ data: [] })),
+                supabase.from('shifts').select('*').order('shift_date', { ascending: true }).then(r => r).catch(() => ({ data: [] })),
+                supabase.from('employee_payments').select('*').order('paid_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('settings').select('*').single(),
                 supabase.from('stock').select('*'),
                 supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(100),
                 supabase.from('customers').select('*').order('created_at', { ascending: false })
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, s, stk, stkTrans, cust] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, cust] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -90,6 +96,9 @@ export function StoreProvider({ children }) {
             if (sal.data) setSales(sal.data)
             if (cour.data) setCouriers(cour.data)
             if (flor.data) setFlorists(flor.data)
+            if (emp?.data) setEmployees(emp.data)
+            if (shf?.data) setShifts(shf.data)
+            if (empPay?.data) setEmployeePayments(empPay.data)
             if (s.data) {
                 setSettings({
                     markupPercentage: Number(s.data.markup_percentage),
@@ -569,7 +578,7 @@ export function StoreProvider({ children }) {
                 }
             })
             
-            const { data, error } = await supabase.from('sales').insert([salePayload]).select('*, products(name, sku, composition), couriers(name), florists(name)')
+            const { data, error } = await supabase.from('sales').insert([salePayload]).select('*, products(name, sku, composition)')
             
             if (error) throw error
             
@@ -603,25 +612,29 @@ export function StoreProvider({ children }) {
                     }
                 } catch (e) { console.warn('Could not save important date:', e) }
 
-                // 4. Auto-deduct stock from product composition
-                const product = products.find(p => p.id === sale.product_id)
-                if (product?.composition && product.composition.length > 0) {
-                    for (const comp of product.composition) {
-                        const existing = stock.find(s => s.item_type === comp.type && s.item_id === comp.id)
-                        if (existing) {
-                            const newQty = Math.max(0, existing.quantity - (comp.qty || 1))
-                            await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
-                            setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
-
-                            // Log transaction
-                            await supabase.from('stock_transactions').insert([{
-                                item_type: comp.type,
-                                item_id: comp.id,
-                                quantity: -(comp.qty || 1),
-                                transaction_type: 'sale',
-                                reference_id: saleData.id
-                            }])
-                        }
+                // 4. Auto-deduct stock from composition (custom_composition или product.composition)
+                const compToDeduct = (salePayload.custom_composition && Array.isArray(salePayload.custom_composition) && salePayload.custom_composition.length > 0)
+                    ? salePayload.custom_composition.map(c => ({ type: c.type, id: c.item_id || c.id, qty: c.quantity || c.qty || 1 }))
+                    : (() => {
+                        const product = products.find(p => p.id === sale.product_id)
+                        return product?.composition || []
+                    })()
+                for (const comp of compToDeduct) {
+                    const itemType = comp.type
+                    const itemId = comp.id
+                    const qty = comp.qty || 1
+                    const existing = stock.find(s => s.item_type === itemType && s.item_id === itemId)
+                    if (existing) {
+                        const newQty = Math.max(0, existing.quantity - qty)
+                        await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
+                        setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+                        await supabase.from('stock_transactions').insert([{
+                            item_type: itemType,
+                            item_id: itemId,
+                            quantity: -qty,
+                            transaction_type: 'sale',
+                            reference_id: saleData.id
+                        }])
                     }
                 }
             }
@@ -648,15 +661,233 @@ export function StoreProvider({ children }) {
         return { success: false, error }
     }
 
-    // Couriers
+    // Employees (florists, couriers, managers)
+    const addEmployee = async (payload) => {
+        const { data, error } = await supabase.from('employees').insert([{
+            name: payload.name,
+            phone: payload.phone || null,
+            role: payload.role || 'florist',
+            rate_per_shift: payload.rate_per_shift ?? 0,
+            commission_percent: payload.commission_percent ?? 0,
+            rate_per_order: payload.rate_per_order ?? 0,
+            photo_url: payload.photo_url || null,
+            employee_level: payload.employee_level || 'standard',
+            is_active: payload.is_active ?? true,
+            hired_at: payload.hired_at || new Date().toISOString().split('T')[0]
+        }]).select()
+        if (data) setEmployees([...employees, data[0]])
+        return { success: !error, data: data?.[0], error }
+    }
+    const updateEmployee = async (id, updates) => {
+        const { data, error } = await supabase.from('employees').update(updates).eq('id', id).select()
+        if (!error && data?.[0]) {
+            const updated = data[0]
+            setEmployees(employees.map(e => e.id === id ? updated : e))
+        }
+        return { success: !error, data: data?.[0], error }
+    }
+    const deleteEmployee = async (id) => {
+        const { error } = await supabase.from('employees').update({ is_active: false }).eq('id', id)
+        if (!error) setEmployees(employees.map(e => e.id === id ? { ...e, is_active: false } : e))
+        return { success: !error, error }
+    }
+    const toDateStr = (d) => {
+        const x = new Date(d)
+        return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+    }
+
+    const startShift = async (employeeId, openingCash = 0) => {
+        const now = new Date().toISOString()
+        const dateStr = toDateStr(new Date())
+        const { data, error } = await supabase.from('shifts').upsert({
+            employee_id: employeeId,
+            shift_date: dateStr,
+            shift_type: 'day',
+            start_time: now,
+            opening_cash: Number(openingCash) || 0,
+            status: 'active'
+        }, { onConflict: 'employee_id,shift_date' }).select()
+        if (!error && data?.[0]) {
+            const existing = shifts.filter(s => !(s.employee_id === employeeId && s.shift_date === dateStr))
+            setShifts([...existing, data[0]])
+        }
+        return { success: !error, data: data?.[0], error }
+    }
+
+    const endShift = async (shiftId, closingCash = 0) => {
+        const now = new Date().toISOString()
+        const { data, error } = await supabase.from('shifts').update({
+            end_time: now,
+            closing_cash: Number(closingCash) || 0,
+            status: 'completed'
+        }).eq('id', shiftId).select()
+        if (!error && data?.[0]) {
+            setShifts(shifts.map(s => s.id === shiftId ? data[0] : s))
+        }
+        return { success: !error, data: data?.[0], error }
+    }
+
+    const getActiveShifts = () => {
+        const today = toDateStr(new Date())
+        return shifts.filter(s => s.status === 'active' && s.shift_date === today)
+    }
+
+    const getCashBalance = () => {
+        const cashSales = sales
+            .filter(s => s.sales_channel === 'store' && s.payment_method === 'cash')
+            .reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
+        const cashExpenses = expenses
+            .filter(e => e.payment_method === 'cash_box')
+            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+        return cashSales - cashExpenses
+    }
+
+    const uploadEmployeePhoto = async (file, employeeId = 'temp') => {
+        const ext = file.name?.split('.').pop() || 'jpg'
+        const path = `${employeeId}/${Date.now()}.${ext}`
+        const { data, error } = await supabase.storage.from('employee-photos').upload(path, file, { upsert: true })
+        if (error) throw error
+        const { data: { publicUrl } } = supabase.storage.from('employee-photos').getPublicUrl(data.path)
+        return publicUrl
+    }
+
+    const getFloristAutoLevel = (emp) => {
+        if (emp.role !== 'florist' && emp.role !== 'manager') return 'standard'
+        const cutoff = new Date()
+        cutoff.setDate(cutoff.getDate() - 30)
+        const floristSales = sales.filter(s => s.florist_id === emp.id && new Date(s.order_date || s.created_at) >= cutoff)
+        if (floristSales.length === 0) return 'standard'
+        const byDate = {}
+        floristSales.forEach(s => {
+            const key = (s.order_date || s.created_at || '').split('T')[0]
+            if (!byDate[key]) byDate[key] = 0
+            byDate[key] += Number(s.sale_price || 0)
+        })
+        const dailyTotals = Object.values(byDate)
+        const avgPerDay = dailyTotals.reduce((a, b) => a + b, 0) / dailyTotals.length
+        if (avgPerDay >= 5000) return 'lead'
+        if (avgPerDay >= 4000) return 'star'
+        if (avgPerDay >= 3000) return 'top'
+        return 'standard'
+    }
+
+    const addShift = async (employeeId, date, shiftType = 'day') => {
+        const dateStr = typeof date === 'string' ? date : toDateStr(new Date(date))
+        const { data, error } = await supabase.from('shifts').upsert({
+            employee_id: employeeId,
+            shift_date: dateStr,
+            shift_type: shiftType
+        }, { onConflict: 'employee_id,shift_date' }).select()
+        if (!error && data?.[0]) {
+            const existing = shifts.filter(s => !(s.employee_id === employeeId && s.shift_date === dateStr))
+            setShifts([...existing, data[0]])
+        }
+        return { success: !error, data: data?.[0], error }
+    }
+    const removeShift = async (id) => {
+        const { error } = await supabase.from('shifts').delete().eq('id', id)
+        if (!error) setShifts(shifts.filter(s => s.id !== id))
+        return { success: !error, error }
+    }
+    const getPayrollForPeriod = (startDate, endDate) => {
+        const start = new Date(startDate)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        const startStr = toDateStr(start)
+        const endStr = toDateStr(end)
+        const periodSales = sales.filter(s => {
+            const d = new Date(s.order_date || s.created_at)
+            return d >= start && d <= end
+        })
+        const byEmployee = {}
+        employees.filter(e => e.is_active !== false).forEach(emp => {
+            const isCourier = emp.role === 'courier'
+            const empSalesAsFlorist = periodSales.filter(s => s.florist_id === emp.id)
+            const empSalesAsCourier = periodSales.filter(s => s.courier_id === emp.id)
+            const ordersAsCourier = empSalesAsCourier.length
+            const ordersAsFlorist = empSalesAsFlorist.length
+            const totalSales = empSalesAsFlorist.reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
+            const avgCheck = ordersAsFlorist > 0 ? totalSales / ordersAsFlorist : 0
+            const shiftsCount = shifts.filter(s => {
+                if (s.employee_id !== emp.id) return false
+                const sd = (s.shift_date || '').split('T')[0]
+                return sd >= startStr && sd <= endStr
+            }).length
+            let total = 0
+            let rateEarned = 0, commissionEarned = 0, ratePerOrderEarned = 0
+            if (isCourier) {
+                ratePerOrderEarned = ordersAsCourier * Number(emp.rate_per_order || 0)
+                total = ratePerOrderEarned
+            } else {
+                rateEarned = shiftsCount * Number(emp.rate_per_shift || 0)
+                commissionEarned = totalSales * (Number(emp.commission_percent || 0) / 100)
+                total = rateEarned + commissionEarned
+            }
+            byEmployee[emp.id] = {
+                employee: emp, shiftsCount, totalSales, ordersAsFlorist, avgCheck, rateEarned, commissionEarned, ratePerOrderEarned, ordersAsCourier,
+                total
+            }
+        })
+        return Object.values(byEmployee).filter(x => x.total > 0)
+    }
+
+    const addEmployeePayment = async (employeeId, amount, paymentType, periodDate, note = '') => {
+        const period = typeof periodDate === 'string' ? periodDate : periodDate.toISOString().split('T')[0]
+        const firstOfMonth = period.slice(0, 8) + '01'
+        const { data, error } = await supabase.from('employee_payments').insert([{
+            employee_id: employeeId,
+            amount: Number(amount),
+            payment_type: paymentType,
+            period_date: firstOfMonth,
+            note: note || null
+        }]).select()
+        if (!error && data?.[0]) {
+            setEmployeePayments(prev => [data[0], ...prev])
+            return { success: true, data: data[0] }
+        }
+        return { success: false, error }
+    }
+
+    const getPaymentsForPeriod = (employeeId, startDate, endDate) => {
+        const start = new Date(startDate)
+        const end = new Date(endDate)
+        return employeePayments.filter(p => {
+            if (p.employee_id !== employeeId || !p.period_date) return false
+            const d = new Date(p.period_date)
+            const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
+            const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+            return monthStart <= end && monthEnd >= start
+        })
+    }
+
+    const getPayrollEnriched = (startDate, endDate) => {
+        const payroll = getPayrollForPeriod(startDate, endDate)
+        const start = new Date(startDate)
+        const end = new Date(endDate)
+        return payroll.map(p => {
+            const payments = getPaymentsForPeriod(p.employee.id, start, end)
+            const advances = payments.filter(x => x.payment_type === 'advance').reduce((s, x) => s + Number(x.amount || 0), 0)
+            const salaryPaid = payments.filter(x => x.payment_type === 'salary').reduce((s, x) => s + Number(x.amount || 0), 0)
+            const bonus = payments.filter(x => x.payment_type === 'bonus').reduce((s, x) => s + Number(x.amount || 0), 0)
+            const balance = Math.max(0, p.total - advances - salaryPaid)
+            return { ...p, advances, salaryPaid, bonus, balance }
+        })
+    }
+
+    // Couriers & Florists (fallback to old tables, or use employees)
+    const floristsList = employees.length > 0 ? employees.filter(e => e.is_active !== false && e.role === 'florist') : florists
+    const couriersList = employees.length > 0 ? employees.filter(e => e.is_active !== false && e.role === 'courier') : couriers
     const addCourier = async (name, phone = null) => {
+        const r = await addEmployee({ name, phone, role: 'courier' })
+        if (r.success && r.data) return r
         const { data, error } = await supabase.from('couriers').insert([{ name, phone }]).select()
         if (data) setCouriers([...couriers, data[0]])
         return { success: !error, data: data?.[0], error }
     }
-
-    // Florists
     const addFlorist = async (name) => {
+        const r = await addEmployee({ name, role: 'florist' })
+        if (r.success && r.data) return r
         const { data, error } = await supabase.from('florists').insert([{ name }]).select()
         if (data) setFlorists([...florists, data[0]])
         return { success: !error, data: data?.[0], error }
@@ -1131,8 +1362,12 @@ export function StoreProvider({ children }) {
             suppliers, supplies, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems,
             expenses, addExpense, updateExpense, deleteExpense,
             sales, addSale, updateSale, deleteSale,
-            couriers, addCourier,
-            florists, addFlorist,
+            couriers: couriersList, addCourier,
+            florists: floristsList, addFlorist,
+            employees, shifts, addEmployee, updateEmployee, deleteEmployee,
+            addShift, removeShift, startShift, endShift, getActiveShifts, getCashBalance, getPayrollForPeriod,
+            getPayrollEnriched, addEmployeePayment, employeePayments,
+            uploadEmployeePhoto, getFloristAutoLevel,
             settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,
             stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,

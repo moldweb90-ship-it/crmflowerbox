@@ -1,10 +1,22 @@
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
-import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone } from 'lucide-react'
+import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square } from 'lucide-react'
+import Modal from '../components/ui/Modal'
 
 const STALE_DAYS = 7
+const SHIFT_START_H = 9
+const SHIFT_END_H = 21
+const MOTIVATIONS = [
+    'Пусть сегодня будет много счастливых клиентов! 🌸',
+    'Каждый букет — частичка счастья. Твори! 💐',
+    'Ты делаешь дни людей ярче. Вперёд! ✨',
+    'Цветы лечат души. Продолжай в том же духе! 🌷',
+    'Отличный день для красивых букетов! 🌺',
+    'Улыбки клиентов — твоя награда! 😊',
+    'Сегодня все заказы будут идеальными! 💫'
+]
 
 // FIFO: по транзакциям поставок и продаж/брака вычисляет остатки по «партиям» (дата поставки)
 function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies) {
@@ -39,7 +51,8 @@ function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies
 }
 
 export default function Dashboard() {
-    const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, customers, getItemName } = useStore()
+    const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, customers, getItemName,
+        employees, shifts, startShift, endShift, getActiveShifts, getCashBalance } = useStore()
     const navigate = useNavigate()
 
     // Waste Analytics — один период 30 дней для списаний и выручки
@@ -171,6 +184,59 @@ export default function Dashboard() {
     const totalValue = products.reduce((acc, p) => acc + (p.price || 0), 0)
     const totalItems = flowers.length + goods.length
 
+    // Shift block
+    const florists = employees.filter(e => ['florist', 'manager'].includes(e.role))
+    const activeShifts = getActiveShifts()
+    const [isStartShiftOpen, setIsStartShiftOpen] = useState(false)
+    const [isEndShiftOpen, setIsEndShiftOpen] = useState(false)
+    const [shiftToEnd, setShiftToEnd] = useState(null)
+    const [startForm, setStartForm] = useState({ floristId: '', openingCash: '' })
+    const [endFormClosingCash, setEndFormClosingCash] = useState('')
+    const [shiftLoading, setShiftLoading] = useState(false)
+    const [elapsedSeconds, setElapsedSeconds] = useState(0)
+
+    useEffect(() => {
+        const active = getActiveShifts()
+        if (active.length === 0) return
+        const start = active[0]?.start_time ? new Date(active[0].start_time).getTime() : 0
+        const tick = () => setElapsedSeconds(Math.floor((Date.now() - start) / 1000))
+        tick()
+        const id = setInterval(tick, 1000)
+        return () => clearInterval(id)
+    }, [shifts])
+
+    const handleStartShift = async () => {
+        if (!startForm.floristId) return
+        setShiftLoading(true)
+        await startShift(startForm.floristId, startForm.openingCash)
+        setShiftLoading(false)
+        setIsStartShiftOpen(false)
+        setStartForm({ floristId: '', openingCash: '' })
+    }
+
+    const handleEndShift = async () => {
+        if (!shiftToEnd) return
+        setShiftLoading(true)
+        await endShift(shiftToEnd.id, endFormClosingCash)
+        setShiftLoading(false)
+        setIsEndShiftOpen(false)
+        setShiftToEnd(null)
+        setEndFormClosingCash('')
+    }
+
+    const formatTimer = (sec) => {
+        const h = Math.floor(sec / 3600)
+        const m = Math.floor((sec % 3600) / 60)
+        return `${h}ч ${m}м`
+    }
+    const getRemainingToEnd = () => {
+        const now = new Date()
+        const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), SHIFT_END_H, 0, 0)
+        const remain = Math.max(0, Math.floor((endToday - now) / 1000))
+        return formatTimer(remain)
+    }
+    const motivation = MOTIVATIONS[new Date().getDay() % MOTIVATIONS.length]
+
     // Mobile Check
     const [isMobile, setIsMobile] = React.useState(window.innerWidth < 768)
     React.useEffect(() => {
@@ -196,6 +262,55 @@ export default function Dashboard() {
                         <span style={{ fontSize: '1rem', fontWeight: 700 }}>{weekday}</span>
                         <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{month}</span>
                     </div>
+                </div>
+
+                {/* Shift Block */}
+                <div style={{ flex: 1, minWidth: isMobile ? '100%' : '320px' }}>
+                    {activeShifts.length === 0 ? (
+                        <div onClick={() => { setIsStartShiftOpen(true); setStartForm(prev => ({ ...prev, openingCash: String(getCashBalance() || 0) })) }} style={{
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.5rem',
+                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '16px',
+                            cursor: 'pointer', color: 'white', boxShadow: '0 4px 14px rgba(16,185,129,0.4)',
+                            transition: 'transform 0.2s'
+                        }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+                            <div style={{ background: 'rgba(255,255,255,0.2)', padding: '10px', borderRadius: '50%' }}><Play size={24} /></div>
+                            <div>
+                                <div style={{ fontWeight: 700, fontSize: '1rem' }}>Начать смену</div>
+                                <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>9:00 — 21:00</div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{
+                            padding: '1rem 1.25rem', background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                            border: '1px solid #86efac', borderRadius: '16px', display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+                            alignItems: isMobile ? 'stretch' : 'center', gap: '1rem', flexWrap: 'wrap'
+                        }}>
+                            {activeShifts.map(shift => {
+                                const emp = employees.find(e => e.id === shift.employee_id)
+                                return (
+                                    <div key={shift.id} style={{ flex: 1, minWidth: '200px' }}>
+                                        <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#166534', marginBottom: '0.25rem' }}>
+                                            Добрый день, {emp?.name || '?'}! 🌸
+                                        </div>
+                                        <div style={{ fontSize: '0.85rem', color: '#15803d', marginBottom: '0.5rem' }}>{motivation}</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', padding: '0.4rem 0.75rem', borderRadius: '10px', fontWeight: 700, color: '#059669' }}>
+                                                <Clock size={18} /> {formatTimer(elapsedSeconds)}
+                                            </div>
+                                            <span style={{ fontSize: '0.8rem', color: '#166534' }}>до 21:00: {getRemainingToEnd()}</span>
+                                            <button onClick={() => { setShiftToEnd(shift); setEndFormClosingCash(String(getCashBalance() || 0)); setIsEndShiftOpen(true) }} style={{
+                                                display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem',
+                                                background: '#dc2626', color: 'white', border: 'none', borderRadius: '10px',
+                                                fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer'
+                                            }}>
+                                                <Square size={14} /> Закончить смену
+                                            </button>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 {/* Primary Action Button */}
@@ -594,6 +709,45 @@ export default function Dashboard() {
                 </div>
             </div>
             </div>
+
+            {/* Modals: Start Shift, End Shift */}
+            <Modal isOpen={isStartShiftOpen} onClose={() => setIsStartShiftOpen(false)} title="Начать смену" maxWidth="400px" closeOnOverlayClick={false}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>Флорист</label>
+                        <select className="input" value={startForm.floristId} onChange={e => setStartForm({ ...startForm, floristId: e.target.value })} style={{ width: '100%' }}>
+                            <option value="">Выберите...</option>
+                            {florists.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>Остаток в кассе (lei)</label>
+                        <input className="input" type="number" min={0} placeholder="0" value={startForm.openingCash} onChange={e => setStartForm({ ...startForm, openingCash: e.target.value })} style={{ width: '100%' }} />
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Из вкладки Заказы → Касса</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                        <button className="btn" onClick={() => setIsStartShiftOpen(false)} style={{ flex: 1 }}>Отмена</button>
+                        <button className="btn btn-primary" disabled={!startForm.floristId || shiftLoading} onClick={handleStartShift} style={{ flex: 1 }}>{shiftLoading ? '...' : 'Начать'}</button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isEndShiftOpen} onClose={() => { setIsEndShiftOpen(false); setShiftToEnd(null) }} title="Закончить смену" maxWidth="400px" closeOnOverlayClick={false}>
+                {shiftToEnd && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ fontSize: '0.9rem' }}>Флорист: <b>{employees.find(e => e.id === shiftToEnd.employee_id)?.name}</b></div>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>Остаток в кассе (lei)</label>
+                            <input className="input" type="number" min={0} placeholder="0" value={endFormClosingCash} onChange={e => setEndFormClosingCash(e.target.value)} style={{ width: '100%' }} />
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Текущий расчёт из Заказы → Касса</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                            <button className="btn" onClick={() => { setIsEndShiftOpen(false); setShiftToEnd(null) }} style={{ flex: 1 }}>Отмена</button>
+                            <button className="btn btn-primary" disabled={shiftLoading} onClick={handleEndShift} style={{ flex: 1 }}>{shiftLoading ? '...' : 'Закончить'}</button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
         </div>
     )
 }
