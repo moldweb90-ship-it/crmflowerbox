@@ -832,18 +832,30 @@ export function StoreProvider({ children }) {
         return Object.values(byEmployee).filter(x => x.total > 0)
     }
 
-    const addEmployeePayment = async (employeeId, amount, paymentType, periodDate, note = '') => {
+    const addEmployeePayment = async (employeeId, amount, paymentType, periodDate, note = '', employeeName = '') => {
         const period = typeof periodDate === 'string' ? periodDate : periodDate.toISOString().split('T')[0]
         const firstOfMonth = period.slice(0, 8) + '01'
+        const amt = Number(amount)
         const { data, error } = await supabase.from('employee_payments').insert([{
             employee_id: employeeId,
-            amount: Number(amount),
+            amount: amt,
             payment_type: paymentType,
             period_date: firstOfMonth,
             note: note || null
         }]).select()
         if (!error && data?.[0]) {
             setEmployeePayments(prev => [data[0], ...prev])
+            if ((paymentType === 'salary' || paymentType === 'bonus' || paymentType === 'advance') && amt > 0) {
+                const empName = employeeName || employees.find(e => e.id === employeeId)?.name || 'Сотрудник'
+                const label = paymentType === 'salary' ? 'ЗП' : paymentType === 'advance' ? 'Аванс' : 'Премия'
+                await addExpense({
+                    amount: amt,
+                    category: 'salaries',
+                    date: new Date().toISOString(),
+                    comment: `${label}: ${empName}${note ? ` — ${note}` : ''}`,
+                    payment_method: 'card_account'
+                })
+            }
             return { success: true, data: data[0] }
         }
         return { success: false, error }
@@ -852,13 +864,63 @@ export function StoreProvider({ children }) {
     const getPaymentsForPeriod = (employeeId, startDate, endDate) => {
         const start = new Date(startDate)
         const end = new Date(endDate)
+        const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`
+        const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}`
         return employeePayments.filter(p => {
-            if (p.employee_id !== employeeId || !p.period_date) return false
-            const d = new Date(p.period_date)
-            const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
-            const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0)
-            return monthStart <= end && monthEnd >= start
+            if (employeeId && p.employee_id !== employeeId) return false
+            const pd = (p.period_date || '').split('T')[0]
+            if (!pd || pd.length < 7) return false
+            const pMonth = pd.slice(0, 7)
+            return pMonth >= startStr && pMonth <= endStr
         })
+    }
+
+    const updateEmployeePayment = async (id, updates) => {
+        const { data, error } = await supabase.from('employee_payments').update(updates).eq('id', id).select()
+        if (!error && data?.[0]) {
+            setEmployeePayments(prev => prev.map(p => p.id === id ? data[0] : p))
+            return { success: true, data: data[0] }
+        }
+        return { success: false, error }
+    }
+
+    const deleteEmployeePayment = async (id) => {
+        const { error } = await supabase.from('employee_payments').delete().eq('id', id)
+        if (!error) {
+            setEmployeePayments(prev => prev.filter(p => p.id !== id))
+            return { success: true }
+        }
+        return { success: false, error }
+    }
+
+    const clearEmployeePaymentsForPeriod = async (startDate, endDate) => {
+        const start = new Date(startDate)
+        const end = new Date(endDate)
+        const startStr = toDateStr(start)
+        const endStr = toDateStr(end)
+
+        const list = getPaymentsForPeriod(null, startDate, endDate)
+        let deletedPayments = 0
+        for (const p of list) {
+            const ok = await deleteEmployeePayment(p.id)
+            if (ok?.success) deletedPayments++
+        }
+
+        const shiftsToDelete = shifts.filter(s => {
+            const sd = (s.shift_date || '').split('T')[0]
+            return sd >= startStr && sd <= endStr
+        })
+        let deletedShifts = 0
+        for (const s of shiftsToDelete) {
+            const { error } = await supabase.from('shifts').delete().eq('id', s.id)
+            if (!error) deletedShifts++
+        }
+        if (shiftsToDelete.length > 0) {
+            const ids = new Set(shiftsToDelete.map(x => x.id))
+            setShifts(prev => prev.filter(x => !ids.has(x.id)))
+        }
+
+        return { deletedPayments, totalPayments: list.length, deletedShifts, totalShifts: shiftsToDelete.length }
     }
 
     const getPayrollEnriched = (startDate, endDate) => {
@@ -1366,7 +1428,7 @@ export function StoreProvider({ children }) {
             florists: floristsList, addFlorist,
             employees, shifts, addEmployee, updateEmployee, deleteEmployee,
             addShift, removeShift, startShift, endShift, getActiveShifts, getCashBalance, getPayrollForPeriod,
-            getPayrollEnriched, addEmployeePayment, employeePayments,
+            getPayrollEnriched, addEmployeePayment, updateEmployeePayment, deleteEmployeePayment, clearEmployeePaymentsForPeriod, getPaymentsForPeriod, employeePayments,
             uploadEmployeePhoto, getFloristAutoLevel,
             settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,

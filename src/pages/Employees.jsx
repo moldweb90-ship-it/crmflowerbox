@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Users, Calendar, DollarSign, Plus, Edit2, ChevronLeft, ChevronRight, Phone, Trash2, Search, Upload, Banknote, Gift, Wallet } from 'lucide-react'
+import { Users, Calendar, DollarSign, Plus, Edit2, ChevronLeft, ChevronRight, Phone, Trash2, Search, Upload, Banknote, Gift, Wallet, List, RotateCcw } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 const ROLES = [
@@ -8,6 +8,8 @@ const ROLES = [
     { id: 'courier', label: 'Курьер', icon: '🚚' },
     { id: 'manager', label: 'Менеджер', icon: '👔' }
 ]
+
+const PAYMENT_TYPE_LABELS = { salary: 'ЗП', advance: 'Аванс', bonus: 'Премия' }
 
 const LEVELS = [
     { id: 'standard', label: 'Сотрудник', icon: '👤', color: '#6b7280' },
@@ -17,7 +19,7 @@ const LEVELS = [
 ]
 
 export default function Employees() {
-    const { employees, shifts, sales, addEmployee, updateEmployee, deleteEmployee, addShift, removeShift, getPayrollForPeriod, getPayrollEnriched, addEmployeePayment, uploadEmployeePhoto, getFloristAutoLevel } = useStore()
+    const { employees, shifts, sales, addEmployee, updateEmployee, deleteEmployee, addShift, removeShift, getPayrollForPeriod, getPayrollEnriched, addEmployeePayment, updateEmployeePayment, deleteEmployeePayment, clearEmployeePaymentsForPeriod, getPaymentsForPeriod, uploadEmployeePhoto, getFloristAutoLevel } = useStore()
 
     const [tab, setTab] = useState('list')
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -28,6 +30,9 @@ export default function Employees() {
     const [payrollDateEnd, setPayrollDateEnd] = useState(() => { const d = new Date(); return d.toISOString().slice(0, 10) })
     const [paymentModal, setPaymentModal] = useState(null)
     const [paymentForm, setPaymentForm] = useState({ amount: '', note: '' })
+    const [paymentsListModal, setPaymentsListModal] = useState(null)
+    const [editPaymentModal, setEditPaymentModal] = useState(null)
+    const [editPaymentForm, setEditPaymentForm] = useState({ amount: '', note: '' })
     const [formData, setFormData] = useState({ name: '', phone: '', role: 'florist', rate_per_shift: '', commission_percent: '', rate_per_order: '', photo_url: '' })
     const [photoUploading, setPhotoUploading] = useState(false)
     const [loading, setLoading] = useState(false)
@@ -111,7 +116,7 @@ export default function Employees() {
         if (amt <= 0) return
         const start = new Date(payrollDateStart)
         const periodStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`
-        const ok = await addEmployeePayment(paymentModal.employee.id, amt, type, periodStr, paymentForm.note)
+        const ok = await addEmployeePayment(paymentModal.employee.id, amt, type, periodStr, paymentForm.note, paymentModal.employee.name)
         if (ok.success) {
             setPaymentModal(null)
             setPaymentForm({ amount: '', note: '' })
@@ -309,7 +314,6 @@ export default function Employees() {
                         }}>
                             {filteredAndSortedEmployees.map(emp => {
                                 const level = LEVELS.find(l => l.id === getFloristAutoLevel(emp)) || LEVELS[0]
-                                const payrollEmp = payrollThisMonth.find(p => p.employee.id === emp.id)
                                 return (
                                     <div
                                         key={emp.id}
@@ -344,20 +348,7 @@ export default function Employees() {
                                                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{ROLES.find(r => r.id === emp.role)?.label}</span>
                                                 <span style={{ color: level.color, fontWeight: 700 }}>{level.icon}</span>
                                             </div>
-                                            {emp.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}><Phone size={14} /> {emp.phone}</div>}
-                                            {payrollEmp && (
-                                                <div style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                                    <div style={{ fontWeight: 700, color: '#10b981' }}>ЗП: {payrollEmp.total.toLocaleString()} lei</div>
-                                                    {(emp.role === 'florist' || emp.role === 'manager') && payrollEmp.ordersAsFlorist > 0 && (
-                                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                                                            {payrollEmp.ordersAsFlorist} зак. · {payrollEmp.totalSales.toLocaleString()} lei · ср. {Math.round(payrollEmp.avgCheck).toLocaleString()} lei
-                                                        </div>
-                                                    )}
-                                                    {emp.role === 'courier' && payrollEmp.ordersAsCourier > 0 && (
-                                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{payrollEmp.ordersAsCourier} доставок</div>
-                                                    )}
-                                                </div>
-                                            )}
+                                            {emp.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}><Phone size={14} /> {emp.phone}</div>}
                                         </div>
                                     </div>
                                 )
@@ -460,6 +451,7 @@ export default function Employees() {
                                 ].map(({ label, set }) => (
                                     <button key={label} onClick={set} style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer' }}>{label}</button>
                                 ))}
+                            <button onClick={async () => { if (window.confirm('Удалить ВСЕ выплаты и смены за выбранный период? Расходы останутся — удалите вручную во вкладке Расходы.')) { const r = await clearEmployeePaymentsForPeriod(new Date(payrollDateStart), new Date(payrollDateEnd)); const msg = r.totalPayments === 0 && r.totalShifts === 0 ? 'Нет данных за период' : `Удалено: ${r.deletedPayments} выплат, ${r.deletedShifts} смен`; alert(msg) } }} style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #dc2626', background: 'white', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}><RotateCcw size={14} /> Очистка</button>
                             </div>
                         </div>
                     </div>
@@ -496,6 +488,7 @@ export default function Employees() {
                                             <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border)', textAlign: 'right', fontWeight: 700, color: row.balance > 0 ? '#059669' : '#6b7280' }}>{row.balance > 0 ? row.balance.toLocaleString() : '0'}</td>
                                             <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                                                 <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                                    <button onClick={() => setPaymentsListModal({ employee: row.employee })} style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid #6b7280', background: 'white', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><List size={12} /> Выплаты</button>
                                                     {row.balance > 0 && (
                                                         <button onClick={() => { setPaymentModal({ employee: row.employee, type: 'salary', suggested: row.balance }); setPaymentForm({ amount: String(row.balance), note: '' }) }} style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: 'none', background: '#10b981', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Banknote size={12} /> ЗП</button>
                                                     )}
@@ -535,6 +528,50 @@ export default function Employees() {
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     <button className="btn" onClick={() => { setPaymentModal(null); setPaymentForm({ amount: '', note: '' }) }} style={{ flex: 1 }}>Отмена</button>
                                     <button className="btn btn-primary" onClick={() => handlePayment(paymentModal.type)} disabled={!paymentForm.amount || Number(paymentForm.amount) <= 0} style={{ flex: 1 }}>Записать</button>
+                                </div>
+                            </div>
+                        </Modal>
+                    )}
+
+                    {paymentsListModal && (() => {
+                        const list = getPaymentsForPeriod(paymentsListModal.employee.id, new Date(payrollDateStart), new Date(payrollDateEnd))
+                        return (
+                            <Modal isOpen onClose={() => setPaymentsListModal(null)} title={`Выплаты: ${paymentsListModal.employee.name}`}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {list.length === 0 ? <div style={{ color: 'var(--text-muted)' }}>Нет выплат за период</div> : list.map(p => (
+                                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem', background: '#f8fafc', borderRadius: '8px', gap: '0.5rem' }}>
+                                            <div>
+                                                <span style={{ fontWeight: 600 }}>{PAYMENT_TYPE_LABELS[p.payment_type] || p.payment_type}</span>
+                                                <span style={{ marginLeft: '0.5rem' }}>{Number(p.amount).toLocaleString()} lei</span>
+                                                {p.note && <span style={{ marginLeft: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}> — {p.note}</span>}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.35rem' }}>
+                                                <button onClick={() => { setEditPaymentModal({ payment: p, employee: paymentsListModal.employee }); setEditPaymentForm({ amount: String(p.amount || ''), note: p.note || '' }) }} style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer' }}>Изменить</button>
+                                                <button onClick={async () => { if (window.confirm('Удалить выплату?')) await deleteEmployeePayment(p.id) }} style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>Расходы во вкладке Расходы не обновляются при редактировании/удалении</div>
+                                </div>
+                            </Modal>
+                        )
+                    })()}
+
+                    {editPaymentModal && (
+                        <Modal isOpen onClose={() => setEditPaymentModal(null)} title="Редактировать выплату">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div><strong>{editPaymentModal.employee?.name}</strong> · {PAYMENT_TYPE_LABELS[editPaymentModal.payment.payment_type]}</div>
+                                <div>
+                                    <label className="label">Сумма (lei)</label>
+                                    <input className="input" type="number" min={0} value={editPaymentForm.amount} onChange={e => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="label">Комментарий</label>
+                                    <input className="input" value={editPaymentForm.note} onChange={e => setEditPaymentForm({ ...editPaymentForm, note: e.target.value })} />
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button className="btn" onClick={() => setEditPaymentModal(null)} style={{ flex: 1 }}>Отмена</button>
+                                    <button className="btn btn-primary" onClick={async () => { await updateEmployeePayment(editPaymentModal.payment.id, { amount: Number(editPaymentForm.amount) || 0, note: editPaymentForm.note || null }); setEditPaymentModal(null); setPaymentsListModal(editPaymentModal.employee ? { employee: editPaymentModal.employee } : null) }} disabled={!editPaymentForm.amount || Number(editPaymentForm.amount) < 0} style={{ flex: 1 }}>Сохранить</button>
                                 </div>
                             </div>
                         </Modal>
