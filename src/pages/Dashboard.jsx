@@ -184,12 +184,20 @@ export default function Dashboard() {
         const revenueToday = todaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
         const revenueYesterday = yesterdaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
 
-        // Estimated Profit: 50% heuristic if no cost data
-        let costToday = 0
+        // Calculate actual profit (Gross Margin) strictly from data
+        let profitToday = 0
         todaySales.forEach(s => {
-            costToday += (Number(s.sale_price) || 0) * 0.5
+            const price = Number(s.sale_price) || 0
+            const cost = Number(s.cost_price) || 0
+
+            // Priority: 'profit' field -> (price - cost)
+            // We do NOT use estimates/percentages anymore.
+            if (s.profit !== undefined && s.profit !== null) {
+                profitToday += Number(s.profit)
+            } else {
+                profitToday += (price - cost)
+            }
         })
-        const profitToday = revenueToday - costToday
 
         const countToday = todaySales.length
         const avgCheck = countToday > 0 ? Math.round(revenueToday / countToday) : 0
@@ -713,14 +721,18 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #bfdbfe', paddingTop: '0.75rem' }}>
+                        <div style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                                <div style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700 }}>ПРИБЫЛЬ (Est)</div>
-                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#1e3a8a' }}>{moneyStats.profitToday.toLocaleString()} lei</div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase' }}>ВАЛОВАЯ ПРИБЫЛЬ</div>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827' }}>
+                                    {moneyStats.profitToday.toLocaleString()} lei
+                                </div>
                             </div>
                             <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700 }}>СР. ЧЕК</div>
-                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#1e3a8a' }}>{moneyStats.avgCheck.toLocaleString()} lei</div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>СР. ЧЕК</div>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827' }}>
+                                    {moneyStats.avgCheck.toLocaleString()} lei
+                                </div>
                             </div>
                         </div>
                     </div>

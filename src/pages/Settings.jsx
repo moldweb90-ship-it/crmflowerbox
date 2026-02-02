@@ -95,6 +95,7 @@ export default function Settings() {
 
     const availablePermissions = [
         { key: 'dashboard', label: 'Дашборд' },
+        { key: 'analytics', label: 'Аналитика' },
         { key: 'sales', label: 'Заказы' },
         { key: 'products', label: 'Букеты' },
         { key: 'flowers', label: 'Цветы' },
