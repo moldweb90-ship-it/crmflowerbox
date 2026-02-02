@@ -508,6 +508,16 @@ export default function Sales() {
             custom_composition: siteComposition.length > 0 ? siteComposition : undefined
         }
 
+        // Clean up delivery data if pickup
+        if (payload.delivery_method === 'pickup') {
+            payload.delivery_address = ''
+            payload.courier_id = ''
+            payload.delivery_status = 'delivered' // Auto-set status or keep as is? User might want to track 'ready for pickup'.
+            // Usually 'pickup' orders become 'delivered' when they are picked up.
+            // But if we are creating it, it's likely 'not_delivered' (not yet picked up).
+            // Let's just clear address and courier.
+        }
+
         let result
         if (modalMode === 'edit' && editingSaleId) {
             result = await updateSale(editingSaleId, payload)

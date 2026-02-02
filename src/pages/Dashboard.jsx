@@ -177,31 +177,16 @@ export default function Dashboard() {
         yesterday.setDate(now.getDate() - 1)
         const yesterdayStr = yesterday.toISOString().split('T')[0]
 
-        // Filter sales for today and yesterday
+        // Filter sales for today
         const todaySales = sales.filter(s => s.order_date?.startsWith(todayStr))
         const yesterdaySales = sales.filter(s => s.order_date?.startsWith(yesterdayStr))
 
         const revenueToday = todaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
         const revenueYesterday = yesterdaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
 
-        // Estimated Profit: Revenue - (sum of product costs). 
-        // Note: Real profit is complex. We'll estimate cost as ~40% of price if not tracked, or use `product.cost` if available.
-        // Better: Try to sum up cost of bouquet items. For now, let's use a simpler heuristic or if we have `profit` field on sale?
-        // Check Sales.jsx logic: it calculates `profit` client side. We don't have it stored? 
-        // StoreContext says `sales` has `*, products(...)`.
-        // Let's iterate items. If complex, use Margin settings (e.g. 30% markup -> cost is Price / 1.3).
-        // User asked: "Выручка минус Себестоимость проданного".
-        // Let's try to be precise if we can.
+        // Estimated Profit: 50% heuristic if no cost data
         let costToday = 0
         todaySales.forEach(s => {
-            // If we have profit stored, derive cost. If not...
-            // Let's assume average margin 40% for now to be safe/fast if no deep data.
-            // Wait, products have `composition`. We *could* parse it. But that's heavy.
-            // Simple approach: Use `cost_price` if available in sale (unlikely?), or `products.cost`.
-            // Fallback: Revenue * 0.4 (40% cost). Or Revenue * 0.5.
-            // Let's check if we have `profit` column in Sales? Not explicitly in fetch.
-            // Let's use 50% as generic simple Cost for "Estimated" if data missing.
-            // Actually, usually Cost = Price / markup. If markup is 2.0 (100%), Cost is 50%.
             costToday += (Number(s.sale_price) || 0) * 0.5
         })
         const profitToday = revenueToday - costToday
@@ -209,39 +194,103 @@ export default function Dashboard() {
         const countToday = todaySales.length
         const avgCheck = countToday > 0 ? Math.round(revenueToday / countToday) : 0
 
-        return { revenueToday, revenueYesterday, profitToday, avgCheck }
+        // Breakdown: Cash, Card, Debt/In-Transit
+        let cash = 0
+        let card = 0
+        let debt = 0 // In transit or unpaid
+
+        todaySales.forEach(s => {
+            const price = Number(s.sale_price) || 0
+            const pMethod = (s.payment_method || '').toLowerCase()
+            const pStatus = (s.payment_status || '').toLowerCase()
+            const status = (s.status || '').toLowerCase()
+
+            // Logic:
+            // "Debt/In Transit" -> Payment is Cash BUT not yet paid (e.g. courier has it or not delivered yet)
+            // Or explicitly 'unpaid'
+            if (pMethod.includes('card') || pMethod.includes('term')) {
+                card += price
+            } else if (pMethod.includes('cash') || pMethod.includes('nal')) {
+                // Cash logic
+                if (status === 'completed' || pStatus === 'paid') {
+                    cash += price
+                } else {
+                    debt += price
+                }
+            } else {
+                // Fallback (transfers etc) -> count as Card/Bank for now or separate?
+                card += price
+            }
+        })
+
+        return { revenueToday, revenueYesterday, profitToday, avgCheck, cash, card, debt }
     }, [sales])
 
-    // 2. Recent Orders
-    const recentOrders = React.useMemo(() => {
-        // Sales are already sorted desc by default from StoreContext
-        return sales.slice(0, 10).map(s => ({
+    // 2. Recent Orders & Problem Orders
+    const { recentOrders, problemOrders } = React.useMemo(() => {
+        const now = new Date()
+
+        // Problem orders: Delivery < Now AND Status != Completed/Delivered/Cancelled
+        const problems = sales.filter(s => {
+            if (!s.delivery_date) return false
+            if (['completed', 'delivered', 'cancelled', 'canceled'].includes((s.status || '').toLowerCase())) return false
+            const dDate = new Date(s.delivery_date)
+            // Buffer: 15 mins late is a problem? Or strict?
+            return dDate < now
+        }).map(s => ({
             id: s.id,
-            orderNumber: s.order_number || s.id.substring(0, 6).toUpperCase(), // Fallback
+            orderNumber: s.order_number || s.id.substring(0, 6).toUpperCase(),
+            clientName: s.customer_name || 'Клиент',
+            time: new Date(s.delivery_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            status: s.status,
+            amount: s.sale_price
+        }))
+
+        // Recent (Top 10)
+        const recent = sales.slice(0, 10).map(s => ({
+            id: s.id,
+            orderNumber: s.order_number || s.id.substring(0, 6).toUpperCase(),
             amount: s.sale_price,
-            status: s.status || 'pending', // paid/unpaid? or delivery status? usually 'status' is payment?
-            // Let's check Sales.jsx enums. There is payment status and delivery status.
-            // Usually dashboard shows delivery status or minimal info.
-            // Let's show Amount + Name.
             clientName: s.customer_name || s.recipient_name || 'Клиент',
             time: new Date(s.order_date || s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }))
+
+        return { recentOrders: recent, problemOrders: problems }
     }, [sales])
 
-    // 3. Tomorrow (Planning)
+    // 3. Tomorrow (Planning) -> "К ВЫДАЧЕ"
     const tomorrowStats = React.useMemo(() => {
         const tomorrow = new Date()
         tomorrow.setDate(tomorrow.getDate() + 1)
         const tomorrowStr = tomorrow.toISOString().split('T')[0] // YYYY-MM-DD
 
-        // Filter by ISO string prefix
         const ordersTomorrow = sales.filter(s => s.delivery_date && s.delivery_date.startsWith(tomorrowStr))
         const count = ordersTomorrow.length
         const sum = ordersTomorrow.reduce((acc, s) => acc + (Number(s.sale_price) || 0), 0)
 
-        // Detailed List for UI
+        // Split Delivery vs Pickup
+        // Logic: delivery_method='delivery' OR courier_id not null OR delivery_address present
+        let deliveryCount = 0
+        let pickupCount = 0
+
         const deliveryList = ordersTomorrow.map(s => {
-            // Product Name
+            // Determine type
+            // Priority: delivery_method. If 'pickup', it is pickup.
+            // If 'delivery', it is delivery.
+            // If unknown (old data), check courier or address.
+            let isDelivery = true
+            if (s.delivery_method === 'pickup') {
+                isDelivery = false
+            } else if (s.delivery_method === 'delivery') {
+                isDelivery = true
+            } else {
+                // Fallback
+                isDelivery = (!!s.courier_id) || (!!s.delivery_address && s.delivery_address.length > 5)
+            }
+
+            if (isDelivery) deliveryCount++
+            else pickupCount++
+
             let prodName = 'Букет'
             if (s.products?.name) prodName = s.products.name
             else if (s.custom_composition) prodName = 'Сборный букет'
@@ -251,34 +300,28 @@ export default function Dashboard() {
                 orderNumber: s.order_number,
                 name: prodName,
                 time: new Date(s.delivery_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                amount: s.sale_price
+                amount: s.sale_price,
+                type: isDelivery ? 'delivery' : 'pickup'
             }
         })
 
-        // Shortage Logic
-        // 1. Collect all flowers needed
-        const neededFlowers = {} // { flowerName: quantity }
+        // Shortage (unchanged logic)
+        const neededFlowers = {}
         let alert = false
 
         ordersTomorrow.forEach(order => {
             if (order.products?.composition) {
                 try {
-                    const comp = typeof order.products.composition === 'string'
-                        ? JSON.parse(order.products.composition)
-                        : order.products.composition
-
+                    const comp = typeof order.products.composition === 'string' ? JSON.parse(order.products.composition) : order.products.composition
                     if (Array.isArray(comp)) {
                         comp.forEach(item => {
-                            if (item.type === 'flower') {
-                                if (item.id) {
-                                    neededFlowers[item.id] = (neededFlowers[item.id] || 0) + (Number(item.quantity) || 0)
-                                }
+                            if (item.type === 'flower' && item.id) {
+                                neededFlowers[item.id] = (neededFlowers[item.id] || 0) + (Number(item.quantity) || 0)
                             }
                         })
                     }
                 } catch (e) { }
             } else if (order.custom_composition) {
-                // Also check custom composition
                 const comp = order.custom_composition
                 if (Array.isArray(comp)) {
                     comp.forEach(item => {
@@ -290,7 +333,6 @@ export default function Dashboard() {
             }
         })
 
-        // 2. Compare with Stock
         const shortageList = []
         Object.entries(neededFlowers).forEach(([id, qty]) => {
             const inStock = stock.find(s => s.item_id === id && s.item_type === 'flower')
@@ -298,13 +340,11 @@ export default function Dashboard() {
             if (stockQty < qty) {
                 alert = true
                 const flower = flowers.find(f => f.id === id)
-                if (flower) {
-                    shortageList.push({ name: flower.name, need: qty, have: stockQty })
-                }
+                if (flower) shortageList.push({ name: flower.name, need: qty, have: stockQty })
             }
         })
 
-        return { count, sum, alert, shortageList, deliveryList }
+        return { count, sum, alert, shortageList, deliveryList, deliveryCount, pickupCount }
     }, [sales, stock, flowers])
 
     // 4. Sources (Marketing)
@@ -489,31 +529,41 @@ export default function Dashboard() {
                         </div>
                     ) : (
                         <div style={{
-                            padding: '1rem 1.25rem', background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                            border: '1px solid #86efac', borderRadius: '16px', display: 'flex', flexDirection: isMobile ? 'column' : 'row',
-                            alignItems: isMobile ? 'stretch' : 'center', gap: '1rem', flexWrap: 'wrap'
+                            padding: '0.75rem 1rem', background: 'white',
+                            border: '1px solid #e5e7eb', borderRadius: '16px', display: 'flex',
+                            alignItems: 'center', gap: '1rem', boxShadow: 'var(--shadow-sm)'
                         }}>
                             {activeShifts.map(shift => {
                                 const emp = employees.find(e => e.id === shift.employee_id)
                                 return (
-                                    <div key={shift.id} style={{ flex: 1, minWidth: '200px' }}>
-                                        <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#166534', marginBottom: '0.25rem' }}>
-                                            Добрый день, {emp?.name || '?'}! 🌸
+                                    <div key={shift.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                                        {/* Avatar / Photo */}
+                                        <div style={{
+                                            width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden',
+                                            border: '2px solid #10b981', flexShrink: 0
+                                        }}>
+                                            <img src={emp?.photo_url || 'https://via.placeholder.com/150'} alt={emp?.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                         </div>
-                                        <div style={{ fontSize: '0.85rem', color: '#15803d', marginBottom: '0.5rem' }}>{motivation}</div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', padding: '0.4rem 0.75rem', borderRadius: '10px', fontWeight: 700, color: '#059669' }}>
-                                                <Clock size={18} /> {formatTimer(elapsedSeconds)}
+
+                                        {/* Info */}
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%', display: 'inline-block' }}></span>
+                                                Работает
                                             </div>
-                                            <span style={{ fontSize: '0.8rem', color: '#166534' }}>до 21:00: {getRemainingToEnd()}</span>
-                                            <button onClick={() => { setShiftToEnd(shift); setEndFormClosingCash(String(getCashBalance() || 0)); setIsEndShiftOpen(true) }} style={{
-                                                display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem',
-                                                background: '#dc2626', color: 'white', border: 'none', borderRadius: '10px',
-                                                fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer'
-                                            }}>
-                                                <Square size={14} /> Закончить смену
-                                            </button>
+                                            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827', lineHeight: 1.2 }}>{emp?.name || 'Флорист'}</div>
+                                            <div style={{ fontSize: '0.85rem', color: '#059669', marginTop: '2px', fontWeight: 600 }}>
+                                                {formatTimer(elapsedSeconds)}
+                                            </div>
                                         </div>
+
+                                        {/* Action */}
+                                        <button onClick={() => { setShiftToEnd(shift); setEndFormClosingCash(String(getCashBalance() || 0)); setIsEndShiftOpen(true) }} style={{
+                                            background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '8px',
+                                            padding: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>
+                                            <Square size={18} />
+                                        </button>
                                     </div>
                                 )
                             })}
@@ -640,7 +690,7 @@ export default function Dashboard() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                             <div>
                                 <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e40af', marginBottom: '0.25rem' }}>ДЕНЬГИ СЕГОДНЯ</h3>
-                                <div style={{ fontSize: '0.75rem', color: '#3b82f6' }}>Самое главное</div>
+                                <div style={{ fontSize: '0.75rem', color: '#3b82f6' }}>Сводка продаж</div>
                             </div>
                             <div style={{ background: '#2563eb', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><DollarSign size={20} /></div>
                         </div>
@@ -648,9 +698,18 @@ export default function Dashboard() {
                         <div style={{ marginBottom: '1rem' }}>
                             <div style={{ fontSize: '0.85rem', color: '#1e40af', fontWeight: 600 }}>Выручка</div>
                             <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#172554', lineHeight: 1 }}>{moneyStats.revenueToday.toLocaleString()} lei</div>
-                            <div style={{ fontSize: '0.75rem', color: moneyStats.revenueToday >= moneyStats.revenueYesterday ? '#16a34a' : '#dc2626', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem', fontWeight: 600 }}>
-                                {moneyStats.revenueToday >= moneyStats.revenueYesterday ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                {moneyStats.revenueToday >= moneyStats.revenueYesterday ? '+' : ''}{moneyStats.revenueToday - moneyStats.revenueYesterday} lei vs вчера
+
+                            {/* Breakdown Hover or Static */}
+                            <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.75rem', background: 'rgba(255,255,255,0.4)', padding: '6px', borderRadius: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d' }}>
+                                    <span>💵 Нал:</span> <span style={{ fontWeight: 700 }}>{moneyStats.cash}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#1d4ed8' }}>
+                                    <span>💳 Карта:</span> <span style={{ fontWeight: 700 }}>{moneyStats.card}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b45309' }}>
+                                    <span>⏳ Долг/В пути:</span> <span style={{ fontWeight: 700 }}>{moneyStats.debt}</span>
+                                </div>
                             </div>
                         </div>
 
@@ -667,13 +726,29 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* 2. Recent Orders */}
+                {/* 2. Recent Orders & Alerts */}
                 <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
                     <div className="card" style={{ height: '100%', background: 'white', border: '1px solid #e5e7eb', padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                             <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#374151' }}>ПОСЛЕДНИЕ ЗАКАЗЫ</h3>
                             <button onClick={() => navigate('/sales')} style={{ background: '#f3f4f6', padding: '0.4rem', borderRadius: '8px' }}><ChevronRight size={18} color="#6b7280" /></button>
                         </div>
+
+                        {/* PROBLEM ORDERS ALERT */}
+                        {problemOrders.length > 0 && (
+                            <div style={{ marginBottom: '0.75rem', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '8px', padding: '0.5rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#b91c1c', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.25rem' }}>
+                                    <AlertOctagon size={16} /> ПРОБЛЕМЫ ({problemOrders.length})
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>
+                                    {problemOrders.slice(0, 2).map(p => (
+                                        <div key={p.id}>#{p.orderNumber} - {p.time} ({p.status})</div>
+                                    ))}
+                                    {problemOrders.length > 2 && <div>...и еще {problemOrders.length - 2}</div>}
+                                </div>
+                            </div>
+                        )}
+
                         <div style={{ flex: 1, overflowY: 'auto', maxHeight: '160px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                             {recentOrders.length > 0 ? recentOrders.map((o) => (
                                 <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px dashed #f3f4f6', paddingBottom: '0.25rem' }}>
@@ -691,25 +766,21 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* 3. Tomorrow (Planning) */}
+                {/* 3. Tomorrow (Planning) -> К ВЫДАЧЕ */}
                 <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
                     <div className="card" style={{ height: '100%', background: 'linear-gradient(135deg, #fdf4ff 0%, #fae8ff 100%)', border: '1px solid #f0abfc', padding: '1.25rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                             <div>
-                                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#86198f', marginBottom: '0.25rem' }}>ЗАВТРА</h3>
-                                <div style={{ fontSize: '0.75rem', color: '#c026d3' }}>Планирование</div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#86198f', marginBottom: '0.25rem' }}>К ВЫДАЧЕ</h3>
+                                <div style={{ fontSize: '0.75rem', color: '#c026d3' }}>Завтра</div>
                             </div>
                             <div style={{ background: '#c026d3', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><Calendar size={20} /></div>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
-                            <div>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a21caf' }}>ДОСТАВОК</div>
-                                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#701a75' }}>{tomorrowStats.count} <span style={{ fontSize: '0.9rem' }}>шт</span></div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a21caf' }}>СУММА</div>
-                                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#701a75' }}>{tomorrowStats.sum.toLocaleString()}</div>
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem', marginBottom: '1rem' }}>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#701a75', lineHeight: 1 }}>{tomorrowStats.count} <span style={{ fontSize: '1rem' }}>шт</span></div>
+                            <div style={{ fontSize: '0.8rem', color: '#a21caf', fontWeight: 600, marginBottom: '4px' }}>
+                                ( <Truck size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> {tomorrowStats.deliveryCount} | <UserPlus size={14} style={{ display: 'inline', verticalAlign: 'middle' }} /> {tomorrowStats.pickupCount} )
                             </div>
                         </div>
 
@@ -717,13 +788,16 @@ export default function Dashboard() {
                         <div style={{ flex: 1, overflowY: 'auto', maxHeight: '120px', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', borderTop: '1px solid #f5d0fe', paddingTop: '0.75rem' }}>
                             {tomorrowStats.deliveryList && tomorrowStats.deliveryList.length > 0 ? tomorrowStats.deliveryList.map(d => (
                                 <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px dashed #f5d0fe', paddingBottom: '0.25rem' }}>
-                                    <div>
-                                        <div style={{ fontWeight: 700, color: '#701a75' }}>#{d.orderNumber} <span style={{ fontWeight: 400, color: '#a21caf' }}>{d.name}</span></div>
-                                        <div style={{ fontSize: '0.7rem', color: '#c026d3' }}>⏱️ {d.time}</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        {d.type === 'delivery' ? <Truck size={12} color="#c026d3" /> : <UserPlus size={12} color="#c026d3" />}
+                                        <div>
+                                            <div style={{ fontWeight: 700, color: '#701a75' }}>#{d.orderNumber}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#c026d3' }}>{d.time}</div>
+                                        </div>
                                     </div>
-                                    <div style={{ fontWeight: 600, color: '#701a75' }}>{Number(d.amount).toLocaleString()} lei</div>
+                                    <div style={{ fontWeight: 600, color: '#701a75' }}>{d.amount}</div>
                                 </div>
-                            )) : <div style={{ color: '#c026d3', fontSize: '0.8rem' }}>Нет доставок</div>}
+                            )) : <div style={{ color: '#c026d3', fontSize: '0.8rem' }}>Нет заказов</div>}
                         </div>
 
                         {tomorrowStats.alert && (
