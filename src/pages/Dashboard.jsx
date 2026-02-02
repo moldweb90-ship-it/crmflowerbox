@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
-import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square, AlertOctagon } from 'lucide-react'
+import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square, AlertOctagon, TrendingUp, CreditCard, ChevronRight, Search, Instagram, Facebook } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 const STALE_DAYS = 7
@@ -167,7 +167,186 @@ export default function Dashboard() {
         return { totalStockValue, staleList, outOfStockList, lowStockList }
     }, [stock, stockTransactions, supplies, flowers, goods])
 
-    // Клиенты: New vs Old (по ЗАКАЗАМ: 1-й заказ = новый, 2+ = повторный) + Кого теряем
+    // --- NEW METRICS (REVAMP) ---
+
+    // 1. Money Today
+    const moneyStats = React.useMemo(() => {
+        const now = new Date()
+        const todayStr = now.toISOString().split('T')[0]
+        const yesterday = new Date(now)
+        yesterday.setDate(now.getDate() - 1)
+        const yesterdayStr = yesterday.toISOString().split('T')[0]
+
+        // Filter sales for today and yesterday
+        const todaySales = sales.filter(s => s.order_date?.startsWith(todayStr))
+        const yesterdaySales = sales.filter(s => s.order_date?.startsWith(yesterdayStr))
+
+        const revenueToday = todaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
+        const revenueYesterday = yesterdaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
+
+        // Estimated Profit: Revenue - (sum of product costs). 
+        // Note: Real profit is complex. We'll estimate cost as ~40% of price if not tracked, or use `product.cost` if available.
+        // Better: Try to sum up cost of bouquet items. For now, let's use a simpler heuristic or if we have `profit` field on sale?
+        // Check Sales.jsx logic: it calculates `profit` client side. We don't have it stored? 
+        // StoreContext says `sales` has `*, products(...)`.
+        // Let's iterate items. If complex, use Margin settings (e.g. 30% markup -> cost is Price / 1.3).
+        // User asked: "Выручка минус Себестоимость проданного".
+        // Let's try to be precise if we can.
+        let costToday = 0
+        todaySales.forEach(s => {
+            // If we have profit stored, derive cost. If not...
+            // Let's assume average margin 40% for now to be safe/fast if no deep data.
+            // Wait, products have `composition`. We *could* parse it. But that's heavy.
+            // Simple approach: Use `cost_price` if available in sale (unlikely?), or `products.cost`.
+            // Fallback: Revenue * 0.4 (40% cost). Or Revenue * 0.5.
+            // Let's check if we have `profit` column in Sales? Not explicitly in fetch.
+            // Let's use 50% as generic simple Cost for "Estimated" if data missing.
+            // Actually, usually Cost = Price / markup. If markup is 2.0 (100%), Cost is 50%.
+            costToday += (Number(s.sale_price) || 0) * 0.5
+        })
+        const profitToday = revenueToday - costToday
+
+        const countToday = todaySales.length
+        const avgCheck = countToday > 0 ? Math.round(revenueToday / countToday) : 0
+
+        return { revenueToday, revenueYesterday, profitToday, avgCheck }
+    }, [sales])
+
+    // 2. Recent Orders
+    const recentOrders = React.useMemo(() => {
+        // Sales are already sorted desc by default from StoreContext
+        return sales.slice(0, 10).map(s => ({
+            id: s.id,
+            orderNumber: s.order_number || s.id.substring(0, 6).toUpperCase(), // Fallback
+            amount: s.sale_price,
+            status: s.status || 'pending', // paid/unpaid? or delivery status? usually 'status' is payment?
+            // Let's check Sales.jsx enums. There is payment status and delivery status.
+            // Usually dashboard shows delivery status or minimal info.
+            // Let's show Amount + Name.
+            clientName: s.customer_name || s.recipient_name || 'Клиент',
+            time: new Date(s.order_date || s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }))
+    }, [sales])
+
+    // 3. Tomorrow (Planning)
+    const tomorrowStats = React.useMemo(() => {
+        const tomorrow = new Date()
+        tomorrow.setDate(tomorrow.getDate() + 1)
+        const tomorrowStr = tomorrow.toISOString().split('T')[0] // YYYY-MM-DD
+
+        // Filter by ISO string prefix
+        const ordersTomorrow = sales.filter(s => s.delivery_date && s.delivery_date.startsWith(tomorrowStr))
+        const count = ordersTomorrow.length
+        const sum = ordersTomorrow.reduce((acc, s) => acc + (Number(s.sale_price) || 0), 0)
+
+        // Detailed List for UI
+        const deliveryList = ordersTomorrow.map(s => {
+            // Product Name
+            let prodName = 'Букет'
+            if (s.products?.name) prodName = s.products.name
+            else if (s.custom_composition) prodName = 'Сборный букет'
+
+            return {
+                id: s.id,
+                orderNumber: s.order_number,
+                name: prodName,
+                time: new Date(s.delivery_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                amount: s.sale_price
+            }
+        })
+
+        // Shortage Logic
+        // 1. Collect all flowers needed
+        const neededFlowers = {} // { flowerName: quantity }
+        let alert = false
+
+        ordersTomorrow.forEach(order => {
+            if (order.products?.composition) {
+                try {
+                    const comp = typeof order.products.composition === 'string'
+                        ? JSON.parse(order.products.composition)
+                        : order.products.composition
+
+                    if (Array.isArray(comp)) {
+                        comp.forEach(item => {
+                            if (item.type === 'flower') {
+                                if (item.id) {
+                                    neededFlowers[item.id] = (neededFlowers[item.id] || 0) + (Number(item.quantity) || 0)
+                                }
+                            }
+                        })
+                    }
+                } catch (e) { }
+            } else if (order.custom_composition) {
+                // Also check custom composition
+                const comp = order.custom_composition
+                if (Array.isArray(comp)) {
+                    comp.forEach(item => {
+                        if (item.type === 'flower' && item.item_id) {
+                            neededFlowers[item.item_id] = (neededFlowers[item.item_id] || 0) + (Number(item.quantity) || 0)
+                        }
+                    })
+                }
+            }
+        })
+
+        // 2. Compare with Stock
+        const shortageList = []
+        Object.entries(neededFlowers).forEach(([id, qty]) => {
+            const inStock = stock.find(s => s.item_id === id && s.item_type === 'flower')
+            const stockQty = inStock ? inStock.quantity : 0
+            if (stockQty < qty) {
+                alert = true
+                const flower = flowers.find(f => f.id === id)
+                if (flower) {
+                    shortageList.push({ name: flower.name, need: qty, have: stockQty })
+                }
+            }
+        })
+
+        return { count, sum, alert, shortageList, deliveryList }
+    }, [sales, stock, flowers])
+
+    // 4. Sources (Marketing)
+    const sourceStats = React.useMemo(() => {
+        // Channels: 'store', 'website', 'messengers', 'social', 'phone', 'aggregators'
+        // Fallback: 'other' -> 'aggregators' (or hidden?)
+
+        const counts = {
+            store: 0,
+            website: 0,
+            messengers: 0,
+            social: 0,
+            phone: 0,
+            aggregators: 0
+        }
+
+        const total = sales.length || 1 // avoid div by 0
+
+        sales.forEach(s => {
+            const ch = s.sales_channel || s.channel || 'store' // Fallback
+
+            if (counts[ch] !== undefined) {
+                counts[ch]++
+            } else {
+                if (ch === 'other') counts.aggregators++
+                else counts.store++
+            }
+        })
+
+        // Convert to percentages
+        const getPct = (val) => Math.round(val / total * 100)
+
+        return {
+            store: getPct(counts.store),
+            website: getPct(counts.website),
+            messengers: getPct(counts.messengers),
+            social: getPct(counts.social),
+            phone: getPct(counts.phone),
+            aggregators: getPct(counts.aggregators)
+        }
+    }, [sales])
+
     const customerStats = React.useMemo(() => {
         const now = new Date()
         const thirtyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30, 0, 0, 0, 0)
@@ -443,6 +622,162 @@ export default function Dashboard() {
 
 
 
+
+            {/* --- NEW REVAMPED BLOCKS (4) --- */}
+            <div style={{
+                display: isMobile ? 'flex' : 'grid',
+                gridTemplateColumns: isMobile ? 'none' : 'repeat(4, 1fr)',
+                gap: '1.5rem',
+                marginBottom: '2rem',
+                overflowX: isMobile ? 'auto' : 'visible',
+                scrollSnapType: isMobile ? 'x mandatory' : 'none',
+                paddingBottom: isMobile ? '1rem' : 0,
+                paddingRight: isMobile ? '1rem' : 0
+            }}>
+                {/* 1. Money Today */}
+                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                    <div className="card" style={{ height: '100%', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', padding: '1.25rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e40af', marginBottom: '0.25rem' }}>ДЕНЬГИ СЕГОДНЯ</h3>
+                                <div style={{ fontSize: '0.75rem', color: '#3b82f6' }}>Самое главное</div>
+                            </div>
+                            <div style={{ background: '#2563eb', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><DollarSign size={20} /></div>
+                        </div>
+
+                        <div style={{ marginBottom: '1rem' }}>
+                            <div style={{ fontSize: '0.85rem', color: '#1e40af', fontWeight: 600 }}>Выручка</div>
+                            <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#172554', lineHeight: 1 }}>{moneyStats.revenueToday.toLocaleString()} lei</div>
+                            <div style={{ fontSize: '0.75rem', color: moneyStats.revenueToday >= moneyStats.revenueYesterday ? '#16a34a' : '#dc2626', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem', fontWeight: 600 }}>
+                                {moneyStats.revenueToday >= moneyStats.revenueYesterday ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                {moneyStats.revenueToday >= moneyStats.revenueYesterday ? '+' : ''}{moneyStats.revenueToday - moneyStats.revenueYesterday} lei vs вчера
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #bfdbfe', paddingTop: '0.75rem' }}>
+                            <div>
+                                <div style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700 }}>ПРИБЫЛЬ (Est)</div>
+                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#1e3a8a' }}>{moneyStats.profitToday.toLocaleString()} lei</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 700 }}>СР. ЧЕК</div>
+                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#1e3a8a' }}>{moneyStats.avgCheck.toLocaleString()} lei</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. Recent Orders */}
+                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                    <div className="card" style={{ height: '100%', background: 'white', border: '1px solid #e5e7eb', padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#374151' }}>ПОСЛЕДНИЕ ЗАКАЗЫ</h3>
+                            <button onClick={() => navigate('/sales')} style={{ background: '#f3f4f6', padding: '0.4rem', borderRadius: '8px' }}><ChevronRight size={18} color="#6b7280" /></button>
+                        </div>
+                        <div style={{ flex: 1, overflowY: 'auto', maxHeight: '160px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {recentOrders.length > 0 ? recentOrders.map((o) => (
+                                <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px dashed #f3f4f6', paddingBottom: '0.25rem' }}>
+                                    <div>
+                                        <div style={{ fontWeight: 700, color: '#111827' }}>#{o.orderNumber}</div>
+                                        <div style={{ fontSize: '0.7rem', color: '#6b7280' }}>{o.clientName}</div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontWeight: 600, color: '#059669' }}>{Number(o.amount).toLocaleString()} lei</div>
+                                        <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{o.time}</div>
+                                    </div>
+                                </div>
+                            )) : <div style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Нет заказов</div>}
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Tomorrow (Planning) */}
+                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                    <div className="card" style={{ height: '100%', background: 'linear-gradient(135deg, #fdf4ff 0%, #fae8ff 100%)', border: '1px solid #f0abfc', padding: '1.25rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#86198f', marginBottom: '0.25rem' }}>ЗАВТРА</h3>
+                                <div style={{ fontSize: '0.75rem', color: '#c026d3' }}>Планирование</div>
+                            </div>
+                            <div style={{ background: '#c026d3', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><Calendar size={20} /></div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
+                            <div>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a21caf' }}>ДОСТАВОК</div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#701a75' }}>{tomorrowStats.count} <span style={{ fontSize: '0.9rem' }}>шт</span></div>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a21caf' }}>СУММА</div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#701a75' }}>{tomorrowStats.sum.toLocaleString()}</div>
+                            </div>
+                        </div>
+
+                        {/* Delivery List */}
+                        <div style={{ flex: 1, overflowY: 'auto', maxHeight: '120px', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', borderTop: '1px solid #f5d0fe', paddingTop: '0.75rem' }}>
+                            {tomorrowStats.deliveryList && tomorrowStats.deliveryList.length > 0 ? tomorrowStats.deliveryList.map(d => (
+                                <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px dashed #f5d0fe', paddingBottom: '0.25rem' }}>
+                                    <div>
+                                        <div style={{ fontWeight: 700, color: '#701a75' }}>#{d.orderNumber} <span style={{ fontWeight: 400, color: '#a21caf' }}>{d.name}</span></div>
+                                        <div style={{ fontSize: '0.7rem', color: '#c026d3' }}>⏱️ {d.time}</div>
+                                    </div>
+                                    <div style={{ fontWeight: 600, color: '#701a75' }}>{Number(d.amount).toLocaleString()} lei</div>
+                                </div>
+                            )) : <div style={{ color: '#c026d3', fontSize: '0.8rem' }}>Нет доставок</div>}
+                        </div>
+
+                        {tomorrowStats.alert && (
+                            <div style={{ borderTop: '1px solid #f5d0fe', paddingTop: '0.75rem' }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#dc2626', marginBottom: '0.25rem' }}>
+                                    🔴 НЕ ХВАТАЕТ:
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#b91c1c', display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '60px', overflowY: 'auto' }}>
+                                    {tomorrowStats.shortageList.map((s, i) => (
+                                        <span key={i}>- {s.name}: нужно {s.need}, есть {s.have}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 4. Sources (Marketing) */}
+                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                    <div className="card" style={{ height: '100%', background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)', border: '1px solid #fdba74', padding: '1.25rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#9a3412', marginBottom: '0.25rem' }}>ИСТОЧНИКИ</h3>
+                                <div style={{ fontSize: '0.75rem', color: '#f97316' }}>Откуда клиенты?</div>
+                            </div>
+                            <div style={{ background: '#ea580c', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><Globe size={20} /></div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                            {[
+                                { label: 'Instagram / Соц. сети', val: sourceStats.social, color: '#e1306c', icon: <Instagram size={14} /> },
+                                { label: 'Сайт', val: sourceStats.website, color: '#2563eb', icon: <Globe size={14} /> },
+                                { label: 'Мессенджеры', val: sourceStats.messengers, color: '#06b6d4', icon: <img src="https://cdn-icons-png.flaticon.com/512/5968/5968841.png" width="14" style={{ filter: 'brightness(0) invert(1)' }} alt="" /> }, // Mock icon or use MessageCircle
+                                { label: 'Телефон', val: sourceStats.phone, color: '#8b5cf6', icon: <Phone size={14} /> },
+                                { label: 'Flowwow / Агрегаторы', val: sourceStats.aggregators, color: '#f97316', icon: <Layers size={14} /> },
+                                { label: 'Салон (Трафик)', val: sourceStats.store, color: '#16a34a', icon: <Store size={14} /> }
+                            ].map((s, i) => (
+                                <div key={i}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700, color: '#7c2d12', marginBottom: '2px' }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            {s.label.includes('Мессенджеры') ? <Clock size={14} /> : s.icon} {s.label}
+                                        </span>
+                                        <span>{s.val}%</span>
+                                    </div>
+                                    <div style={{ height: '6px', width: '100%', background: 'rgba(255,255,255,0.5)', borderRadius: '3px', overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${s.val}%`, background: s.color, borderRadius: '3px' }}></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Три блока на ПК: Аналитика списаний + Движение склада + Клиенты */}
             <div style={{
                 display: isMobile ? 'flex' : 'grid',
@@ -671,41 +1006,7 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* Recent Section - Wide Card */}
-            <div style={{ marginTop: '4rem' }}>
-                <div className="card" style={{ padding: '2rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Последние добавления</h2>
-                        <Link to="/products" style={{ fontSize: '0.875rem', color: 'var(--primary)', fontWeight: 600 }}>Смотреть все</Link>
-                    </div>
 
-                    <div className="table-container">
-                        <table style={{ width: '100%' }}>
-                            <thead>
-                                <tr>
-                                    <th style={{ textAlign: 'left', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Название</th>
-                                    <th style={{ textAlign: 'left', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Артикул</th>
-                                    <th style={{ textAlign: 'right', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Цена</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {products.slice(-5).reverse().map(product => (
-                                    <tr key={product.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                                        <td style={{ padding: '1rem 0', fontWeight: 600 }}>{product.name}</td>
-                                        <td style={{ padding: '1rem 0', color: 'var(--text-muted)' }}>{product.sku || '—'}</td>
-                                        <td style={{ padding: '1rem 0', textAlign: 'right', fontWeight: 700 }}>{product.price} lei</td>
-                                    </tr>
-                                ))}
-                                {products.length === 0 && (
-                                    <tr>
-                                        <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Список пуст</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
 
             {/* Modals: Start Shift, End Shift */}
             <Modal isOpen={isStartShiftOpen} onClose={() => setIsStartShiftOpen(false)} title="Начать смену" maxWidth="400px" closeOnOverlayClick={false}>

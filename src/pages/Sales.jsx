@@ -30,8 +30,10 @@ const DELIVERY_STATUSES = [
 const SALES_CHANNELS = [
     { id: 'store', label: 'В салоне', icon: '🏪' },
     { id: 'website', label: 'Сайт', icon: '🌐' },
+    { id: 'messengers', label: 'Мессенджеры', icon: '💬' },
     { id: 'social', label: 'Соц. сети', icon: '📲' },
-    { id: 'other', label: 'Другое', icon: '📦' }
+    { id: 'phone', label: 'Телефон', icon: '📞' },
+    { id: 'aggregators', label: 'Flowwow/Агрегаторы', icon: '📦' }
 ]
 
 const OCCASIONS = [

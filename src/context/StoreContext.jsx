@@ -119,7 +119,7 @@ export function StoreProvider({ children }) {
     useEffect(() => {
         supabase.from('customer_important_dates').select('*')
             .then(({ data }) => { if (data) setCustomerImportantDates(data) })
-            .catch(() => {})
+            .catch(() => { })
     }, [])
 
     const refreshCustomersAndDates = async () => {
@@ -545,7 +545,7 @@ export function StoreProvider({ children }) {
             let customerId = sale.customer_id
             const hasEmail = sale.customer_email && sale.customer_email.trim()
             const hasPhone = sale.customer_phone && sale.customer_phone.trim()
-            
+
             let customerData = null
             if (!customerId && (hasEmail || hasPhone)) {
                 const customerResult = await findOrCreateCustomer({
@@ -562,14 +562,14 @@ export function StoreProvider({ children }) {
 
             // 2. Очистить все UUID поля от пустых строк
             const salePayload = { ...sale }
-            
+
             // Очищаем customer_id
             if (customerId && typeof customerId === 'string' && customerId.length > 0) {
                 salePayload.customer_id = customerId
             } else {
                 delete salePayload.customer_id
             }
-            
+
             // Очищаем другие UUID поля (product_id, courier_id, florist_id)
             const uuidFields = ['product_id', 'courier_id', 'florist_id']
             uuidFields.forEach(field => {
@@ -577,11 +577,11 @@ export function StoreProvider({ children }) {
                     delete salePayload[field]
                 }
             })
-            
+
             const { data, error } = await supabase.from('sales').insert([salePayload]).select('*, products(name, sku, composition)')
-            
+
             if (error) throw error
-            
+
             if (data) {
                 const saleData = data[0]
                 setSales([saleData, ...sales])
@@ -645,7 +645,16 @@ export function StoreProvider({ children }) {
         }
     }
     const updateSale = async (id, updates) => {
-        const { error } = await supabase.from('sales').update(updates).eq('id', id)
+        // Sanitize UUID fields (convert empty strings to null or remove them)
+        const payload = { ...updates }
+        const uuidFields = ['customer_id', 'product_id', 'courier_id', 'florist_id']
+        uuidFields.forEach(field => {
+            if (payload[field] === '') {
+                payload[field] = null
+            }
+        })
+
+        const { error } = await supabase.from('sales').update(payload).eq('id', id)
         if (!error) {
             setSales(sales.map(s => s.id === id ? { ...s, ...updates } : s))
             return { success: true }
@@ -1157,14 +1166,14 @@ export function StoreProvider({ children }) {
     const findOrCreateCustomer = async (input) => {
         try {
             const { name, email, phone } = input
-            
+
             const cleanEmail = email && email.trim() ? email.trim() : null
             const cleanPhone = phone && phone.trim() ? phone.replace(/\s+/g, '').trim() : null
-            
+
             if (!cleanEmail && !cleanPhone) {
                 return { customerId: null, isNew: false, customer: null }
             }
-            
+
             let customer = null
             if (cleanEmail) {
                 const { data } = await supabase.from('customers').select('*').eq('email', cleanEmail).single()
@@ -1174,25 +1183,25 @@ export function StoreProvider({ children }) {
                 const { data } = await supabase.from('customers').select('*').eq('phone', cleanPhone).single()
                 customer = data
             }
-            
+
             if (customer) {
                 return { customerId: customer.id, isNew: false, customer }
             }
-            
+
             const { data: newCustomer, error } = await supabase.from('customers').insert([{
                 name: name || 'Клиент',
                 email: cleanEmail,
                 phone: cleanPhone,
                 status: 'regular'
             }]).select().single()
-            
+
             if (error) throw error
-            
+
             if (newCustomer) {
                 setCustomers([newCustomer, ...customers])
                 return { customerId: newCustomer.id, isNew: true, customer: newCustomer }
             }
-            
+
             return { customerId: null, isNew: false, customer: null }
         } catch (error) {
             console.error('Error in findOrCreateCustomer:', error)
@@ -1207,11 +1216,11 @@ export function StoreProvider({ children }) {
             const currentOrders = customer ? (customer.total_orders || 0) : 0
             const currentSpent = customer ? (customer.total_spent || 0) : 0
             const currentStatus = customer?.status || 'regular'
-            
+
             const newTotalOrders = currentOrders + 1
             const newTotalSpent = currentSpent + orderAmount
             const newAverageCheck = newTotalSpent / newTotalOrders
-            
+
             // Автоматическое присвоение VIP статуса
             let newStatus = currentStatus
             if (currentStatus !== 'blacklist') {
@@ -1219,7 +1228,7 @@ export function StoreProvider({ children }) {
                     newStatus = 'vip'
                 }
             }
-            
+
             const { error } = await supabase.from('customers').update({
                 total_orders: newTotalOrders,
                 total_spent: newTotalSpent,
@@ -1228,7 +1237,7 @@ export function StoreProvider({ children }) {
                 last_order_date: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             }).eq('id', customerId)
-            
+
             if (!error) {
                 setCustomers(prev => {
                     const idx = prev.findIndex(c => c.id === customerId)
@@ -1251,7 +1260,7 @@ export function StoreProvider({ children }) {
                 ...updates,
                 updated_at: new Date().toISOString()
             }).eq('id', id)
-            
+
             if (!error) {
                 setCustomers(customers.map(c => c.id === id ? { ...c, ...updates } : c))
                 return { success: true }
@@ -1386,7 +1395,7 @@ export function StoreProvider({ children }) {
         try {
             // Проверяем, есть ли у клиента заказы
             const customerOrders = sales.filter(s => s.customer_id === id)
-            
+
             if (customerOrders.length > 0) {
                 // Если есть заказы, отвязываем их от клиента (устанавливаем customer_id в null)
                 const orderIds = customerOrders.map(o => o.id)
@@ -1394,16 +1403,16 @@ export function StoreProvider({ children }) {
                     .from('sales')
                     .update({ customer_id: null })
                     .in('id', orderIds)
-                
+
                 if (unlinkError) throw unlinkError
-                
+
                 // Обновляем локальное состояние заказов
                 setSales(sales.map(s => orderIds.includes(s.id) ? { ...s, customer_id: null } : s))
             }
-            
+
             // Удаляем клиента
             const { error } = await supabase.from('customers').delete().eq('id', id)
-            
+
             if (!error) {
                 setCustomers(customers.filter(c => c.id !== id))
                 return { success: true }
