@@ -125,7 +125,7 @@ export default function Sales() {
 
     // Quick Expense (Cashbox) State
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
-    const [expenseData, setExpenseData] = useState({ amount: '', comment: '', type: 'expense' }) // type: 'expense' or 'incasso'
+    const [expenseData, setExpenseData] = useState({ amount: '', comment: '', type: 'expense' }) // type: 'expense', 'incasso', 'deposit'
 
     // FAB Menu State
     const [isFabOpen, setIsFabOpen] = useState(false)
@@ -291,11 +291,15 @@ export default function Sales() {
 
         // Cash Expenses (Source = cash_box)
         const cashExpenses = expenses
-            .filter(e => e.payment_method === 'cash_box')
+            .filter(e => e.payment_method === 'cash_box' && e.category !== 'deposit')
             .reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
-        // Initial Balance? Assuming 0 for now.
-        return cashSales - cashExpenses
+        // Cash Deposits (Source = cash_box, Category = deposit)
+        const cashDeposits = expenses
+            .filter(e => e.payment_method === 'cash_box' && e.category === 'deposit')
+            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+
+        return cashSales + cashDeposits - cashExpenses
     }, [sales, expenses])
 
     const handleQuickExpense = async () => {
@@ -303,9 +307,9 @@ export default function Sales() {
 
         await addExpense({
             amount: Number(expenseData.amount),
-            category: expenseData.type === 'incasso' ? 'salaries' : 'other', // Use proper categories
+            category: expenseData.type === 'incasso' ? 'salaries' : (expenseData.type === 'deposit' ? 'deposit' : 'other'),
             date: new Date().toISOString(),
-            comment: (expenseData.type === 'incasso' ? '💸 Инкассация: ' : '📤 Расход: ') + expenseData.comment,
+            comment: (expenseData.type === 'incasso' ? '💸 Инкассация: ' : (expenseData.type === 'deposit' ? '📥 Внесение: ' : '📤 Расход: ')) + expenseData.comment,
             payment_method: 'cash_box'
         })
         setIsExpenseModalOpen(false)
@@ -784,6 +788,11 @@ export default function Sales() {
                             style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
                             💸 Забрать
                         </button>
+                        <button
+                            onClick={() => { setIsExpenseModalOpen(true); setExpenseData({ ...expenseData, type: 'deposit' }) }}
+                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
+                            📥 Внести
+                        </button>
                     </div>
                 </div>
             </div>
@@ -792,7 +801,7 @@ export default function Sales() {
             <Modal
                 isOpen={isExpenseModalOpen}
                 onClose={() => setIsExpenseModalOpen(false)}
-                title={expenseData.type === 'incasso' ? '💸 Инкассация (Забрать деньги)' : '📤 Расход из кассы'}
+                title={expenseData.type === 'incasso' ? '💸 Инкассация (Забрать деньги)' : (expenseData.type === 'deposit' ? '📥 Внесение в кассу' : '📤 Расход из кассы')}
             >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
@@ -810,7 +819,7 @@ export default function Sales() {
                         <textarea
                             className="input"
                             rows={2}
-                            placeholder={expenseData.type === 'incasso' ? 'Выручка домой...' : 'Бензин, обед...'}
+                            placeholder={expenseData.type === 'incasso' ? 'Выручка домой...' : (expenseData.type === 'deposit' ? 'Размен, пополнение...' : 'Бензин, обед...')}
                             value={expenseData.comment}
                             onChange={(e) => setExpenseData({ ...expenseData, comment: e.target.value })}
                         />
@@ -1988,7 +1997,32 @@ export default function Sales() {
                                                 }}
                                                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontWeight: 700 }}
                                             >−</button>
-                                            <span style={{ minWidth: '24px', textAlign: 'center', fontWeight: 600 }}>{item.quantity}</span>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                className="no-spinners"
+                                                value={item.quantity}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || 1
+                                                    const newComp = [...salonFormData.composition]
+                                                    newComp[idx].quantity = Math.max(1, val)
+                                                    setSalonFormData({ ...salonFormData, composition: newComp })
+                                                }}
+                                                style={{
+                                                    width: '64px',
+                                                    textAlign: 'center',
+                                                    fontWeight: 700,
+                                                    border: '2px solid #e5e7eb',
+                                                    borderRadius: '8px',
+                                                    padding: '0.25rem 0',
+                                                    fontSize: '1.1rem',
+                                                    color: '#1f2937',
+                                                    outline: 'none',
+                                                    background: '#ffffff'
+                                                }}
+                                                onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
+                                                onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                                            />
                                             <button
                                                 onClick={() => {
                                                     const newComp = [...salonFormData.composition]
@@ -2316,7 +2350,8 @@ export default function Sales() {
                                         delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
                                         delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
-                                        sales_channel: 'store'
+                                        sales_channel: 'store',
+                                        profit: salePrice - costPrice
                                     }
 
                                     if (editingSalonSaleId) {

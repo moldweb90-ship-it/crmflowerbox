@@ -214,7 +214,22 @@ tr:last-child td {
   }
 
   /* Prevent auto-zoom on mobile inputs */
-  input, select, textarea, .input {
+  input,
+  select,
+  textarea,
+  .input {
     font-size: 16px !important;
   }
+}
+
+/* Hide standard spinners */
+.no-spinners::-webkit-outer-spin-button,
+.no-spinners::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-spinners {
+  -moz-appearance: textfield;
+  appearance: none;
 }

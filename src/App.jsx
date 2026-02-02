@@ -44,7 +44,7 @@ function App() {
                                 <Route path="expenses" element={<RequirePermission permission="expenses"><Expenses /></RequirePermission>} />
                                 <Route path="customers" element={<RequirePermission permission="customers"><Customers /></RequirePermission>} />
                                 <Route path="reminders" element={<RequirePermission permission="customers"><Reminders /></RequirePermission>} />
-                                <Route path="employees" element={<RequirePermission permission="settings"><Employees /></RequirePermission>} />
+                                <Route path="employees" element={<RequirePermission permission="employees"><Employees /></RequirePermission>} />
                                 <Route path="settings" element={<RequirePermission permission="settings"><Settings /></RequirePermission>} />
                             </Route>
                         </Routes>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
-import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square } from 'lucide-react'
+import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square, AlertOctagon } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 const STALE_DAYS = 7
@@ -101,6 +101,9 @@ export default function Dashboard() {
         const now = new Date()
         let totalStockValue = 0
         const staleList = []
+        const outOfStockList = []
+        const lowStockList = []
+        const LOW_STOCK_THRESHOLD = 10
 
         stock.forEach(s => {
             const item = s.item_type === 'flower'
@@ -108,9 +111,31 @@ export default function Dashboard() {
                 : goods.find(g => g.id === s.item_id)
             if (!item) return
             const cost = item.cost ?? item.purchase_price ?? (item.price ? item.price * 0.4 : 0)
-            totalStockValue += (s.quantity || 0) * cost
 
-            if (s.quantity <= 0) return
+            // Calc total value only for positive stock
+            if (s.quantity > 0) {
+                totalStockValue += s.quantity * cost
+            }
+
+            // check shortage
+            if (s.quantity <= 0) {
+                outOfStockList.push({
+                    type: s.item_type,
+                    id: s.item_id,
+                    name: item.name
+                })
+                return // No need to check stale
+            }
+
+            if (s.quantity < LOW_STOCK_THRESHOLD) {
+                lowStockList.push({
+                    type: s.item_type,
+                    id: s.item_id,
+                    name: item.name,
+                    quantity: s.quantity
+                })
+            }
+
             const batches = getRemainingBatchesByFIFO(s.item_type, s.item_id, stockTransactions, supplies)
             let staleQty = 0
             let maxDays = 0
@@ -135,7 +160,11 @@ export default function Dashboard() {
         })
 
         staleList.sort((a, b) => b.days - a.days)
-        return { totalStockValue, staleList }
+        // Sort shortage lists safely
+        outOfStockList.sort((a, b) => a.name.localeCompare(b.name))
+        lowStockList.sort((a, b) => a.quantity - b.quantity)
+
+        return { totalStockValue, staleList, outOfStockList, lowStockList }
     }, [stock, stockTransactions, supplies, flowers, goods])
 
     // Клиенты: New vs Old (по ЗАКАЗАМ: 1-й заказ = новый, 2+ = повторный) + Кого теряем
@@ -412,93 +441,21 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* Bento Grid Stats */}
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1.5rem', marginLeft: '0.5rem' }}>Статистика</h2>
 
-            <div style={{
-                display: isMobile ? 'flex' : 'grid',
-                gridTemplateColumns: isMobile ? 'none' : 'repeat(4, 1fr)',
-                gap: '1.5rem',
-                marginBottom: '2.5rem',
-                overflowX: isMobile ? 'auto' : 'visible',
-                scrollSnapType: isMobile ? 'x mandatory' : 'none',
-                paddingBottom: isMobile ? '1rem' : 0
-            }}>
-                {/* Total Value - Primary Stat */}
-                <div className="card" style={{ gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                        <div style={{ padding: '10px', background: 'var(--primary-light)', borderRadius: '12px', color: 'var(--primary)' }}>
-                            <DollarSign size={24} />
-                        </div>
-                        <span style={{ padding: '6px 16px', borderRadius: '99px', background: '#F3F4F6', fontSize: '0.75rem', fontWeight: 600 }}>Всего</span>
-                    </div>
-                    <div>
-                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Общая стоимость</span>
-                        <span style={{ fontSize: '2rem', fontWeight: 800 }}>{totalValue.toLocaleString()} <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>lei</span></span>
-                    </div>
-                </div>
-
-                {/* Products Count */}
-                <Link to="/products" className="card" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'}
-                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-                >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                        <div style={{ padding: '10px', background: '#DBEAFE', borderRadius: '12px', color: '#2563EB' }}>
-                            <Package size={24} />
-                        </div>
-                        <span style={{ padding: '6px 16px', borderRadius: '99px', background: '#F3F4F6', fontSize: '0.75rem', fontWeight: 600 }}>Активные</span>
-                    </div>
-                    <div>
-                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Букеты</span>
-                        <span style={{ fontSize: '2rem', fontWeight: 800 }}>{products.length}</span>
-                    </div>
-                </Link>
-
-                {/* Flowers (New) */}
-                <Link to="/flowers" className="card" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'}
-                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-                >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                        <div style={{ padding: '10px', background: '#FCE7F3', borderRadius: '12px', color: '#DB2777' }}>
-                            <Flower2 size={24} />
-                        </div>
-                        <span style={{ padding: '6px 16px', borderRadius: '99px', background: '#F3F4F6', fontSize: '0.75rem', fontWeight: 600 }}>Склад</span>
-                    </div>
-                    <div>
-                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Цветы</span>
-                        <span style={{ fontSize: '2rem', fontWeight: 800 }}>{flowers.length}</span>
-                    </div>
-                </Link>
-
-                {/* Materials (Goods) */}
-                <Link to="/goods" className="card" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1', backgroundColor: '#FFFFFF', border: 'none', minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'}
-                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-                >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                        <div style={{ padding: '10px', background: '#DCFCE7', borderRadius: '12px', color: '#16A34A' }}>
-                            <Layers size={24} />
-                        </div>
-                        <span style={{ padding: '6px 16px', borderRadius: '99px', background: '#F3F4F6', fontSize: '0.75rem', fontWeight: 600 }}>Склад</span>
-                    </div>
-                    <div>
-                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Материалы</span>
-                        <span style={{ fontSize: '2rem', fontWeight: 800 }}>{goods.length}</span>
-                    </div>
-                </Link>
-            </div>
 
             {/* Три блока на ПК: Аналитика списаний + Движение склада + Клиенты */}
             <div style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr',
+                display: isMobile ? 'flex' : 'grid',
+                gridTemplateColumns: isMobile ? 'none' : '1fr 1fr 1fr',
                 gap: '1.5rem',
-                marginBottom: '4rem'
+                marginBottom: '4rem',
+                overflowX: isMobile ? 'auto' : 'visible',
+                scrollSnapType: isMobile ? 'x mandatory' : 'none',
+                paddingBottom: isMobile ? '1rem' : 0,
+                paddingRight: isMobile ? '1rem' : 0 // Padding for right scroll
             }}>
                 {/* Аналитика списаний (30 дней) */}
-                <div>
+                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', marginLeft: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <AlertTriangle size={20} color="#f87171" />
                         Аналитика списаний (30 дней)
@@ -550,7 +507,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Движение склада (оборачиваемость) */}
-                <div>
+                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', marginLeft: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Box size={20} color="#0ea5e9" />
                         Движение склада
@@ -597,14 +554,54 @@ export default function Dashboard() {
                                     )}
                                 </div>
                             ) : (
-                                <div style={{ fontSize: '0.8rem', color: '#16a34a' }}>Зависших позиций нет</div>
+                                <div style={{ fontSize: '0.8rem', color: '#16a34a', marginBottom: '1rem' }}>Зависших позиций нет</div>
                             )}
+
+                            {/* Out of Stock Section */}
+                            <div style={{ marginTop: '1rem', borderTop: '1px solid #e0f2fe', paddingTop: '0.75rem' }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <AlertOctagon size={14} /> Нет в наличии
+                                </div>
+                                {stockTurnover.outOfStockList.length > 0 ? (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                                        {stockTurnover.outOfStockList.slice(0, 6).map((item, i) => (
+                                            <span key={i} style={{ fontSize: '0.75rem', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#475569', border: '1px solid #cbd5e1' }}>
+                                                {item.name}
+                                            </span>
+                                        ))}
+                                        {stockTurnover.outOfStockList.length > 6 && (
+                                            <span style={{ fontSize: '0.75rem', color: '#64748b', alignSelf: 'center' }}>+{stockTurnover.outOfStockList.length - 6}</span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.8rem', color: '#16a34a' }}>Все товары в наличии</div>
+                                )}
+                            </div>
+
+                            {/* Low Stock Section */}
+                            <div style={{ marginTop: '1rem', borderTop: '1px solid #e0f2fe', paddingTop: '0.75rem' }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#f59e0b', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <AlertTriangle size={14} /> Мало остатков (&lt;10)
+                                </div>
+                                {stockTurnover.lowStockList.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '100px', overflowY: 'auto' }}>
+                                        {stockTurnover.lowStockList.slice(0, 5).map((item, i) => (
+                                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', borderBottom: '1px dashed #e2e8f0', paddingBottom: '2px' }}>
+                                                <span style={{ color: '#334155' }}>{item.name}</span>
+                                                <span style={{ color: '#d97706', fontWeight: 600 }}>{item.quantity} шт.</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.8rem', color: '#16a34a' }}>Запасы в норме</div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Клиенты (LTV и Возвращаемость) */}
-                <div>
+                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', marginLeft: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Users size={20} color="#8b5cf6" />
                         Клиенты (30 дней)
@@ -677,37 +674,37 @@ export default function Dashboard() {
             {/* Recent Section - Wide Card */}
             <div style={{ marginTop: '4rem' }}>
                 <div className="card" style={{ padding: '2rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                    <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Последние добавления</h2>
-                    <Link to="/products" style={{ fontSize: '0.875rem', color: 'var(--primary)', fontWeight: 600 }}>Смотреть все</Link>
-                </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Последние добавления</h2>
+                        <Link to="/products" style={{ fontSize: '0.875rem', color: 'var(--primary)', fontWeight: 600 }}>Смотреть все</Link>
+                    </div>
 
-                <div className="table-container">
-                    <table style={{ width: '100%' }}>
-                        <thead>
-                            <tr>
-                                <th style={{ textAlign: 'left', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Название</th>
-                                <th style={{ textAlign: 'left', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Артикул</th>
-                                <th style={{ textAlign: 'right', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Цена</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {products.slice(-5).reverse().map(product => (
-                                <tr key={product.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                                    <td style={{ padding: '1rem 0', fontWeight: 600 }}>{product.name}</td>
-                                    <td style={{ padding: '1rem 0', color: 'var(--text-muted)' }}>{product.sku || '—'}</td>
-                                    <td style={{ padding: '1rem 0', textAlign: 'right', fontWeight: 700 }}>{product.price} lei</td>
-                                </tr>
-                            ))}
-                            {products.length === 0 && (
+                    <div className="table-container">
+                        <table style={{ width: '100%' }}>
+                            <thead>
                                 <tr>
-                                    <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Список пуст</td>
+                                    <th style={{ textAlign: 'left', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Название</th>
+                                    <th style={{ textAlign: 'left', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Артикул</th>
+                                    <th style={{ textAlign: 'right', paddingBottom: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>Цена</th>
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {products.slice(-5).reverse().map(product => (
+                                    <tr key={product.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                                        <td style={{ padding: '1rem 0', fontWeight: 600 }}>{product.name}</td>
+                                        <td style={{ padding: '1rem 0', color: 'var(--text-muted)' }}>{product.sku || '—'}</td>
+                                        <td style={{ padding: '1rem 0', textAlign: 'right', fontWeight: 700 }}>{product.price} lei</td>
+                                    </tr>
+                                ))}
+                                {products.length === 0 && (
+                                    <tr>
+                                        <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Список пуст</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
             </div>
 
             {/* Modals: Start Shift, End Shift */}

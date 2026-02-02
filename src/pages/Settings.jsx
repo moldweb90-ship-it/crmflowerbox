@@ -103,6 +103,7 @@ export default function Settings() {
         { key: 'supplies', label: 'Поставки' },
         { key: 'stock', label: 'Склад' },
         { key: 'expenses', label: 'Расходы' },
+        { key: 'employees', label: 'Сотрудники' },
         { key: 'settings', label: 'Настройки' },
     ]
 
