@@ -320,7 +320,7 @@ export default function Layout() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        marginBottom: '3rem',
+                        marginBottom: '0rem',
                         padding: '1rem 0'
                     }}>
                         <div>

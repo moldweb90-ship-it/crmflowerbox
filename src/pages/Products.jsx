@@ -10,9 +10,19 @@ export default function Products() {
 
     const [searchParams, setSearchParams] = useSearchParams()
     const searchTerm = searchParams.get('q') || ''
+    const categoryParam = searchParams.get('category')
 
     const [view, setView] = useState('list') // 'list' | 'editor'
     const [filterCat, setFilterCat] = useState('all')
+
+    // Update filterCat from URL param
+    useEffect(() => {
+        if (categoryParam) {
+            setFilterCat(categoryParam)
+        } else {
+            setFilterCat('all')
+        }
+    }, [categoryParam])
 
     // State for Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)

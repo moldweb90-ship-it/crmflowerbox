@@ -17,10 +17,6 @@ export default function Categories() {
         return () => window.removeEventListener('resize', handleResize)
     }, [])
 
-    // View Modal State
-    const [viewModalOpen, setViewModalOpen] = useState(false)
-    const [viewCategory, setViewCategory] = useState(null)
-
     const handleSubmit = (e) => {
         e.preventDefault()
         if (editingCategory) {
@@ -48,15 +44,6 @@ export default function Categories() {
     // Helper to get products in category
     const getCategoryProducts = (catId) => {
         return products.filter(p => p.categoryIds && p.categoryIds.includes(catId))
-    }
-
-    const handleViewClick = (category) => {
-        setViewCategory(category)
-        setViewModalOpen(true)
-    }
-
-    const togglePublish = (cat) => {
-        updateCategory(cat.id, { is_published: !cat.is_published })
     }
 
     return (
@@ -111,28 +98,27 @@ export default function Categories() {
                                         {cat.name}
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <span style={{
-                                            background: 'var(--bg-body)',
-                                            padding: '0.125rem 0.5rem',
-                                            borderRadius: '99px',
-                                            fontSize: '0.75rem',
-                                            fontWeight: 600,
-                                            color: 'var(--text-muted)'
-                                        }}>
+                                        <a
+                                            href={`/products?category=${cat.id}`}
+                                            style={{
+                                                background: 'var(--bg-body)',
+                                                padding: '0.125rem 0.5rem',
+                                                borderRadius: '99px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 600,
+                                                color: 'var(--primary)',
+                                                textDecoration: 'none',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
                                             {count} товаров
-                                        </span>
+                                        </a>
                                         {!isPublished && (
                                             <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>Скрыта</span>
                                         )}
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
-                                    <button onClick={() => togglePublish(cat)} style={{ padding: '0.5rem', border: 'none', background: '#f3f4f6', borderRadius: '8px', cursor: 'pointer' }}>
-                                        {isPublished ? <Eye size={16} color="var(--text-muted)" /> : <EyeOff size={16} color="var(--primary)" />}
-                                    </button>
-                                    <button onClick={() => handleViewClick(cat)} style={{ padding: '0.5rem', border: 'none', background: '#ecfdf5', borderRadius: '8px', cursor: 'pointer' }}>
-                                        <Eye size={16} color="var(--primary)" />
-                                    </button>
                                     <button onClick={() => handleEditClick(cat)} style={{ padding: '0.5rem', border: 'none', background: '#f3f4f6', borderRadius: '8px', cursor: 'pointer' }}>
                                         <Edit size={16} color="var(--text-muted)" />
                                     </button>
@@ -171,24 +157,23 @@ export default function Categories() {
                                             {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Снята с публикации</div>}
                                         </td>
                                         <td style={{ textAlign: 'center', padding: '1rem' }}>
-                                            <span style={{
-                                                background: 'var(--bg-body)',
-                                                padding: '0.25rem 0.75rem',
-                                                borderRadius: '99px',
-                                                fontSize: '0.875rem',
-                                                fontWeight: 600,
-                                                color: 'var(--text-muted)'
-                                            }}>
+                                            <a
+                                                href={`/products?category=${cat.id}`}
+                                                style={{
+                                                    background: 'var(--bg-body)',
+                                                    padding: '0.25rem 0.75rem',
+                                                    borderRadius: '99px',
+                                                    fontSize: '0.875rem',
+                                                    fontWeight: 600,
+                                                    color: 'var(--primary)',
+                                                    textDecoration: 'none',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
                                                 {count} шт.
-                                            </span>
+                                            </a>
                                         </td>
                                         <td style={{ textAlign: 'right', padding: '1rem' }}>
-                                            <button onClick={() => togglePublish(cat)} style={{ marginRight: '0.5rem', color: isPublished ? 'var(--text-muted)' : 'var(--primary)' }} title={isPublished ? "Снять с публикации" : "Опубликовать"}>
-                                                {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
-                                            </button>
-                                            <button onClick={() => handleViewClick(cat)} style={{ marginRight: '0.5rem', color: 'var(--primary)' }} title="Посмотреть товары">
-                                                <Eye size={18} />
-                                            </button>
                                             <button onClick={() => handleEditClick(cat)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }} title="Редактировать">
                                                 <Edit size={18} />
                                             </button>
@@ -229,35 +214,6 @@ export default function Categories() {
                         <button type="submit" className="btn btn-primary">{editingCategory ? "Сохранить" : "Добавить"}</button>
                     </div>
                 </form>
-            </Modal>
-
-            {/* View Products Modal */}
-            <Modal isOpen={viewModalOpen} onClose={() => setViewModalOpen(false)} title={viewCategory ? `Товары в категории: ${viewCategory.name}` : 'Просмотр товаров'}>
-                <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                    {viewCategory && getCategoryProducts(viewCategory.id).length > 0 ? (
-                        <table style={{ width: '100%' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border)', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                                    <th style={{ textAlign: 'left', padding: '0.5rem' }}>Название</th>
-                                    <th style={{ textAlign: 'right', padding: '0.5rem' }}>Цена</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {getCategoryProducts(viewCategory.id).map(p => (
-                                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                        <td style={{ padding: '0.5rem' }}>{p.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{p.sku}</span></td>
-                                        <td style={{ textAlign: 'right', padding: '0.5rem', fontWeight: 600 }}>{p.price} lei</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>В этой категории нет товаров.</p>
-                    )}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                    <button className="btn" onClick={() => setViewModalOpen(false)}>Закрыть</button>
-                </div>
             </Modal>
         </div>
     )

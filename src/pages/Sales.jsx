@@ -2002,8 +2002,10 @@ export default function Sales() {
                                             <button
                                                 onClick={() => {
                                                     const newComp = [...salonFormData.composition]
-                                                    if (newComp[idx].quantity > 1) {
-                                                        newComp[idx].quantity -= 1
+                                                    // Ensure it is treated as a number
+                                                    const currentQty = Number(newComp[idx].quantity) || 0
+                                                    if (currentQty > 1) {
+                                                        newComp[idx].quantity = currentQty - 1
                                                         setSalonFormData({ ...salonFormData, composition: newComp })
                                                     }
                                                 }}
@@ -2015,9 +2017,15 @@ export default function Sales() {
                                                 className="no-spinners"
                                                 value={item.quantity}
                                                 onChange={(e) => {
-                                                    const val = parseInt(e.target.value) || 1
+                                                    const val = e.target.value
                                                     const newComp = [...salonFormData.composition]
-                                                    newComp[idx].quantity = Math.max(1, val)
+                                                    if (val === '') {
+                                                        newComp[idx].quantity = ''
+                                                    } else {
+                                                        const num = parseInt(val)
+                                                        // If valid number, ensure min 1. If NaN (unlikely with type=number but possible), default to 1
+                                                        newComp[idx].quantity = isNaN(num) ? 1 : Math.max(1, num)
+                                                    }
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 }}
                                                 style={{
@@ -2038,7 +2046,8 @@ export default function Sales() {
                                             <button
                                                 onClick={() => {
                                                     const newComp = [...salonFormData.composition]
-                                                    newComp[idx].quantity += 1
+                                                    // Handle case where quantity is '' by treating it as 0, then add 1 -> 1
+                                                    newComp[idx].quantity = (Number(newComp[idx].quantity) || 0) + 1
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 }}
                                                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontWeight: 700 }}

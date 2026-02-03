@@ -737,8 +737,7 @@ export function StoreProvider({ children }) {
     }
 
     const getActiveShifts = () => {
-        const today = toDateStr(new Date())
-        return shifts.filter(s => s.status === 'active' && s.shift_date === today)
+        return shifts.filter(s => !s.end_time)
     }
 
     const getCashBalance = () => {
@@ -941,7 +940,7 @@ export function StoreProvider({ children }) {
             const advances = payments.filter(x => x.payment_type === 'advance').reduce((s, x) => s + Number(x.amount || 0), 0)
             const salaryPaid = payments.filter(x => x.payment_type === 'salary').reduce((s, x) => s + Number(x.amount || 0), 0)
             const bonus = payments.filter(x => x.payment_type === 'bonus').reduce((s, x) => s + Number(x.amount || 0), 0)
-            const balance = Math.max(0, p.total - advances - salaryPaid)
+            const balance = p.total - advances - salaryPaid - bonus
             return { ...p, advances, salaryPaid, bonus, balance }
         })
     }

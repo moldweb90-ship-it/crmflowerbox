@@ -231,7 +231,8 @@ export default function Dashboard() {
             }
         })
 
-        return { revenueToday, revenueYesterday, profitToday, avgCheck, cash, card, debt }
+        const marginPct = revenueToday > 0 ? (profitToday / revenueToday) * 100 : 0
+        return { revenueToday, revenueYesterday, profitToday, avgCheck, cash, card, debt, marginPct }
     }, [sales])
 
     // 2. Recent Orders & Problem Orders
@@ -393,6 +394,94 @@ export default function Dashboard() {
             phone: getPct(counts.phone),
             aggregators: getPct(counts.aggregators)
         }
+    }, [sales])
+
+
+    // 5. Sales Dynamics (Growth)
+    const salesDynamics = React.useMemo(() => {
+        const now = new Date()
+        // Helper to get start of day for simpler comparison or use exact timestamps?
+        // User said: "Current 30 days from now".
+        // Let's use exact dates for precision or day-boundaries?
+        // "Inclusive today". So [Now-30d, Now].
+        // Period A: [Now - 30d, Now]
+        // Period B: [Now - 30d - 1yr, Now - 1yr]
+
+        const currentEnd = new Date(now)
+        const currentStart = new Date(now)
+        currentStart.setDate(currentEnd.getDate() - 30)
+
+        const lastYearEnd = new Date(currentEnd)
+        lastYearEnd.setFullYear(lastYearEnd.getFullYear() - 1)
+        const lastYearStart = new Date(currentStart)
+        lastYearStart.setFullYear(lastYearStart.getFullYear() - 1)
+
+        // Helper to sum revenue
+        const sumRevenue = (items) => items.reduce((acc, s) => {
+            // Filter: Completed or Paid.
+            const status = (s.status || '').toLowerCase()
+            const payStatus = (s.payment_status || '').toLowerCase()
+            const isPaid = payStatus === 'paid' || status === 'completed' || status === 'delivered'
+
+            // Exclude cancelled explicitly just in case
+            if (status.includes('cancel')) return acc
+
+            if (!isPaid) return acc
+
+            // Revenue: sale_price. If delivery not included? 
+            // User said: "If delivery not included in revenue, deduct delivery_cost".
+            // usually sale_price IS total. Let's assume sale_price is Revenue.
+            // If we have separate delivery cost stored... StoreContext doesn't show it explicitly in top level.
+            // We use `s.sale_price`.
+            return acc + (Number(s.sale_price) || 0)
+        }, 0)
+
+        const salesA = sales.filter(s => {
+            const d = new Date(s.order_date || s.created_at)
+            return d >= currentStart && d <= currentEnd
+        })
+        const sumA = sumRevenue(salesA)
+
+        const salesB = sales.filter(s => {
+            const d = new Date(s.order_date || s.created_at)
+            return d >= lastYearStart && d <= lastYearEnd
+        })
+        const sumB = sumRevenue(salesB)
+
+        // Growth
+        let growthPct = 0
+        if (sumB === 0) growthPct = sumA > 0 ? 100 : 0
+        else growthPct = ((sumA - sumB) / sumB) * 100
+
+        // Averages
+        // 3 months (90 days)
+        const startQ = new Date(now); startQ.setDate(startQ.getDate() - 90)
+        const salesQ = sales.filter(s => { const d = new Date(s.order_date || s.created_at); return d >= startQ && d <= currentEnd })
+        const sumQ = sumRevenue(salesQ)
+        const avgQ = sumQ / 3 // Monthly avg in typical 3 months? User said "Average of Quarter" -> likely Monthly Average within that quarter? 
+        // Or "Average indicator of quarter"?
+        // "Средний показатель квартала" usually means "Total Q / 3 months" to compare with "Monthly Sales".
+        // Let's assume proper monthly average.
+
+        // 6 months
+        const startHY = new Date(now); startHY.setDate(startHY.getDate() - 180)
+        const salesHY = sales.filter(s => { const d = new Date(s.order_date || s.created_at); return d >= startHY && d <= currentEnd })
+        const sumHY = sumRevenue(salesHY)
+        const avgHY = sumHY / 6
+
+        // 12 months
+        const startY = new Date(now); startY.setDate(startY.getDate() - 365)
+        const salesY = sales.filter(s => { const d = new Date(s.order_date || s.created_at); return d >= startY && d <= currentEnd })
+        const sumY = sumRevenue(salesY)
+        const avgY = sumY / 12
+
+        // Deviations
+        // how A (30 days) deviates from AvgQ, AvgHY, AvgY
+        const devQ = avgQ > 0 ? ((sumA - avgQ) / avgQ) * 100 : 0
+        const devHY = avgHY > 0 ? ((sumA - avgHY) / avgHY) * 100 : 0
+        const devY = avgY > 0 ? ((sumA - avgY) / avgY) * 100 : 0
+
+        return { sumA, sumB, growthPct, avgQ, avgHY, avgY, devQ, devHY, devY }
     }, [sales])
 
     const customerStats = React.useMemo(() => {
@@ -681,19 +770,18 @@ export default function Dashboard() {
 
 
 
-            {/* --- NEW REVAMPED BLOCKS (4) --- */}
-            <div style={{
-                display: isMobile ? 'flex' : 'grid',
-                gridTemplateColumns: isMobile ? 'none' : 'repeat(4, 1fr)',
+            {/* --- NEW REVAMPED BLOCKS (5) --- */}
+            <div className="dashboard-carousel" style={{
+                display: 'flex',
                 gap: '1.5rem',
                 marginBottom: '2rem',
-                overflowX: isMobile ? 'auto' : 'visible',
-                scrollSnapType: isMobile ? 'x mandatory' : 'none',
-                paddingBottom: isMobile ? '1rem' : 0,
-                paddingRight: isMobile ? '1rem' : 0
+                overflowX: 'auto',
+                scrollSnapType: 'x mandatory',
+                paddingBottom: '1rem', // Space for scrollbar
+                paddingRight: '1rem'
             }}>
                 {/* 1. Money Today */}
-                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                <div style={{ minWidth: isMobile ? '85%' : '320px', scrollSnapAlign: 'start', flexShrink: 0 }}>
                     <div className="card" style={{ height: '100%', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', padding: '1.25rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                             <div>
@@ -724,8 +812,19 @@ export default function Dashboard() {
                         <div style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                                 <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase' }}>ВАЛОВАЯ ПРИБЫЛЬ</div>
-                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827' }}>
-                                    {moneyStats.profitToday.toLocaleString()} lei
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827' }}>
+                                        {moneyStats.profitToday.toLocaleString()} lei
+                                    </div>
+                                    <div style={{
+                                        fontSize: '0.75rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
+                                        background: moneyStats.marginPct < 50 ? '#fee2e2' : (moneyStats.marginPct > 60 ? '#dcfce7' : '#fef3c7'),
+                                        color: moneyStats.marginPct < 50 ? '#991b1b' : (moneyStats.marginPct > 60 ? '#166534' : '#92400e'),
+                                        display: 'flex', alignItems: 'center', gap: '4px'
+                                    }}>
+                                        {moneyStats.marginPct < 50 && <AlertTriangle size={12} />}
+                                        {moneyStats.marginPct.toFixed(0)}%
+                                    </div>
                                 </div>
                             </div>
                             <div style={{ textAlign: 'right' }}>
@@ -739,7 +838,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* 2. Recent Orders & Alerts */}
-                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                <div style={{ minWidth: isMobile ? '85%' : '320px', scrollSnapAlign: 'start', flexShrink: 0 }}>
                     <div className="card" style={{ height: '100%', background: 'white', border: '1px solid #e5e7eb', padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                             <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#374151' }}>ПОСЛЕДНИЕ ЗАКАЗЫ</h3>
@@ -779,7 +878,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* 3. Tomorrow (Planning) -> К ВЫДАЧЕ */}
-                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                <div style={{ minWidth: isMobile ? '85%' : '320px', scrollSnapAlign: 'start', flexShrink: 0 }}>
                     <div className="card" style={{ height: '100%', background: 'linear-gradient(135deg, #fdf4ff 0%, #fae8ff 100%)', border: '1px solid #f0abfc', padding: '1.25rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                             <div>
@@ -827,8 +926,9 @@ export default function Dashboard() {
                     </div>
                 </div>
 
+
                 {/* 4. Sources (Marketing) */}
-                <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
+                <div style={{ minWidth: isMobile ? '85%' : '320px', scrollSnapAlign: 'start', flexShrink: 0 }}>
                     <div className="card" style={{ height: '100%', background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)', border: '1px solid #fdba74', padding: '1.25rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                             <div>
@@ -859,6 +959,65 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* 5. Sales Dynamics (Growth) - NEW WIDGET */}
+                <div style={{ minWidth: isMobile ? '85%' : '320px', scrollSnapAlign: 'start', flexShrink: 0 }}>
+                    <div className="card" style={{ height: '100%', background: 'linear-gradient(135deg, #ffffff 0%, #f9fafb 100%)', border: '1px solid #e5e7eb', padding: '1.25rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#111827', marginBottom: '0.25rem' }}>ДИНАМИКА</h3>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Рост продаж (YOY)</div>
+                            </div>
+                            <div style={{ background: '#111827', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><TrendingUp size={20} /></div>
+                        </div>
+
+                        {/* Current & Growth */}
+                        <div style={{ marginBottom: '1rem' }}>
+                            <div style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 600 }}>Продажи (30 дней)</div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#111827', lineHeight: 1 }}>{salesDynamics.sumA.toLocaleString()} lei</div>
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                Год назад: {salesDynamics.sumB.toLocaleString()} lei
+                            </div>
+                            <div style={{
+                                marginTop: '0.5rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '6px',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                                background: salesDynamics.growthPct >= 0 ? '#dcfce7' : '#fee2e2',
+                                color: salesDynamics.growthPct >= 0 ? '#166534' : '#991b1b'
+                            }}>
+                                {salesDynamics.growthPct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                {salesDynamics.growthPct > 0 ? '+' : ''}{salesDynamics.growthPct.toFixed(1)}%
+                            </div>
+                        </div>
+
+                        {/* Averages */}
+                        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '0.75rem', fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: '#6b7280' }}>Среднее (3 мес):</span>
+                                <span style={{ fontWeight: 600, color: salesDynamics.devQ >= 0 ? '#16a34a' : '#dc2626' }}>
+                                    {salesDynamics.avgQ.toLocaleString()} ({salesDynamics.devQ > 0 ? '+' : ''}{salesDynamics.devQ.toFixed(0)}%)
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: '#6b7280' }}>Среднее (6 мес):</span>
+                                <span style={{ fontWeight: 600, color: salesDynamics.devHY >= 0 ? '#16a34a' : '#dc2626' }}>
+                                    {salesDynamics.avgHY.toLocaleString()} ({salesDynamics.devHY > 0 ? '+' : ''}{salesDynamics.devHY.toFixed(0)}%)
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: '#6b7280' }}>Среднее (12 мес):</span>
+                                <span style={{ fontWeight: 600, color: salesDynamics.devY >= 0 ? '#16a34a' : '#dc2626' }}>
+                                    {salesDynamics.avgY.toLocaleString()} ({salesDynamics.devY > 0 ? '+' : ''}{salesDynamics.devY.toFixed(0)}%)
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
