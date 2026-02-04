@@ -45,6 +45,7 @@ export function StoreProvider({ children }) {
     const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
     const [customers, setCustomers] = usePersistedState('store_customers', [])
     const [customerImportantDates, setCustomerImportantDates] = usePersistedState('store_customer_dates', [])
+    const [tasks, setTasks] = usePersistedState('store_tasks', [])
 
     // Loading is false if we have products (assuming if we have products we have a cache)
     // But we still fetch in background.
@@ -1423,6 +1424,34 @@ export function StoreProvider({ children }) {
         }
     }
 
+    // --- Tasks ---
+    const addTask = (text) => {
+        const newTask = {
+            id: Date.now().toString(),
+            text,
+            is_completed: false,
+            is_important: false,
+            created_at: new Date().toISOString()
+        }
+        setTasks([newTask, ...tasks])
+    }
+
+    const toggleTask = (id) => {
+        setTasks(tasks.map(t => t.id === id ? { ...t, is_completed: !t.is_completed } : t))
+    }
+
+    const toggleTaskImportance = (id) => {
+        setTasks(tasks.map(t => t.id === id ? { ...t, is_important: !t.is_important } : t))
+    }
+
+    const deleteTask = (id) => {
+        setTasks(tasks.filter(t => t.id !== id))
+    }
+
+    const clearCompletedTasks = () => {
+        setTasks(tasks.filter(t => !t.is_completed))
+    }
+
     return (
         <StoreContext.Provider value={{
             flowers, addFlower, updateFlower, deleteFlower,
@@ -1432,6 +1461,7 @@ export function StoreProvider({ children }) {
             suppliers, supplies, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems,
             expenses, addExpense, updateExpense, deleteExpense,
             sales, addSale, updateSale, deleteSale,
+            tasks, addTask, toggleTask, deleteTask, toggleTaskImportance, clearCompletedTasks,
             couriers: couriersList, addCourier,
             florists: floristsList, addFlorist,
             employees, shifts, addEmployee, updateEmployee, deleteEmployee,

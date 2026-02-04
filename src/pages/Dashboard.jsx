@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
 import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square, AlertOctagon, TrendingUp, CreditCard, ChevronRight, Search, Instagram, Facebook } from 'lucide-react'
 import Modal from '../components/ui/Modal'
+import TasksWidget from '../components/TasksWidget'
 
 const STALE_DAYS = 7
 const SHIFT_START_H = 9
@@ -837,7 +838,10 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* 2. Recent Orders & Alerts */}
+                {/* 1.5 Tasks Widget (New) */}
+                <TasksWidget isMobile={isMobile} />
+
+                {/* 2. Recent Orders & Alerts ch*/}
                 <div style={{ minWidth: isMobile ? '85%' : '320px', scrollSnapAlign: 'start', flexShrink: 0 }}>
                     <div className="card" style={{ height: '100%', background: 'white', border: '1px solid #e5e7eb', padding: '1.25rem', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
