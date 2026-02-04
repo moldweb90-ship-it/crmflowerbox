@@ -4,7 +4,7 @@ import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Fi
 import Modal from '../components/ui/Modal'
 
 export default function Supplies() {
-    const { supplies, suppliers, flowers, goods, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems } = useStore() // Added goods
+    const { supplies, suppliers, flowers, goods, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, createSupplier } = useStore() // Added goods
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [expandedMenuId, setExpandedMenuId] = useState(null) // For dropdown menu
 
@@ -627,17 +627,34 @@ export default function Supplies() {
                     {/* Supplier Selection */}
                     <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Поставщик</label>
-                        <input
-                            list="suppliers-list"
-                            className="input"
-                            placeholder="Название поставщика"
-                            value={supplierName}
-                            onChange={e => setSupplierName(e.target.value)}
-                            style={{ fontSize: '1rem', padding: '0.75rem' }}
-                        />
-                        <datalist id="suppliers-list">
-                            {suppliers.map(s => <option key={s.id} value={s.name} />)}
-                        </datalist>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <select
+                                className="input"
+                                value={supplierName}
+                                onChange={e => setSupplierName(e.target.value)}
+                                style={{ fontSize: '1rem', padding: '0.75rem', flex: 1 }}
+                            >
+                                <option value="">Выберите поставщика...</option>
+                                {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                            </select>
+                            <button
+                                className="btn"
+                                style={{ padding: '0.75rem', background: '#f3f4f6', border: '1px solid var(--border)' }}
+                                onClick={async () => {
+                                    const name = prompt('Введите имя нового поставщика:')
+                                    if (name && name.trim()) {
+                                        const res = await createSupplier({ name: name.trim() })
+                                        if (res.success) {
+                                            setSupplierName(res.data.name)
+                                        } else {
+                                            alert('Ошибка создания: ' + res.error.message)
+                                        }
+                                    }
+                                }}
+                            >
+                                <Plus size={20} color="var(--text-muted)" />
+                            </button>
+                        </div>
                     </div>
 
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>

@@ -6,6 +6,7 @@ import Products from './pages/Products'
 import Settings from './pages/Settings'
 import Categories from './pages/Categories'
 import Supplies from './pages/Supplies'
+import Suppliers2 from './pages/Suppliers'
 import Stock from './pages/Stock'
 import Expenses from './pages/Expenses'
 import Sales from './pages/Sales'
@@ -41,6 +42,7 @@ function App() {
                                 <Route path="products" element={<RequirePermission permission="products"><Products /></RequirePermission>} />
                                 <Route path="categories" element={<RequirePermission permission="categories"><Categories /></RequirePermission>} />
                                 <Route path="supplies" element={<RequirePermission permission="supplies"><Supplies /></RequirePermission>} />
+                                <Route path="suppliers" element={<Suppliers2 />} />
                                 <Route path="stock" element={<RequirePermission permission="stock"><Stock /></RequirePermission>} />
                                 <Route path="expenses" element={<RequirePermission permission="expenses"><Expenses /></RequirePermission>} />
                                 <Route path="customers" element={<RequirePermission permission="customers"><Customers /></RequirePermission>} />

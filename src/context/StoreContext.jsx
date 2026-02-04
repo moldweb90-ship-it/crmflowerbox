@@ -399,7 +399,6 @@ export function StoreProvider({ children }) {
             if (existingSupplier) {
                 supplierId = existingSupplier.id
             } else {
-                const { data: newSup, error: supError } = await supabase.from('suppliers').insert([{ name: supplierName }]).select().single()
                 if (supError) throw supError
                 setSuppliers([...suppliers, newSup])
                 supplierId = newSup.id
@@ -487,6 +486,265 @@ export function StoreProvider({ children }) {
         } catch (e) {
             console.error('Delete Error:', e)
             return { success: false, error: e }
+        }
+    }
+
+    // --- Supplier Management ---
+    const createSupplier = async (supplierData) => {
+        try {
+            const { data, error } = await supabase.from('suppliers').insert([supplierData]).select().single()
+            if (error) throw error
+            setSuppliers([...suppliers, data])
+            return { success: true, data }
+        } catch (e) {
+            console.error('Create Supplier Error:', e)
+            return { success: false, error: e }
+        }
+    }
+    const updateSupplier = async (id, updates) => {
+        try {
+            const { error } = await supabase.from('suppliers').update(updates).eq('id', id)
+            if (error) throw error
+
+            setSuppliers(suppliers.map(s => s.id === id ? { ...s, ...updates } : s))
+
+            // Also refresh supplies if name changed, as they might display it
+            if (updates.name) {
+                // Ideally backend query updates but for local UI consistency:
+                setSupplies(supplies.map(s => s.suppliers?.id === id || s.supplier_id === id
+                    ? { ...s, suppliers: { ...s.suppliers, name: updates.name } }
+                    : s
+                ))
+            }
+            return { success: true }
+        } catch (e) {
+            console.error('Update Supplier Error:', e)
+            return { success: false, error: e }
+        }
+    }
+
+    const deleteSupplier = async (id) => {
+        try {
+            // Cascade delete: First delete all supplies associated with this supplier
+            // This will automatically trickle down to supply_items if foreign keys are set, but let's be safe.
+            // Actually, supply_items are linked to supplies. If we delete supplies, items go too (if params set) or we must delete them.
+            // Supabase/Postgres usually restricts unless CASCADE is set.
+            // Let's delete manually to be safe.
+
+            // 1. Get IDs of supplies to delete items
+            const { data: supplierSupplies } = await supabase.from('supplies').select('id').eq('supplier_id', id)
+            const supplyIds = supplierSupplies?.map(s => s.id) || []
+
+            if (supplyIds.length > 0) {
+                // 2. Delete items
+                await supabase.from('supply_items').delete().in('supply_id', supplyIds)
+                // 3. Delete supplies
+                await supabase.from('supplies').delete().in('id', supplyIds)
+            }
+
+            // 4. Delete supplier
+            const { error } = await supabase.from('suppliers').delete().eq('id', id)
+            if (error) throw error
+
+            setSupplies(supplies.filter(s => s.supplier_id !== id)) // Update local supplies state too!
+            setSuppliers(suppliers.filter(s => s.id !== id))
+            return { success: true }
+        } catch (e) {
+            console.error('Delete Supplier Error:', e)
+            return { success: false, error: e }
+        }
+    }
+
+    const getSupplierStats = async (supplierId) => {
+        try {
+            // Fetch all headers for this supplier
+            const { data: supplierSupplies } = await supabase.from('supplies').select('id, date, total_amount').eq('supplier_id', supplierId).order('date', { ascending: false })
+
+            if (!supplierSupplies || supplierSupplies.length === 0) return { purchases: [], items: [] }
+
+            const supplyIds = supplierSupplies.map(s => s.id)
+
+            // Fetch items for these supplies
+            const { data: items } = await supabase.from('supply_items').select('*, flowers(name), goods(name)').in('supply_id', supplyIds)
+
+            // Aggregate items to find average cost per item type
+            // Key: type + id
+            const itemStats = {}
+
+            items?.forEach(item => {
+                const type = item.flower_id ? 'flower' : 'good'
+                const id = item.flower_id || item.good_id
+                const name = item.flowers?.name || item.goods?.name || 'Unknown'
+                const key = `${type}_${id}`
+
+                if (!itemStats[key]) {
+                    itemStats[key] = {
+                        id, type, name,
+                        totalQty: 0,
+                        totalCost: 0,
+                        count: 0,
+                        minPrice: item.unit_cost,
+                        maxPrice: item.unit_cost,
+                        history: [] // { date, price }
+                    }
+                }
+
+                const stat = itemStats[key]
+                stat.totalQty += item.quantity
+                stat.totalCost += (item.quantity * item.unit_cost)
+                stat.count += 1
+                stat.minPrice = Math.min(stat.minPrice, item.unit_cost)
+                stat.maxPrice = Math.max(stat.maxPrice, item.unit_cost)
+
+                // Find date
+                const supplyDate = supplierSupplies.find(s => s.id === item.supply_id)?.date
+                stat.history.push({ date: supplyDate, price: item.unit_cost })
+            })
+
+            const aggregated = Object.values(itemStats).map(s => ({
+                ...s,
+                avgPrice: s.totalCost / s.totalQty,
+                volatility: s.history.length > 1
+                    ? Math.sqrt(s.history.reduce((sum, h) => sum + Math.pow(h.price - (s.totalCost / s.totalQty), 2), 0) / s.history.length)
+                    : 0
+            })).sort((a, b) => b.totalCost - a.totalCost)
+
+            // --- RATINGS CALCULATION ---
+
+            // 1. Stability Rating (0-100)
+            // Based on price volatility. Lower volatility = Higher rating.
+            // Avg coefficient of variation (Standard Deviation / Mean)
+            let totalCV = 0
+            let itemsWithHistory = 0
+            aggregated.forEach(item => {
+                if (item.history.length > 1 && item.avgPrice > 0) {
+                    const cv = item.volatility / item.avgPrice
+                    totalCV += cv
+                    itemsWithHistory++
+                }
+            })
+            const avgCV = itemsWithHistory > 0 ? totalCV / itemsWithHistory : 0
+            // Map CV to score: 0 CV = 100, 0.2 CV (20% fluctuation) = 50.
+            const stabilityScore = Math.max(0, 100 - (avgCV * 500))
+
+            // 2. Quality Rating (Based on WASTE)
+            // Fetch waste transactions for this supplier
+            const { data: wasteTxs } = await supabase.from('stock_transactions')
+                .select('quantity, cost_price')
+                .eq('transaction_type', 'waste')
+                .eq('supplier_id', supplierId)
+
+            const totalSuppliedValue = supplierSupplies.reduce((sum, s) => sum + Number(s.total_amount || 0), 0)
+
+            // Waste is usually recorded with cost_price or without. If without, we approximate.
+            // But we don't always store cost_price in transaction.
+            // Let's rely on itemStats to get avg cost for waste items if missing.
+            let totalWasteValue = 0
+            wasteTxs?.forEach(tx => {
+                let cost = tx.cost_price
+                if (!cost) {
+                    // Try to find average cost from this supplier for this item? No link to item_id in select above.
+                    // Need to fetch item_id in select.
+                    // Simplified: We assume waste count vs total supplied count?
+                    // Better: Fetch item_id too.
+                }
+            })
+
+            // Refetch waste with item_id for better calculation
+            const { data: wasteTxsDetailed } = await supabase.from('stock_transactions')
+                .select('quantity, item_id, item_type')
+                .eq('transaction_type', 'waste')
+                .eq('supplier_id', supplierId)
+
+            wasteTxsDetailed?.forEach(tx => {
+                // Find avg price from this supplier for this item
+                const type = tx.item_type
+                const id = tx.item_id
+                const key = `${type}_${id}`
+                const itemStat = itemStats[key]
+                const price = itemStat ? (itemStat.totalCost / itemStat.totalQty) : 0
+                totalWasteValue += (Math.abs(tx.quantity) * price)
+            })
+
+            const wasteRatio = totalSuppliedValue > 0 ? (totalWasteValue / totalSuppliedValue) : 0
+            // Map ratio to score: Simple percentage of "Good" product.
+            // 0% waste = 100 score. 30% waste = 70 score.
+            const qualityScore = Math.max(0, 100 - (wasteRatio * 100))
+
+            return {
+                purchases: supplierSupplies,
+                items: aggregated,
+                ratings: {
+                    stability: Math.round(stabilityScore),
+                    quality: Math.round(qualityScore), // 100 is perfect
+                    wasteValue: totalWasteValue,
+                    wasteRatio: (wasteRatio * 100).toFixed(1)
+                }
+            }
+
+        } catch (e) {
+            console.error('Get Supplier Stats Error:', e)
+            return { purchases: [], items: [] }
+        }
+    }
+
+    // New function to compare prices across all suppliers
+    const getGlobalItemStats = async () => {
+        try {
+            // Fetch ALL supply items
+            // This might be heavy, but for a small business app it's fine.
+            // Optimally we'd use a Supabase RPC or View, but let's stick to client-side aggr first.
+            const { data: items, error } = await supabase.from('supply_items')
+                .select('quantity, unit_cost, flower_id, good_id, supply_id, supplies!inner(supplier_id, suppliers(name))')
+
+            if (error) throw error
+
+            const globalStats = {} // Key: type_id -> { minPrice, avgPrice, bestSupplier: { name, price } }
+
+            items?.forEach(item => {
+                const type = item.flower_id ? 'flower' : 'good'
+                const id = item.flower_id || item.good_id
+                const key = `${type}_${id}`
+                const supplierName = item.supplies?.suppliers?.name || 'Unknown'
+                const supplierId = item.supplies?.supplier_id
+
+                if (!globalStats[key]) {
+                    globalStats[key] = {
+                        bySupplier: {} // supplierId -> { totalCost, totalQty }
+                    }
+                }
+
+                if (!globalStats[key].bySupplier[supplierId]) {
+                    globalStats[key].bySupplier[supplierId] = {
+                        name: supplierName,
+                        totalCost: 0,
+                        totalQty: 0
+                    }
+                }
+
+                const sStat = globalStats[key].bySupplier[supplierId]
+                sStat.totalCost += (item.quantity * item.unit_cost)
+                sStat.totalQty += item.quantity
+            })
+
+            // Finalize
+            const result = {}
+            Object.keys(globalStats).forEach(key => {
+                const suppliers = Object.values(globalStats[key].bySupplier).map(s => ({
+                    name: s.name,
+                    avgPrice: s.totalCost / s.totalQty
+                }))
+
+                // Find best
+                suppliers.sort((a, b) => a.avgPrice - b.avgPrice)
+                result[key] = suppliers // Sorted list of suppliers by price for this item
+            })
+
+            return result
+
+        } catch (e) {
+            console.error('Global Stats Error:', e)
+            return {}
         }
     }
 
@@ -965,8 +1223,8 @@ export function StoreProvider({ children }) {
     }
 
     // Cost calculation helper (for profit display)
-    // Calculates the ACTUAL cost: purchase prices + delivery
-    const calculateCostPrice = (composition) => {
+    // Calculates the ACTUAL cost: purchase prices + delivery + extra delivery
+    const calculateCostPrice = (composition, extraCost = 0) => {
         if (!Array.isArray(composition)) return 0
         let materialCost = 0
         composition.forEach(item => {
@@ -980,8 +1238,8 @@ export function StoreProvider({ children }) {
                 if (g) materialCost += Number(g.cost || 0) * (item.qty || 1)
             }
         })
-        // Total cost = materials + delivery (from settings)
-        return materialCost + Number(settings.deliveryCost || 0)
+        // Total cost = materials + delivery (from settings) + extra delivery
+        return materialCost + Number(settings.deliveryCost || 0) + Number(extraCost || 0)
     }
 
     // Calculation Helper (Remains same logic)
@@ -1089,7 +1347,7 @@ export function StoreProvider({ children }) {
     }
 
     // Remove from stock (sale, waste, manual)
-    const removeFromStock = async (itemType, itemId, qty, transactionType = 'manual', referenceId = null, notes = null, reason = null, userId = null) => {
+    const removeFromStock = async (itemType, itemId, qty, transactionType = 'manual', referenceId = null, notes = null, reason = null, userId = null, supplierId = null) => {
         try {
             // 1. Get current stock
             const existing = stock.find(s => s.item_type === itemType && s.item_id === itemId)
@@ -1115,7 +1373,8 @@ export function StoreProvider({ children }) {
                     reference_id: referenceId,
                     notes,
                     reason: reason,
-                    created_by: userId
+                    created_by: userId,
+                    supplier_id: supplierId
                 }])
                 .select()
             if (txError) throw txError
@@ -1129,8 +1388,8 @@ export function StoreProvider({ children }) {
     }
 
     // Record waste (shorthand for removeFromStock with 'waste' type)
-    const recordWaste = async (itemType, itemId, qty, notes = '', reason = '', userId = null) => {
-        return removeFromStock(itemType, itemId, qty, 'waste', null, notes, reason, userId)
+    const recordWaste = async (itemType, itemId, qty, notes = '', reason = '', userId = null, supplierId = null) => {
+        return removeFromStock(itemType, itemId, qty, 'waste', null, notes, reason, userId, supplierId)
     }
 
     // Update minimum quantity threshold
@@ -1458,7 +1717,11 @@ export function StoreProvider({ children }) {
             goods, addGood, updateGood, deleteGood,
             categories, addCategory, updateCategory, deleteCategory,
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
-            suppliers, supplies, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems,
+            flowers, addFlower, updateFlower, deleteFlower,
+            goods, addGood, updateGood, deleteGood,
+            categories, addCategory, updateCategory, deleteCategory,
+            products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
+            suppliers, supplies, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,
             expenses, addExpense, updateExpense, deleteExpense,
             sales, addSale, updateSale, deleteSale,
             tasks, addTask, toggleTask, deleteTask, toggleTaskImportance, clearCompletedTasks,

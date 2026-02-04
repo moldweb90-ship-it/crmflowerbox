@@ -7,7 +7,7 @@ import { supabase } from '../supabase'
 
 export default function Stock() {
     const {
-        stock, stockTransactions, flowers, goods,
+        stock, stockTransactions, flowers, goods, suppliers,
         addToStock, removeFromStock, recordWaste, updateMinQuantity,
         getStockQty, getLowStockItems, getItemName
     } = useStore()
@@ -28,6 +28,7 @@ export default function Stock() {
     const [editQty, setEditQty] = useState(0)
     const [editMinQty, setEditMinQty] = useState(5)
     const [wasteReason, setWasteReason] = useState('Вялость')
+    const [wasteSupplierId, setWasteSupplierId] = useState('') // New state for supplier selection
     const WASTE_REASONS = [
         'Вялость',
         'Брак поставщика',
@@ -190,11 +191,12 @@ export default function Stock() {
 
     const handleRecordWaste = async () => {
         if (!selectedItem || qty <= 0) return
-        await recordWaste(selectedItem.type, selectedItem.id, qty, notes || wasteReason, wasteReason, user?.id)
+        await recordWaste(selectedItem.type, selectedItem.id, qty, notes || wasteReason, wasteReason, user?.id, wasteSupplierId)
         setIsWasteModalOpen(false)
         setQty(1)
         setNotes('')
         setWasteReason('Вялость')
+        setWasteSupplierId('')
         setSelectedItem(null)
     }
 
@@ -203,6 +205,7 @@ export default function Stock() {
         setQty(1)
         setNotes('')
         setWasteReason('Вялость')
+        setWasteSupplierId('')
         setIsWasteModalOpen(true)
     }
 
@@ -1050,6 +1053,20 @@ export default function Stock() {
                                 Сумма списания: {(qty * selectedItem.cost).toLocaleString()} lei
                             </div>
                         )}
+                    </div>
+
+                    <div>
+                        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Поставщик (виновник брака)</label>
+                        <select
+                            className="input"
+                            value={wasteSupplierId}
+                            onChange={(e) => setWasteSupplierId(e.target.value)}
+                        >
+                            <option value="">Не выбран (Наш расход)</option>
+                            {suppliers.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                        </select>
                     </div>
 
                     <div>

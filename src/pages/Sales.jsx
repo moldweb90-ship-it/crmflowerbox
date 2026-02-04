@@ -339,14 +339,15 @@ export default function Sales() {
     // Selected product data
     const selectedProduct = products.find(p => p.id === formData.product_id)
     const costPrice = siteComposition.length > 0
-        ? siteComposition.reduce((s, i) => s + (i.cost * i.quantity), 0) + Number(settings.deliveryCost || 0)
-        : (selectedProduct ? calculateCostPrice(selectedProduct.composition) : 0)
+        ? siteComposition.reduce((s, i) => s + (i.cost * i.quantity), 0) + Number(settings.deliveryCost || 0) + Number(formData.extra_delivery_cost || 0)
+        : (selectedProduct ? calculateCostPrice(selectedProduct.composition, formData.extra_delivery_cost) : Number(formData.extra_delivery_cost || 0))
     const calculatedSalePrice = siteComposition.length > 0
         ? (() => {
             const base = siteComposition.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
-            return Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
+            const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
+            return withMarkup + Number(formData.extra_delivery_cost || 0)
         })()
-        : (selectedProduct?.price || 0)
+        : ((selectedProduct?.price || 0) + Number(formData.extra_delivery_cost || 0))
     const salePrice = Number(formData.sale_price) || calculatedSalePrice
     const profit = salePrice - costPrice
 
@@ -417,7 +418,9 @@ export default function Sales() {
                 delivery_status: sale.delivery_status || 'not_delivered',
                 sales_channel: sale.sales_channel || 'store',
                 delivery_method: sale.delivery_method || 'delivery',
-                occasion: sale.occasion || ''
+                occasion: sale.occasion || '',
+                extra_delivery_cost: sale.extra_delivery_cost || null,
+                extra_delivery_reason: sale.extra_delivery_reason || null
             })
             const prod = products.find(p => p.id === sale.product_id)
             setProductSearch(prod?.name || '')
@@ -458,14 +461,15 @@ export default function Sales() {
         const comp = productToEditableComposition(product.composition || [])
         setSiteComposition(comp)
         const basePrice = comp.length > 0
-            ? comp.reduce((s, i) => s + (i.price * i.quantity), 0) + (settings.deliveryCost || 0)
+            ? comp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
             : (product.price || 0)
-        const withMarkup = basePrice + (basePrice * ((settings.markupPercentage || 0) / 100))
-        const roundedPrice = Math.round(withMarkup / 10) * 10
+        const withMarkup = comp.length > 0
+            ? Math.round((basePrice + (basePrice * ((settings.markupPercentage || 0) / 100))) / 10) * 10
+            : basePrice
         setFormData({
             ...formData,
             product_id: product.id,
-            sale_price: comp.length > 0 ? String(roundedPrice) : (product.price || '')
+            sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0))
         })
         setProductSearch(product.name)
     }
@@ -1219,7 +1223,8 @@ export default function Sales() {
                                 {selectedProduct && (
                                     <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.8rem' }}>
                                         <span style={{ color: '#6b7280' }}>Себест: <b>{costPrice} L</b></span>
-                                        <span style={{ color: '#10b981' }}>Прибыль: <b>{profit} L</b></span>
+                                        <span style={{ color: '#6b7280' }}>Себест: <b>{costPrice} L</b></span>
+                                        <span style={{ color: '#10b981' }}>Прибыль: <b>{Number(formData.sale_price || 0) - costPrice} L</b></span>
                                     </div>
                                 )}
                             </div>
@@ -1252,7 +1257,8 @@ export default function Sales() {
                                                     const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: v } : c)
                                                     setSiteComposition(newComp)
                                                     const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
-                                                    setFormData({ ...formData, sale_price: String(Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10) })
+                                                    const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
+                                                    setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
                                                 }} style={{ width: '60px', padding: '0.35rem', textAlign: 'center' }} />
                                                 <span style={{ minWidth: '50px', fontWeight: 600 }}>{item.price * item.quantity} L</span>
                                                 <button type="button" onClick={() => {
@@ -1260,7 +1266,8 @@ export default function Sales() {
                                                     setSiteComposition(newComp)
                                                     if (newComp.length > 0) {
                                                         const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
-                                                        setFormData({ ...formData, sale_price: String(Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10) })
+                                                        const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
+                                                        setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
                                                     } else setFormData({ ...formData, sale_price: '' })
                                                 }} style={{ padding: '0.25rem', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Trash2 size={14} /></button>
                                             </div>
@@ -1277,7 +1284,8 @@ export default function Sales() {
                                                     const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: c.quantity + 1 } : c) : [...siteComposition, { type: 'flower', item_id: flower.id, name: flower.name, quantity: 1, cost: flower.cost || 0, price: flower.price || 0 }]
                                                     setSiteComposition(newComp)
                                                     const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
-                                                    setFormData({ ...formData, sale_price: String(Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10) })
+                                                    const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
+                                                    setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
                                                     setSiteItemSearch(''); setShowSiteItemDropdown(false)
                                                 }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>🌸 {flower.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{flower.price} L</span></div>
                                             ))}
@@ -1287,7 +1295,10 @@ export default function Sales() {
                                                     const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: c.quantity + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
                                                     setSiteComposition(newComp)
                                                     const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
-                                                    setFormData({ ...formData, sale_price: String(Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10) })
+                                                    // Markup applies to (Materials + SettingsDelivery)
+                                                    // Extra Delivery is added AFTER markup
+                                                    const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
+                                                    setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
                                                     setSiteItemSearch(''); setShowSiteItemDropdown(false)
                                                 }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>📦 {good.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{good.price} L</span></div>
                                             ))}
@@ -1401,15 +1412,107 @@ export default function Sales() {
                                 </div>
                             )}
 
-                            {/* Status */}
-                            <div>
-                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Статус</label>
-                                <select className="input" value={formData.delivery_status} onChange={(e) => setFormData({ ...formData, delivery_status: e.target.value })}
-                                    style={{ background: getStatusData(DELIVERY_STATUSES, formData.delivery_status).color + '20', color: getStatusData(DELIVERY_STATUSES, formData.delivery_status).color, fontWeight: 600 }}
-                                >
-                                    {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{getDeliveryStatusLabel(s, formData.delivery_method)}</option>)}
-                                </select>
+                            {/* Status and Extra Delivery Row */}
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Статус</label>
+                                    <select className="input" value={formData.delivery_status} onChange={(e) => setFormData({ ...formData, delivery_status: e.target.value })}
+                                        style={{ background: getStatusData(DELIVERY_STATUSES, formData.delivery_status).color + '20', color: getStatusData(DELIVERY_STATUSES, formData.delivery_status).color, fontWeight: 600 }}
+                                    >
+                                        {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{getDeliveryStatusLabel(s, formData.delivery_method)}</option>)}
+                                    </select>
+                                </div>
+
+                                {formData.delivery_method === 'delivery' && (
+                                    <div>
+                                        {/* Compact Toggle */}
+                                        <div style={{
+                                            padding: '0.35rem 0.5rem',
+                                            border: '1px solid #e5e7eb',
+                                            borderRadius: '8px',
+                                            background: '#fff',
+                                            height: '38px', // Match input height
+                                            marginTop: '1.25rem', // Align with input
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1f2937' }}>Доп. доставка?</div>
+                                                {Number(formData.extra_delivery_cost) > 0 && (
+                                                    <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>+{formData.extra_delivery_cost} L</span>
+                                                )}
+                                            </div>
+
+                                            <label style={{ position: 'relative', display: 'inline-block', width: '36px', height: '20px', cursor: 'pointer' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    style={{ opacity: 0, width: 0, height: 0 }}
+                                                    checked={formData.extra_delivery_cost !== null}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setFormData({ ...formData, extra_delivery_cost: '' })
+                                                        } else {
+                                                            const currentPrice = Number(formData.sale_price || 0)
+                                                            const extra = Number(formData.extra_delivery_cost || 0)
+                                                            // Only deduct if we actually had an extra cost
+                                                            const newPrice = Math.max(0, currentPrice - extra)
+                                                            setFormData({ ...formData, extra_delivery_cost: null, extra_delivery_reason: null, sale_price: String(newPrice) })
+                                                        }
+                                                    }}
+                                                />
+                                                <span style={{
+                                                    position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                                                    backgroundColor: formData.extra_delivery_cost !== null ? '#3b82f6' : '#e5e7eb',
+                                                    transition: '.3s', borderRadius: '34px'
+                                                }}></span>
+                                                <span style={{
+                                                    position: 'absolute', content: '""', height: '16px', width: '16px', left: '2px', bottom: '2px',
+                                                    backgroundColor: 'white', transition: '.3s', borderRadius: '50%',
+                                                    transform: formData.extra_delivery_cost !== null ? 'translateX(16px)' : 'translateX(0)',
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                                                }}></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Extra Delivery Inputs (Row below) */}
+                            {formData.delivery_method === 'delivery' && formData.extra_delivery_cost !== null && (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(100px, 1fr) 2fr', gap: '0.5rem', marginTop: '0.5rem', animation: 'fadeIn 0.2s ease-out' }}>
+                                    <div>
+                                        <input
+                                            autoFocus
+                                            type="number"
+                                            className="input"
+                                            placeholder="Сумма"
+                                            value={formData.extra_delivery_cost}
+                                            onChange={(e) => {
+                                                const val = e.target.value
+                                                const oldExtra = Number(formData.extra_delivery_cost || 0)
+                                                // Handle empty string correctly
+                                                const newExtra = val === '' ? 0 : Number(val)
+
+                                                const currentPrice = Number(formData.sale_price || 0)
+                                                const newPrice = Math.max(0, currentPrice - oldExtra + newExtra)
+
+                                                setFormData({ ...formData, extra_delivery_cost: val, sale_price: String(newPrice) })
+                                            }}
+                                            style={{ height: '38px', padding: '0.5rem', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <input
+                                            className="input"
+                                            placeholder="Причина (напр. За город)"
+                                            value={formData.extra_delivery_reason || ''}
+                                            onChange={(e) => setFormData({ ...formData, extra_delivery_reason: e.target.value })}
+                                            style={{ height: '38px', padding: '0.5rem', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             {formData.delivery_method === 'delivery' && (
                                 <div>
@@ -1420,6 +1523,9 @@ export default function Sales() {
                                     </select>
                                 </div>
                             )}
+
+
+
                             <div>
                                 <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Флорист (кто делал)</label>
                                 <select className="input" value={formData.florist_id} onChange={(e) => setFormData({ ...formData, florist_id: e.target.value })}>
@@ -1428,10 +1534,11 @@ export default function Sales() {
                                 </select>
                             </div>
                         </div>
-                    </div>
+                    </div >
 
                     {/* Submit */}
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                    < div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }
+                    }>
                         <button className="btn" onClick={() => setIsModalOpen(false)} style={{ flex: 1, justifyContent: 'center', padding: '1rem' }}>
                             Отмена
                         </button>
@@ -1443,78 +1550,80 @@ export default function Sales() {
                         >
                             {loading ? '...' : modalMode === 'add' ? 'Добавить' : 'Сохранить'}
                         </button>
-                    </div>
-                </div>
-            </Modal>
+                    </div >
+                </div >
+            </Modal >
 
             {/* Loyal Customers Modal */}
-            <Modal isOpen={isLoyalCustomersOpen} onClose={() => setIsLoyalCustomersOpen(false)} title="👑 ТОП Постоянных клиентов" maxWidth={isMobile ? '100%' : '600px'}>
+            < Modal isOpen={isLoyalCustomersOpen} onClose={() => setIsLoyalCustomersOpen(false)} title="👑 ТОП Постоянных клиентов" maxWidth={isMobile ? '100%' : '600px'} >
                 <div style={{ marginBottom: '1rem' }}>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                         Клиенты с 2+ заказами (по email)
                     </p>
                 </div>
-                {loyalCustomers.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🤷</div>
-                        <div>Пока нет постоянных клиентов</div>
-                        <div style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Добавляйте email при оформлении заказов</div>
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {loyalCustomers.map((customer, idx) => (
-                            <div
-                                key={customer.email}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '1rem',
-                                    padding: '0.75rem 1rem',
-                                    background: idx < 3 ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : '#f8fafc',
-                                    borderRadius: '12px',
-                                    border: idx < 3 ? '1px solid #f59e0b' : '1px solid var(--border)'
-                                }}
-                            >
-                                <div style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '50%',
-                                    background: idx === 0 ? '#f59e0b' : idx === 1 ? '#9ca3af' : idx === 2 ? '#d97706' : 'var(--primary-light)',
-                                    color: idx < 3 ? 'white' : 'var(--primary)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontWeight: 700,
-                                    fontSize: '0.85rem',
-                                    flexShrink: 0
-                                }}>
-                                    {idx < 3 ? ['🥇', '🥈', '🥉'][idx] : idx + 1}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {customer.email}
-                                    </div>
-                                </div>
-                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                {
+                    loyalCustomers.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🤷</div>
+                            <div>Пока нет постоянных клиентов</div>
+                            <div style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Добавляйте email при оформлении заказов</div>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {loyalCustomers.map((customer, idx) => (
+                                <div
+                                    key={customer.email}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '1rem',
+                                        padding: '0.75rem 1rem',
+                                        background: idx < 3 ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : '#f8fafc',
+                                        borderRadius: '12px',
+                                        border: idx < 3 ? '1px solid #f59e0b' : '1px solid var(--border)'
+                                    }}
+                                >
                                     <div style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '50%',
+                                        background: idx === 0 ? '#f59e0b' : idx === 1 ? '#9ca3af' : idx === 2 ? '#d97706' : 'var(--primary-light)',
+                                        color: idx < 3 ? 'white' : 'var(--primary)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
                                         fontWeight: 700,
-                                        color: 'var(--primary)',
-                                        fontSize: '0.9rem'
+                                        fontSize: '0.85rem',
+                                        flexShrink: 0
                                     }}>
-                                        {customer.orderCount} заказ{customer.orderCount % 10 === 1 && customer.orderCount !== 11 ? '' : customer.orderCount % 10 >= 2 && customer.orderCount % 10 <= 4 && (customer.orderCount < 10 || customer.orderCount > 20) ? 'а' : 'ов'}
+                                        {idx < 3 ? ['🥇', '🥈', '🥉'][idx] : idx + 1}
                                     </div>
-                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                        {customer.totalAmount.toLocaleString('ru-RU')} lei
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {customer.email}
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                        <div style={{
+                                            fontWeight: 700,
+                                            color: 'var(--primary)',
+                                            fontSize: '0.9rem'
+                                        }}>
+                                            {customer.orderCount} заказ{customer.orderCount % 10 === 1 && customer.orderCount !== 11 ? '' : customer.orderCount % 10 >= 2 && customer.orderCount % 10 <= 4 && (customer.orderCount < 10 || customer.orderCount > 20) ? 'а' : 'ов'}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            {customer.totalAmount.toLocaleString('ru-RU')} lei
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </Modal>
+                            ))}
+                        </div>
+                    )
+                }
+            </Modal >
 
             {/* Delivery Calendar Modal */}
-            <Modal isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} title="Календарь доставок" maxWidth={isMobile ? '100%' : '700px'}>
+            < Modal isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} title="Календарь доставок" maxWidth={isMobile ? '100%' : '700px'} >
                 <div style={{ maxWidth: '100%', overflow: 'hidden' }}>
                     {/* Month Navigation */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -1583,10 +1692,10 @@ export default function Sales() {
                         })}
                     </div>
                 </div>
-            </Modal>
+            </Modal >
 
             {/* View Order Modal (Printable) */}
-            <Modal isOpen={isViewOpen} onClose={() => setIsViewOpen(false)} title="Детали заказа" maxWidth="700px">
+            < Modal isOpen={isViewOpen} onClose={() => setIsViewOpen(false)} title="Детали заказа" maxWidth="700px" >
                 {viewingSale && (
                     <div id="order-print-content">
                         {/* Print Header */}
@@ -1950,10 +2059,10 @@ export default function Sales() {
                         </div>
                     </div>
                 )}
-            </Modal>
+            </Modal >
 
             {/* Salon Sale Modal */}
-            <Modal
+            < Modal
                 isOpen={isSalonModalOpen}
                 onClose={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch('') }}
                 title={editingSalonSaleId ? '✏️ Редактирование продажи' : '🏪 Продажа в Салоне'}
@@ -2404,7 +2513,7 @@ export default function Sales() {
                         </button>
                     </div>
                 </div>
-            </Modal>
-        </div>
+            </Modal >
+        </div >
     )
 }
