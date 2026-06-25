@@ -1082,7 +1082,7 @@ export default function Sales() {
             </div>
 
             {/* Floating Add Button with Expanding Menu */}
-            <div style={{ position: 'fixed', bottom: isMobile ? '90px' : '2rem', right: '2rem', zIndex: 50 }}>
+            {!isMobile && <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 50 }}>
                 {/* Overlay to close menu */}
                 {isFabOpen && (
                     <div
@@ -1183,7 +1183,7 @@ export default function Sales() {
                 >
                     <Plus size={32} />
                 </button>
-            </div>
+            </div>}
 
             {/* Add/Edit Sale Modal */}
             <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSiteComposition([]); setSiteItemSearch(''); setShowSiteItemDropdown(false) }} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px" closeOnOverlayClick={false}>

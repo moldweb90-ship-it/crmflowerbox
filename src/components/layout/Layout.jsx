@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse, Users, Bell, UserCheck, PieChart, TrendingUp, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse, Users, Bell, UserCheck, PieChart, TrendingUp, Sparkles, Plus, Globe, Store, Calendar } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { usePermissions } from '../../context/PermissionContext'
 import { getDailyFlowerNote } from '../../lib/dailyFlowerNotes'
@@ -27,6 +27,7 @@ export default function Layout() {
     const location = useLocation()
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+    const [isQuickSaleOpen, setIsQuickSaleOpen] = useState(false)
     const pageTitle = pageTitles[location.pathname] || 'FlowerBox'
     const dailyFlowerNote = getDailyFlowerNote()
 
@@ -44,6 +45,7 @@ export default function Layout() {
     // Close sidebar on route change (mobile)
     useEffect(() => {
         if (isMobile) setIsSidebarOpen(false)
+        setIsQuickSaleOpen(false)
     }, [location, isMobile])
 
     // Navigation structure with groups
@@ -125,6 +127,25 @@ export default function Layout() {
                 navigate(`/products?q=${encodeURIComponent(value)}`)
             }
         }
+    }
+
+    const mobileDockItems = [
+        { label: 'Заказы', path: '/sales', icon: ShoppingCart },
+        { label: 'Букеты', path: '/products', icon: Layers },
+        { label: 'Склад', path: '/stock', icon: Warehouse },
+        { label: 'Доставки', path: '/sales?calendar=true', icon: Calendar },
+    ]
+
+    const handleQuickSale = (type) => {
+        setIsQuickSaleOpen(false)
+        navigate(type === 'salon' ? '/sales?salon=true' : '/sales?add=true')
+    }
+
+    const isMobileDockActive = (item) => {
+        if (item.path.includes('?')) {
+            return `${location.pathname}${location.search}` === item.path
+        }
+        return location.pathname === item.path
     }
 
     return (
@@ -331,7 +352,7 @@ export default function Layout() {
             <main style={{
                 flex: 1,
                 marginLeft: isMobile ? 0 : '270px', // 240px sidebar + 30px gap
-                padding: isMobile ? '90px 1rem 2rem 1rem' : '1.5rem 2rem 2rem 0', // Desktop: Top padding handled by header, right padding
+                padding: isMobile ? '90px 1rem calc(8.5rem + env(safe-area-inset-bottom)) 1rem' : '1.5rem 2rem 2rem 0', // Desktop: Top padding handled by header, right padding
                 width: '100%',
                 maxWidth: '1600px', // Prevent too wide on huge screens
                 overflowX: 'hidden'
@@ -422,6 +443,204 @@ export default function Layout() {
 
                 <Outlet />
             </main>
+
+            {isMobile && (
+                <>
+                    {isQuickSaleOpen && (
+                        <div
+                            onClick={() => setIsQuickSaleOpen(false)}
+                            style={{
+                                position: 'fixed',
+                                inset: 0,
+                                zIndex: 55,
+                                background: 'rgba(15, 23, 42, 0.08)',
+                                backdropFilter: 'blur(2px)'
+                            }}
+                        />
+                    )}
+
+                    <div style={{
+                        position: 'fixed',
+                        left: '50%',
+                        bottom: 'calc(0.85rem + env(safe-area-inset-bottom))',
+                        transform: 'translateX(-50%)',
+                        width: 'min(94vw, 430px)',
+                        zIndex: 70,
+                        pointerEvents: 'none'
+                    }}>
+                        <div style={{
+                            position: 'absolute',
+                            left: '50%',
+                            bottom: '5.75rem',
+                            transform: isQuickSaleOpen ? 'translate(-50%, 0) scale(1)' : 'translate(-50%, 12px) scale(0.96)',
+                            opacity: isQuickSaleOpen ? 1 : 0,
+                            pointerEvents: isQuickSaleOpen ? 'auto' : 'none',
+                            transition: 'opacity 0.22s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.7rem',
+                            alignItems: 'center',
+                            width: 'min(78vw, 290px)'
+                        }}>
+                            <button
+                                onClick={() => handleQuickSale('site')}
+                                style={{
+                                    width: '100%',
+                                    border: '1px solid rgba(255,255,255,0.7)',
+                                    background: 'rgba(255,255,255,0.9)',
+                                    color: '#1f2937',
+                                    borderRadius: '999px',
+                                    padding: '0.85rem 1.15rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.7rem',
+                                    fontSize: '0.98rem',
+                                    fontWeight: 800,
+                                    boxShadow: '0 18px 38px rgba(15,23,42,0.18)',
+                                    backdropFilter: 'blur(22px)',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <Globe size={20} color="#2563eb" />
+                                Продажа Сайт
+                            </button>
+                            <button
+                                onClick={() => handleQuickSale('salon')}
+                                style={{
+                                    width: '100%',
+                                    border: '1px solid rgba(255,255,255,0.45)',
+                                    background: 'linear-gradient(135deg, rgba(16,185,129,0.95), rgba(5,150,105,0.95))',
+                                    color: '#fff',
+                                    borderRadius: '999px',
+                                    padding: '0.85rem 1.15rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.7rem',
+                                    fontSize: '0.98rem',
+                                    fontWeight: 800,
+                                    boxShadow: '0 18px 38px rgba(16,185,129,0.34)',
+                                    backdropFilter: 'blur(22px)',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <Store size={20} />
+                                Продажа Салон
+                            </button>
+                        </div>
+
+                        <nav style={{
+                            position: 'relative',
+                            height: '74px',
+                            display: 'grid',
+                            gridTemplateColumns: '1fr 1fr 70px 1fr 1fr',
+                            alignItems: 'center',
+                            padding: '0.35rem 0.65rem',
+                            borderRadius: '32px',
+                            background: 'linear-gradient(135deg, rgba(255,255,255,0.78), rgba(255,255,255,0.52))',
+                            border: '1px solid rgba(255,255,255,0.72)',
+                            boxShadow: '0 22px 60px rgba(15,23,42,0.22), inset 0 1px 0 rgba(255,255,255,0.8)',
+                            backdropFilter: 'blur(28px) saturate(1.35)',
+                            WebkitBackdropFilter: 'blur(28px) saturate(1.35)',
+                            pointerEvents: 'auto',
+                            overflow: 'visible'
+                        }}>
+                            {mobileDockItems.slice(0, 2).map(item => {
+                                const Icon = item.icon
+                                const isActive = isMobileDockActive(item)
+                                return (
+                                    <button
+                                        key={item.path}
+                                        onClick={() => navigate(item.path)}
+                                        style={{
+                                            height: '58px',
+                                            border: 'none',
+                                            background: isActive ? 'rgba(17,24,39,0.9)' : 'transparent',
+                                            color: isActive ? '#fff' : '#334155',
+                                            borderRadius: '22px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '0.22rem',
+                                            fontSize: '0.66rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            transition: 'background 0.24s ease, color 0.24s ease, transform 0.24s ease',
+                                            transform: isActive ? 'translateY(-1px)' : 'translateY(0)'
+                                        }}
+                                    >
+                                        <Icon size={19} strokeWidth={isActive ? 2.6 : 2.2} />
+                                        <span>{item.label}</span>
+                                    </button>
+                                )
+                            })}
+
+                            <button
+                                onClick={() => setIsQuickSaleOpen(prev => !prev)}
+                                aria-label="Добавить заказ"
+                                style={{
+                                    width: '58px',
+                                    height: '58px',
+                                    borderRadius: '50%',
+                                    border: '1px solid rgba(255,255,255,0.7)',
+                                    background: isQuickSaleOpen
+                                        ? 'rgba(100,116,139,0.92)'
+                                        : 'rgba(17,24,39,0.94)',
+                                    color: '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    justifySelf: 'center',
+                                    marginTop: 0,
+                                    boxShadow: isQuickSaleOpen
+                                        ? '0 14px 30px rgba(100,116,139,0.28), inset 0 1px 0 rgba(255,255,255,0.22)'
+                                        : '0 14px 30px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.18)',
+                                    backdropFilter: 'blur(18px) saturate(1.2)',
+                                    WebkitBackdropFilter: 'blur(18px) saturate(1.2)',
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), background 0.24s ease',
+                                    transform: isQuickSaleOpen ? 'rotate(45deg) scale(0.96)' : 'rotate(0deg) scale(1)'
+                                }}
+                            >
+                                {isQuickSaleOpen ? <X size={28} /> : <Plus size={30} />}
+                            </button>
+
+                            {mobileDockItems.slice(2).map(item => {
+                                const Icon = item.icon
+                                const isActive = isMobileDockActive(item)
+                                return (
+                                    <button
+                                        key={item.path}
+                                        onClick={() => navigate(item.path)}
+                                        style={{
+                                            height: '58px',
+                                            border: 'none',
+                                            background: isActive ? 'rgba(17,24,39,0.9)' : 'transparent',
+                                            color: isActive ? '#fff' : '#334155',
+                                            borderRadius: '22px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '0.22rem',
+                                            fontSize: '0.66rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            transition: 'background 0.24s ease, color 0.24s ease, transform 0.24s ease',
+                                            transform: isActive ? 'translateY(-1px)' : 'translateY(0)'
+                                        }}
+                                    >
+                                        <Icon size={19} strokeWidth={isActive ? 2.6 : 2.2} />
+                                        <span>{item.label}</span>
+                                    </button>
+                                )
+                            })}
+                        </nav>
+                    </div>
+                </>
+            )}
         </div>
     )
 }
