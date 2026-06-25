@@ -2,22 +2,14 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
-import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square, AlertOctagon, TrendingUp, CreditCard, ChevronRight, Search, Instagram, Facebook } from 'lucide-react'
+import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square, AlertOctagon, TrendingUp, CreditCard, ChevronRight, Search, Instagram, Facebook, Sparkles } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import TasksWidget from '../components/TasksWidget'
+import { getDailyFlowerNote } from '../lib/dailyFlowerNotes'
 
 const STALE_DAYS = 7
 const SHIFT_START_H = 9
 const SHIFT_END_H = 21
-const MOTIVATIONS = [
-    'Пусть сегодня будет много счастливых клиентов! 🌸',
-    'Каждый букет — частичка счастья. Твори! 💐',
-    'Ты делаешь дни людей ярче. Вперёд! ✨',
-    'Цветы лечат души. Продолжай в том же духе! 🌷',
-    'Отличный день для красивых букетов! 🌺',
-    'Улыбки клиентов — твоя награда! 😊',
-    'Сегодня все заказы будут идеальными! 💫'
-]
 
 // FIFO: по транзакциям поставок и продаж/брака вычисляет остатки по «партиям» (дата поставки)
 function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies) {
@@ -581,7 +573,7 @@ export default function Dashboard() {
         const remain = Math.max(0, Math.floor((endToday - now) / 1000))
         return formatTimer(remain)
     }
-    const motivation = MOTIVATIONS[new Date().getDay() % MOTIVATIONS.length]
+    const dailyFlowerNote = getDailyFlowerNote()
 
     // Mobile Check
     const [isMobile, setIsMobile] = React.useState(window.innerWidth < 768)
@@ -599,7 +591,7 @@ export default function Dashboard() {
     return (
         <div>
             {/* Top Section: Date & Action */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', marginBottom: '2.5rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '1rem' : '2rem', marginBottom: '2.5rem', alignItems: 'center' }}>
 
                 {/* Date Widget */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', backgroundColor: '#FFFFFF', padding: '1rem 2rem', borderRadius: '99px', boxShadow: 'var(--shadow-sm)' }}>
@@ -609,6 +601,46 @@ export default function Dashboard() {
                         <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{month}</span>
                     </div>
                 </div>
+
+                {isMobile && (
+                    <div style={{
+                        flex: 1,
+                        minWidth: '150px',
+                        maxWidth: '260px',
+                        padding: '0.8rem 0.95rem',
+                        borderRadius: '18px',
+                        background: 'rgba(255,255,255,0.78)',
+                        border: '1px solid rgba(232, 93, 66, 0.14)',
+                        boxShadow: 'var(--shadow-sm)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            color: '#e85d42',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            marginBottom: '0.25rem'
+                        }}>
+                            <Sparkles size={13} />
+                            Настрой дня
+                        </div>
+                        <div style={{
+                            color: '#4b5563',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            lineHeight: 1.25,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden'
+                        }}>
+                            {dailyFlowerNote}
+                        </div>
+                    </div>
+                )}
 
                 {/* Shift Block */}
                 <div style={{ flex: 1, minWidth: isMobile ? '100%' : '320px' }}>
