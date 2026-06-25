@@ -1,13 +1,74 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse, Users, Bell, UserCheck, PieChart, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse, Users, Bell, UserCheck, PieChart, TrendingUp, Sparkles } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { usePermissions } from '../../context/PermissionContext'
+
+const dailyFlowerNotes = [
+    'Сегодня продаем не букеты, а поводы улыбнуться.',
+    'Красивый букет начинается с порядка на рабочем столе.',
+    'Каждый заказ — шанс сделать чей-то день теплее.',
+    'Пусть витрина сегодня говорит громче любой рекламы.',
+    'Улыбка клиента начинается с внимательной детали.',
+    'Собираем быстро, считаем точно, отдаем красиво.',
+    'Лучший букет дня еще впереди.',
+    'Цветы любят свежесть, клиенты любят заботу.',
+    'Сегодня цель простая: меньше суеты, больше красоты.',
+    'Пусть каждый звонок превращается в красивый заказ.',
+    'Аккуратный склад — спокойные продажи.',
+    'Делаем так, чтобы клиент захотел вернуться.',
+    'Сначала настроение, потом композиция, потом вау.',
+    'Красота продает лучше, когда за ней стоит система.',
+    'Один хороший совет клиенту часто дороже скидки.',
+    'Сегодня держим темп: нежно, четко, прибыльно.',
+    'Букет должен приехать так, будто его только что обняли.',
+    'Флористика — это когда дедлайн тоже пахнет красиво.',
+    'Проверяем ленты, воду, открытку — магия любит детали.',
+    'Пусть касса растет так же уверенно, как свежие стебли.',
+    'Сегодня собираем не просто красиво, а запоминающе.',
+    'Если сомневаешься — добавь заботы, не хаоса.',
+    'Команда сильна, когда каждый заказ проходит спокойно.',
+    'Пусть сегодня будет больше благодарностей, чем правок.',
+    'Красивый сервис видно даже до первого цветка.',
+    'Склад пополнен, руки готовы, день наш.',
+    'Пусть каждый букет уедет с характером.',
+    'Продажи растут там, где клиенту легко сказать да.',
+    'Сегодня работаем как сад: спокойно, живо, в рост.',
+    'Внимательность — самый дорогой цветок в букете.',
+    'Делаем день клиента красивее, а отчет — приятнее.'
+]
+
+const pageTitles = {
+    '/dashboard': 'Обзор',
+    '/analytics': 'Аналитика',
+    '/sales': 'Заказы',
+    '/customers': 'Клиенты',
+    '/reminders': 'Напоминания',
+    '/products': 'Букеты',
+    '/flowers': 'Цветы',
+    '/goods': 'Доп. товары',
+    '/categories': 'Категории',
+    '/supplies': 'Поставки',
+    '/suppliers': 'Поставщики',
+    '/stock': 'Склад',
+    '/expenses': 'Расходы',
+    '/employees': 'Сотрудники',
+    '/settings': 'Настройки'
+}
+
+function getDailyFlowerNote() {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), 0, 0)
+    const day = Math.floor((now - start) / 86400000)
+    return dailyFlowerNotes[day % dailyFlowerNotes.length]
+}
 
 export default function Layout() {
     const location = useLocation()
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+    const pageTitle = pageTitles[location.pathname] || 'FlowerBox'
+    const dailyFlowerNote = getDailyFlowerNote()
 
     // Handle Resize
     useEffect(() => {
@@ -324,10 +385,53 @@ export default function Layout() {
                         marginBottom: '0rem',
                         padding: '1rem 0'
                     }}>
-                        <div>
-                            {/* Dynamic Title based on route? For now generic greeting */}
-                            <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Обзор</h1>
-                            <p style={{ color: 'var(--text-muted)' }}>Добро пожаловать обратно, Руслан</p>
+                        <div style={{ minWidth: 0 }}>
+                            <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.55rem' }}>{pageTitle}</h1>
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.6rem',
+                                maxWidth: '680px',
+                                padding: '0.45rem 0.75rem',
+                                borderRadius: '999px',
+                                background: 'rgba(255,255,255,0.72)',
+                                border: '1px solid rgba(232, 93, 66, 0.14)',
+                                boxShadow: '0 8px 24px rgba(17,24,39,0.05)',
+                                color: '#374151'
+                            }}>
+                                <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    color: '#e85d42',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 800,
+                                    whiteSpace: 'nowrap',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.04em'
+                                }}>
+                                    <Sparkles size={14} />
+                                    Настрой дня
+                                </span>
+                                <span style={{
+                                    width: '1px',
+                                    height: '18px',
+                                    background: 'rgba(148,163,184,0.35)',
+                                    flexShrink: 0
+                                }} />
+                                <p style={{
+                                    margin: 0,
+                                    color: '#6b7280',
+                                    fontSize: '0.95rem',
+                                    fontWeight: 600,
+                                    lineHeight: 1.3,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                }}>
+                                    {dailyFlowerNote}
+                                </p>
+                            </div>
                         </div>
 
                         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
