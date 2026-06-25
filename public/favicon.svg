@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FlowerBox CRM">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff6b8a"/>
+      <stop offset="0.52" stop-color="#e85d42"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="18" y1="12" x2="46" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <path d="M42.5 10.5c-7.5 1.4-11.8 5.5-12.9 12.4 7.1-.2 11.4-4.3 12.9-12.4Z" fill="url(#leaf)"/>
+  <path d="M20 44V20h17.8v6H27.4v4.1h8.9v5.8h-8.9V44H20Zm19.2 0V20h7.4v24h-7.4Z" fill="#fff"/>
+  <path d="M46.6 31.2c2.9.5 5.4 2.7 5.4 6.1 0 4.2-3.4 6.7-8.4 6.7h-4.4v-6h3.6c1.1 0 1.9-.5 1.9-1.5s-.8-1.5-1.9-1.5h-3.6v-5.6h2.9c1.1 0 1.8-.5 1.8-1.4s-.7-1.4-1.8-1.4h-2.9V20h3.7c5 0 8 2.3 8 6.2 0 2.5-1.7 4.3-4.3 5Z" fill="#fff"/>
+</svg>
