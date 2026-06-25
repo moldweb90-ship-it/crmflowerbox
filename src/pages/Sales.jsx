@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
 import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye, Search } from 'lucide-react'
@@ -185,6 +185,8 @@ export default function Sales() {
     const [siteComposition, setSiteComposition] = useState([])
     const [siteItemSearch, setSiteItemSearch] = useState('')
     const [showSiteItemDropdown, setShowSiteItemDropdown] = useState(false)
+    const siteSaleFormRef = useRef(null)
+    const salonSaleFormRef = useRef(null)
 
     // Persist draft to localStorage on change
     useEffect(() => {
@@ -199,6 +201,20 @@ export default function Sales() {
             localStorage.removeItem('sales_form_draft')
         }
     }, [isModalOpen, modalMode, editingSaleId, formData])
+
+    useEffect(() => {
+        if (!isModalOpen) return
+        requestAnimationFrame(() => {
+            siteSaleFormRef.current?.scrollTo({ top: 0, left: 0 })
+        })
+    }, [isModalOpen, modalMode])
+
+    useEffect(() => {
+        if (!isSalonModalOpen) return
+        requestAnimationFrame(() => {
+            salonSaleFormRef.current?.scrollTo({ top: 0, left: 0 })
+        })
+    }, [isSalonModalOpen, editingSalonSaleId])
 
     // Calendar state
     const [calendarMonth, setCalendarMonth] = useState(new Date())
@@ -1187,7 +1203,20 @@ export default function Sales() {
 
             {/* Add/Edit Sale Modal */}
             <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSiteComposition([]); setSiteItemSearch(''); setShowSiteItemDropdown(false) }} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px" closeOnOverlayClick={false}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '75vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                <div
+                    ref={siteSaleFormRef}
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: isMobile ? '0.875rem' : '1.25rem',
+                        maxHeight: isMobile ? 'calc(100dvh - 7.75rem)' : '75vh',
+                        overflowY: 'auto',
+                        paddingRight: isMobile ? 0 : '0.5rem',
+                        paddingBottom: isMobile ? '0.5rem' : 0,
+                        WebkitOverflowScrolling: 'touch',
+                        scrollBehavior: 'auto'
+                    }}
+                >
 
                     {/* Section 1: Product & Price (Combined) */}
                     <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '16px', border: '1px solid #e5e7eb' }}>
@@ -1537,7 +1566,16 @@ export default function Sales() {
                     </div >
 
                     {/* Submit */}
-                    < div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }
+                    < div style={{
+                        display: 'flex',
+                        gap: isMobile ? '0.75rem' : '1rem',
+                        marginTop: '0.5rem',
+                        position: isMobile ? 'sticky' : 'static',
+                        bottom: isMobile ? 0 : 'auto',
+                        zIndex: isMobile ? 5 : 'auto',
+                        padding: isMobile ? '0.75rem 0 0.25rem' : 0,
+                        background: isMobile ? 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 26%, #fff 100%)' : 'transparent'
+                    }
                     }>
                         <button className="btn" onClick={() => setIsModalOpen(false)} style={{ flex: 1, justifyContent: 'center', padding: '1rem' }}>
                             Отмена
@@ -2069,7 +2107,20 @@ export default function Sales() {
                 maxWidth="700px"
                 closeOnOverlayClick={false}
             >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '75vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                <div
+                    ref={salonSaleFormRef}
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: isMobile ? '0.875rem' : '1.25rem',
+                        maxHeight: isMobile ? 'calc(100dvh - 7.75rem)' : '75vh',
+                        overflowY: 'auto',
+                        paddingRight: isMobile ? 0 : '0.5rem',
+                        paddingBottom: isMobile ? '0.5rem' : 0,
+                        WebkitOverflowScrolling: 'touch',
+                        scrollBehavior: 'auto'
+                    }}
+                >
 
                     {/* Bouquet Name */}
                     <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '16px', border: '1px solid #e5e7eb' }}>
@@ -2447,11 +2498,20 @@ export default function Sales() {
                     </div>
 
                     {/* Action Buttons */}
-                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
+                    <div style={{
+                        display: 'flex',
+                        gap: isMobile ? '0.75rem' : '1rem',
+                        justifyContent: 'flex-end',
+                        paddingTop: '0.5rem',
+                        position: isMobile ? 'sticky' : 'static',
+                        bottom: isMobile ? 0 : 'auto',
+                        zIndex: isMobile ? 5 : 'auto',
+                        background: isMobile ? 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 26%, #fff 100%)' : 'transparent'
+                    }}>
                         <button
                             className="btn"
                             onClick={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch('') }}
-                            style={{ padding: '0.75rem 1.5rem' }}
+                            style={{ padding: isMobile ? '0.875rem 1rem' : '0.75rem 1.5rem', flex: isMobile ? 1 : 'initial' }}
                         >
                             Отмена
                         </button>
@@ -2507,7 +2567,7 @@ export default function Sales() {
                                     setLoading(false)
                                 }
                             }}
-                            style={{ padding: '0.75rem 1.5rem' }}
+                            style={{ padding: isMobile ? '0.875rem 1rem' : '0.75rem 1.5rem', flex: isMobile ? 1.4 : 'initial' }}
                         >
                             {loading ? 'Сохранение...' : '💾 Сохранить'}
                         </button>
