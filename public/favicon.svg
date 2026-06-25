@@ -1,17 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FlowerBox CRM">
   <defs>
-    <linearGradient id="bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ff6b8a"/>
-      <stop offset="0.52" stop-color="#e85d42"/>
-      <stop offset="1" stop-color="#111827"/>
-    </linearGradient>
-    <linearGradient id="leaf" x1="18" y1="12" x2="46" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#22c55e"/>
-      <stop offset="1" stop-color="#10b981"/>
+    <linearGradient id="bg" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fb7185"/>
+      <stop offset="1" stop-color="#e11d48"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
-  <path d="M42.5 10.5c-7.5 1.4-11.8 5.5-12.9 12.4 7.1-.2 11.4-4.3 12.9-12.4Z" fill="url(#leaf)"/>
-  <path d="M20 44V20h17.8v6H27.4v4.1h8.9v5.8h-8.9V44H20Zm19.2 0V20h7.4v24h-7.4Z" fill="#fff"/>
-  <path d="M46.6 31.2c2.9.5 5.4 2.7 5.4 6.1 0 4.2-3.4 6.7-8.4 6.7h-4.4v-6h3.6c1.1 0 1.9-.5 1.9-1.5s-.8-1.5-1.9-1.5h-3.6v-5.6h2.9c1.1 0 1.8-.5 1.8-1.4s-.7-1.4-1.8-1.4h-2.9V20h3.7c5 0 8 2.3 8 6.2 0 2.5-1.7 4.3-4.3 5Z" fill="#fff"/>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#bg)"/>
+  <path d="M20 47V17h21.5v7H28v5.2h11.6V36H28v11h-8Z" fill="#fff"/>
+  <path d="M38 47V17h6.4c6.1 0 10 3.1 10 8.2 0 3.1-1.7 5.5-4.5 6.5 3.3 1 5.3 3.6 5.3 7.1 0 5.2-4 8.2-10.6 8.2H38Zm7.8-18.1c1.6 0 2.6-.9 2.6-2.5 0-1.5-1-2.4-2.6-2.4H46v4.9h-.2Zm.8 11.7c1.8 0 2.9-1 2.9-2.7s-1.1-2.7-2.9-2.7H46v5.4h.6Z" fill="#fff"/>
+  <path d="M31.2 11.6c4.8.6 7.5 3.2 8.1 7.7-4.6-.2-7.3-2.8-8.1-7.7Z" fill="#86efac"/>
 </svg>

@@ -11,6 +11,18 @@ const LOCAL_ADMIN_USER = {
     user_metadata: { role: 'admin' }
 }
 
+const getSavedLocalUser = () => {
+    if (!LOCAL_ADMIN_PASSWORD) return null
+
+    try {
+        const saved = localStorage.getItem('app_local_user')
+        return saved ? JSON.parse(saved) : null
+    } catch (e) {
+        localStorage.removeItem('app_local_user')
+        return null
+    }
+}
+
 export function AuthProvider({ children }) {
     // Init user from localStorage to prevent blink
     const [user, setUser] = useState(() => {
@@ -27,8 +39,7 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         // Check active sessions and sets the user
         supabase.auth.getSession().then(({ data: { session } }) => {
-            const savedLocalUser = LOCAL_ADMIN_PASSWORD ? localStorage.getItem('app_local_user') : null
-            const currentUser = session?.user ?? (savedLocalUser ? JSON.parse(savedLocalUser) : null)
+            const currentUser = session?.user ?? getSavedLocalUser()
             setUser(currentUser)
             localStorage.setItem('app_user', JSON.stringify(currentUser))
             setLoading(false)
@@ -36,7 +47,7 @@ export function AuthProvider({ children }) {
 
         // Listen for changes on auth state (logged in, signed out, etc.)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            const currentUser = session?.user ?? null
+            const currentUser = session?.user ?? getSavedLocalUser()
             setUser(currentUser)
             localStorage.setItem('app_user', JSON.stringify(currentUser))
             setLoading(false)
