@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+.git
+.env
+.env.*
+*.log
+api_spec.json
+dump_schema.js
+json_to_sql.js
+test_api.js

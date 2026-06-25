@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from './AuthContext'
 
 const PermissionContext = createContext()
+const DEFAULT_ADMIN_PERMISSIONS = ["dashboard", "analytics", "sales", "customers", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "employees", "settings"]
 
 export function PermissionProvider({ children }) {
     const { user } = useAuth()
@@ -38,6 +39,15 @@ export function PermissionProvider({ children }) {
     }, [user])
 
     const fetchMyPermissions = async (userId, userEmail) => {
+        if (user?.app_metadata?.provider === 'local-admin') {
+            setPermissions(DEFAULT_ADMIN_PERMISSIONS)
+            setRole('admin')
+            localStorage.setItem('user_permissions', JSON.stringify(DEFAULT_ADMIN_PERMISSIONS))
+            localStorage.setItem('user_role', 'admin')
+            setLoading(false)
+            return
+        }
+
         // Don't set loading=true if we have cache - fresh silently in background
         if (!localStorage.getItem('user_permissions')) {
             setLoading(true)

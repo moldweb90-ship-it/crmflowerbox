@@ -2,6 +2,14 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 
 const AuthContext = createContext()
+const DEV_ADMIN_EMAIL = 'admin@crm.local'
+const LOCAL_ADMIN_PASSWORD = import.meta.env.DEV ? 'admin' : import.meta.env.VITE_LOCAL_ADMIN_PASSWORD
+const LOCAL_ADMIN_USER = {
+    id: '00000000-0000-4000-8000-000000000001',
+    email: DEV_ADMIN_EMAIL,
+    app_metadata: { provider: 'local-admin' },
+    user_metadata: { role: 'admin' }
+}
 
 export function AuthProvider({ children }) {
     // Init user from localStorage to prevent blink
@@ -19,7 +27,8 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         // Check active sessions and sets the user
         supabase.auth.getSession().then(({ data: { session } }) => {
-            const currentUser = session?.user ?? null
+            const savedLocalUser = LOCAL_ADMIN_PASSWORD ? localStorage.getItem('app_local_user') : null
+            const currentUser = session?.user ?? (savedLocalUser ? JSON.parse(savedLocalUser) : null)
             setUser(currentUser)
             localStorage.setItem('app_user', JSON.stringify(currentUser))
             setLoading(false)
@@ -37,6 +46,13 @@ export function AuthProvider({ children }) {
     }, [])
 
     const login = async (email, password) => {
+        if (LOCAL_ADMIN_PASSWORD && email === DEV_ADMIN_EMAIL && password === LOCAL_ADMIN_PASSWORD) {
+            setUser(LOCAL_ADMIN_USER)
+            localStorage.setItem('app_user', JSON.stringify(LOCAL_ADMIN_USER))
+            localStorage.setItem('app_local_user', JSON.stringify(LOCAL_ADMIN_USER))
+            return { user: LOCAL_ADMIN_USER, session: null }
+        }
+
         const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password,
@@ -46,8 +62,18 @@ export function AuthProvider({ children }) {
     }
 
     const logout = async () => {
+        if (user?.app_metadata?.provider === 'local-admin') {
+            setUser(null)
+            localStorage.removeItem('app_local_user')
+            localStorage.removeItem('app_user')
+            return
+        }
+
+        localStorage.removeItem('app_local_user')
         const { error } = await supabase.auth.signOut()
         if (error) throw error
+        setUser(null)
+        localStorage.removeItem('app_user')
     }
 
     const updatePassword = async (newPassword) => {

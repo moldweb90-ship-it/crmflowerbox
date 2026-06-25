@@ -1010,6 +1010,15 @@ export function StoreProvider({ children }) {
     }
 
     const uploadEmployeePhoto = async (file, employeeId = 'temp') => {
+        if (import.meta.env.VITE_INLINE_EMPLOYEE_PHOTOS === 'true') {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader()
+                reader.onload = () => resolve(reader.result)
+                reader.onerror = () => reject(reader.error)
+                reader.readAsDataURL(file)
+            })
+        }
+
         const ext = file.name?.split('.').pop() || 'jpg'
         const path = `${employeeId}/${Date.now()}.${ext}`
         const { data, error } = await supabase.storage.from('employee-photos').upload(path, file, { upsert: true })
@@ -1713,10 +1722,6 @@ export function StoreProvider({ children }) {
 
     return (
         <StoreContext.Provider value={{
-            flowers, addFlower, updateFlower, deleteFlower,
-            goods, addGood, updateGood, deleteGood,
-            categories, addCategory, updateCategory, deleteCategory,
-            products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
             flowers, addFlower, updateFlower, deleteFlower,
             goods, addGood, updateGood, deleteGood,
             categories, addCategory, updateCategory, deleteCategory,
