@@ -190,7 +190,7 @@ export default function Layout() {
                 top: 0,
                 bottom: 0,
                 left: 0,
-                zIndex: 30,
+                zIndex: isMobile ? 90 : 30,
                 transform: isMobile && !isSidebarOpen ? 'translateX(-100%)' : 'translateX(0)',
                 transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 padding: isMobile ? '0' : '0.75rem',
@@ -343,7 +343,7 @@ export default function Layout() {
                         bottom: 0,
                         backgroundColor: 'rgba(0,0,0,0.2)',
                         backdropFilter: 'blur(4px)',
-                        zIndex: 20
+                        zIndex: 80
                     }}
                 />
             )}
@@ -444,7 +444,7 @@ export default function Layout() {
                 <Outlet />
             </main>
 
-            {isMobile && (
+            {isMobile && !isSidebarOpen && (
                 <>
                     {isQuickSaleOpen && (
                         <div
