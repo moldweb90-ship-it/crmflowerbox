@@ -9,6 +9,7 @@ const pageTitles = {
     '/dashboard': 'Обзор',
     '/analytics': 'Аналитика',
     '/sales': 'Заказы',
+    '/showcase': 'Витрина',
     '/customers': 'Клиенты',
     '/reminders': 'Напоминания',
     '/products': 'Букеты',
@@ -59,6 +60,7 @@ export default function Layout() {
         {
             items: [
                 { label: 'Заказы', path: '/sales', icon: ShoppingCart, primary: true },
+                { label: 'Витрина', path: '/showcase', icon: Store, primary: true },
                 { label: 'Клиенты', path: '/customers', icon: Users, primary: true },
                 { label: 'Напоминания', path: '/reminders', icon: Bell, permission: 'customers' },
             ]
@@ -131,7 +133,7 @@ export default function Layout() {
 
     const mobileDockItems = [
         { label: 'Заказы', path: '/sales', icon: ShoppingCart },
-        { label: 'Букеты', path: '/products', icon: Layers },
+        { label: 'Витрина', path: '/showcase', icon: Store },
         { label: 'Склад', path: '/stock', icon: Warehouse },
         { label: 'Доставки', path: '/sales?calendar=true', icon: Calendar },
     ]

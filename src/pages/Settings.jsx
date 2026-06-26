@@ -2,13 +2,21 @@ import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
 import { usePermissions } from '../context/PermissionContext'
-import { Save, RefreshCw, Lock, Users, Trash2 } from 'lucide-react'
+import { Save, RefreshCw, Lock, Users, Trash2, Plus, Edit2, Power } from 'lucide-react'
+import Modal from '../components/ui/Modal'
 
 export default function Settings() {
     const { settings, updateSettings, recalculateAllProducts, resetSystemData } = useStore()
     const { updatePassword } = useAuth()
     const perms = usePermissions() || {}
-    const { role = 'user', getAllUsers = async () => { }, updateUserPermissions = async () => { } } = perms
+    const {
+        role = 'user',
+        getAllUsers = async () => { },
+        updateUserPermissions = async () => { },
+        createAppUser = async () => { },
+        updateAppUser = async () => { },
+        deleteAppUser = async () => { }
+    } = perms
 
     if (!settings) return <div style={{ padding: '2rem' }}>Загрузка настроек...</div>
 
@@ -74,6 +82,16 @@ export default function Settings() {
     // --- User Management Logic ---
     const [usersList, setUsersList] = useState([])
     const [loadingUsers, setLoadingUsers] = useState(false)
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false)
+    const [editingUser, setEditingUser] = useState(null)
+    const [userForm, setUserForm] = useState({
+        name: '',
+        email: '',
+        password: '',
+        role: 'user',
+        permissions: ['dashboard', 'sales'],
+        is_active: true
+    })
 
     useEffect(() => {
         if (activeTab === 'users' && (role === 'admin' || role === 'owner')) {
@@ -97,6 +115,7 @@ export default function Settings() {
         { key: 'dashboard', label: 'Дашборд' },
         { key: 'analytics', label: 'Аналитика' },
         { key: 'sales', label: 'Заказы' },
+        { key: 'showcase', label: 'Витрина' },
         { key: 'products', label: 'Букеты' },
         { key: 'flowers', label: 'Цветы' },
         { key: 'goods', label: 'Доп. товары' },
@@ -134,6 +153,94 @@ export default function Settings() {
             console.error('Failed to update permissions', error)
             alert('Ошибка при сохранении прав!')
             loadUsers() // Revert
+        }
+    }
+
+    const openCreateUser = () => {
+        setEditingUser(null)
+        setUserForm({
+            name: '',
+            email: '',
+            password: '',
+            role: 'user',
+            permissions: ['dashboard', 'sales'],
+            is_active: true
+        })
+        setIsUserModalOpen(true)
+    }
+
+    const openEditUser = (user) => {
+        if (user.is_system) return
+        setEditingUser(user)
+        setUserForm({
+            name: user.name || '',
+            email: user.email || '',
+            password: '',
+            role: user.role || 'user',
+            permissions: user.permissions || [],
+            is_active: user.is_active !== false
+        })
+        setIsUserModalOpen(true)
+    }
+
+    const toggleFormPermission = (permKey) => {
+        setUserForm(prev => ({
+            ...prev,
+            permissions: prev.permissions.includes(permKey)
+                ? prev.permissions.filter(p => p !== permKey)
+                : [...prev.permissions, permKey]
+        }))
+    }
+
+    const saveUser = async () => {
+        if (!userForm.email.trim()) {
+            alert('Введите email/логин')
+            return
+        }
+        if (!editingUser && userForm.password.length < 6) {
+            alert('Пароль должен быть не менее 6 символов')
+            return
+        }
+
+        try {
+            if (editingUser) {
+                const updates = {
+                    name: userForm.name,
+                    email: userForm.email,
+                    role: userForm.role,
+                    permissions: userForm.permissions,
+                    is_active: userForm.is_active
+                }
+                if (userForm.password) updates.password = userForm.password
+                await updateAppUser(editingUser.id, updates)
+            } else {
+                await createAppUser(userForm)
+            }
+            setIsUserModalOpen(false)
+            await loadUsers()
+        } catch (error) {
+            alert('Ошибка сохранения пользователя: ' + (error.message || error))
+        }
+    }
+
+    const toggleUserActive = async (user) => {
+        if (user.is_system) return
+        try {
+            await updateAppUser(user.id, { is_active: user.is_active === false })
+            await loadUsers()
+        } catch (error) {
+            alert('Ошибка обновления пользователя: ' + (error.message || error))
+        }
+    }
+
+    const removeUser = async (user) => {
+        if (user.is_system) return
+        if (!window.confirm(`Удалить пользователя ${user.email}?`)) return
+        try {
+            await deleteAppUser(user.id)
+            await loadUsers()
+        } catch (error) {
+            alert('Ошибка удаления пользователя: ' + (error.message || error))
         }
     }
 
@@ -352,27 +459,47 @@ export default function Settings() {
                 {activeTab === 'users' && (
                     <div className="card">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
-                            <h2 style={{ fontSize: '1.25rem' }}>Управление доступом</h2>
-                            <button className="btn" onClick={loadUsers} disabled={loadingUsers} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
-                                <RefreshCw size={14} className={loadingUsers ? 'spin' : ''} /> Обновить
-                            </button>
+                            <div>
+                                <h2 style={{ fontSize: '1.25rem' }}>Управление доступом</h2>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.35rem' }}>Добавляйте сотрудников и выдавайте доступ только к нужным разделам CRM.</p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button className="btn" onClick={loadUsers} disabled={loadingUsers} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                                    <RefreshCw size={14} className={loadingUsers ? 'spin' : ''} /> Обновить
+                                </button>
+                                <button className="btn btn-primary" onClick={openCreateUser} style={{ fontSize: '0.8rem', padding: '0.4rem 0.9rem' }}>
+                                    <Plus size={14} /> Добавить
+                                </button>
+                            </div>
                         </div>
 
                         {loadingUsers && usersList.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Загрузка пользователей...</div>
+                        ) : usersList.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Пользователей пока нет</div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                                 {usersList.map(user => (
-                                    <div key={user.id} style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem', background: '#f9fafb' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                    <div key={user.id} style={{ border: user.is_active === false ? '1px solid #fecaca' : '1px solid #e5e7eb', borderRadius: '12px', padding: '1rem', background: user.is_active === false ? '#fef2f2' : '#f9fafb' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '1rem', alignItems: 'flex-start' }}>
                                             <div>
-                                                <div style={{ fontWeight: 600, fontSize: '1rem' }}>{user.email || 'Без email'}</div>
+                                                <div style={{ fontWeight: 800, fontSize: '1rem' }}>{user.name || user.email || 'Без имени'}</div>
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{user.email || 'Без email'}</div>
                                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                                                     Роль: <span style={{ background: user.role === 'admin' ? '#fce7f3' : '#e0f2fe', color: user.role === 'admin' ? '#be185d' : '#0369a1', padding: '2px 8px', borderRadius: '99px' }}>
                                                         {user.role}
                                                     </span>
+                                                    {user.is_system && <span style={{ marginLeft: '0.5rem', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '99px' }}>владелец</span>}
+                                                    {user.is_active === false && <span style={{ marginLeft: '0.5rem', background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: '99px' }}>отключен</span>}
                                                 </div>
                                             </div>
+                                            {!user.is_system && (
+                                                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                                    <button onClick={() => openEditUser(user)} title="Редактировать" style={{ padding: '0.45rem', background: 'white', borderRadius: '8px' }}><Edit2 size={16} /></button>
+                                                    <button onClick={() => toggleUserActive(user)} title={user.is_active === false ? 'Включить' : 'Отключить'} style={{ padding: '0.45rem', background: 'white', borderRadius: '8px', color: user.is_active === false ? '#16a34a' : '#dc2626' }}><Power size={16} /></button>
+                                                    <button onClick={() => removeUser(user)} title="Удалить" style={{ padding: '0.45rem', background: '#fee2e2', color: '#991b1b', borderRadius: '8px' }}><Trash2 size={16} /></button>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '0.5rem' }}>
@@ -388,13 +515,14 @@ export default function Settings() {
                                                         padding: '0.4rem',
                                                         borderRadius: '6px',
                                                         background: hasAccess ? '#fff' : 'transparent',
-                                                        border: hasAccess ? '1px solid var(--primary)' : '1px solid transparent'
+                                                        border: hasAccess ? '1px solid var(--primary)' : '1px solid transparent',
+                                                        opacity: user.is_system ? 0.75 : 1
                                                     }}>
                                                         <input
                                                             type="checkbox"
                                                             checked={hasAccess}
                                                             onChange={() => handleTogglePermission(user.id, perm.key)}
-                                                            disabled={user.role === 'admin' && perm.key === 'settings' && user.id === usersList.find(u => u.role === 'admin')?.id} // Prevent admin locking themselves out of settings potentially? Actually risky to user.
+                                                            disabled={user.is_system}
                                                         />
                                                         {perm.label}
                                                     </label>
@@ -405,6 +533,66 @@ export default function Settings() {
                                 ))}
                             </div>
                         )}
+
+                        <Modal
+                            isOpen={isUserModalOpen}
+                            onClose={() => setIsUserModalOpen(false)}
+                            title={editingUser ? 'Редактировать пользователя' : 'Новый пользователь'}
+                            maxWidth="720px"
+                            closeOnOverlayClick={false}
+                        >
+                            <div style={{ display: 'grid', gap: '1rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 700 }}>Имя</label>
+                                        <input className="input" value={userForm.name} onChange={e => setUserForm({ ...userForm, name: e.target.value })} placeholder="Например: Анна" />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 700 }}>Email / логин</label>
+                                        <input className="input" value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} placeholder="anna@flowerbox.local" />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 700 }}>Пароль</label>
+                                        <input className="input" type="password" value={userForm.password} onChange={e => setUserForm({ ...userForm, password: e.target.value })} placeholder={editingUser ? 'Оставьте пустым, если не менять' : 'Минимум 6 символов'} />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 700 }}>Роль</label>
+                                        <select className="input" value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
+                                            <option value="user">Сотрудник</option>
+                                            <option value="admin">Администратор</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontWeight: 700 }}>
+                                    <input type="checkbox" checked={userForm.is_active} onChange={e => setUserForm({ ...userForm, is_active: e.target.checked })} />
+                                    Пользователь активен
+                                </label>
+
+                                <div>
+                                    <div style={{ fontWeight: 800, marginBottom: '0.65rem' }}>Права доступа</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.5rem' }}>
+                                        {availablePermissions.map(perm => {
+                                            const checked = userForm.permissions.includes(perm.key)
+                                            return (
+                                                <label key={perm.key} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', padding: '0.55rem', borderRadius: '8px', background: checked ? '#fff7ed' : '#f9fafb', border: checked ? '1px solid var(--primary)' : '1px solid #e5e7eb' }}>
+                                                    <input type="checkbox" checked={checked} onChange={() => toggleFormPermission(perm.key)} />
+                                                    {perm.label}
+                                                </label>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
+                                    <button className="btn" onClick={() => setIsUserModalOpen(false)}>Отмена</button>
+                                    <button className="btn btn-primary" onClick={saveUser}>{editingUser ? 'Сохранить' : 'Создать пользователя'}</button>
+                                </div>
+                            </div>
+                        </Modal>
                     </div>
                 )}
             </div>

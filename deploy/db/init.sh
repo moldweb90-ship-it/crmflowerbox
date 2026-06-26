@@ -198,6 +198,22 @@ CREATE TABLE IF NOT EXISTS public.stock_transactions (
   created_at timestamptz DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS public.showcase_bouquets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  composition jsonb DEFAULT '[]'::jsonb,
+  cost_price numeric DEFAULT 0,
+  sale_price numeric DEFAULT 0,
+  status text DEFAULT 'active',
+  notes text,
+  sale_id uuid REFERENCES public.sales(id) ON DELETE SET NULL,
+  sold_at timestamptz,
+  written_off_at timestamptz,
+  waste_reason text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS public.expenses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   category text NOT NULL,
@@ -252,17 +268,35 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   role text DEFAULT 'user'
 );
 
+CREATE TABLE IF NOT EXISTS public.app_users (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text,
+  email text UNIQUE NOT NULL,
+  password_hash text NOT NULL,
+  password_salt text NOT NULL,
+  role text DEFAULT 'user',
+  permissions jsonb DEFAULT '[]'::jsonb,
+  is_active boolean DEFAULT true,
+  last_login_at timestamptz,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_sales_order_date ON public.sales(order_date DESC);
 CREATE INDEX IF NOT EXISTS idx_sales_delivery_date ON public.sales(delivery_date);
 CREATE INDEX IF NOT EXISTS idx_sales_customer ON public.sales(customer_id);
 CREATE INDEX IF NOT EXISTS idx_stock_item ON public.stock(item_type, item_id);
 CREATE INDEX IF NOT EXISTS idx_stock_transactions_item ON public.stock_transactions(item_type, item_id);
 CREATE INDEX IF NOT EXISTS idx_stock_transactions_created ON public.stock_transactions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_showcase_bouquets_status ON public.showcase_bouquets(status);
+CREATE INDEX IF NOT EXISTS idx_showcase_bouquets_created ON public.showcase_bouquets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_customers_phone ON public.customers(phone);
 CREATE INDEX IF NOT EXISTS idx_customers_email ON public.customers(email);
 CREATE INDEX IF NOT EXISTS idx_supplies_supplier ON public.supplies(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_supply_items_supply ON public.supply_items(supply_id);
 CREATE INDEX IF NOT EXISTS idx_shifts_employee_date ON public.shifts(employee_id, shift_date);
+CREATE INDEX IF NOT EXISTS idx_app_users_email ON public.app_users(lower(email));
+CREATE INDEX IF NOT EXISTS idx_app_users_active ON public.app_users(is_active);
 
 INSERT INTO public.settings (id, markup_percentage, delivery_cost)
 VALUES (1, 100, 0)

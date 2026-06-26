@@ -1,9 +1,19 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from './AuthContext'
+import { createPasswordRecord } from '../lib/passwordHash'
 
 const PermissionContext = createContext()
-const DEFAULT_ADMIN_PERMISSIONS = ["dashboard", "analytics", "sales", "customers", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "employees", "settings"]
+const DEFAULT_ADMIN_PERMISSIONS = ["dashboard", "analytics", "sales", "showcase", "customers", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "employees", "settings"]
+const SYSTEM_OWNER_USER = {
+    id: '00000000-0000-4000-8000-000000000001',
+    name: 'Владелец FlowerBox',
+    email: 'admin',
+    role: 'admin',
+    permissions: DEFAULT_ADMIN_PERMISSIONS,
+    is_active: true,
+    is_system: true
+}
 
 export function PermissionProvider({ children }) {
     const { user } = useAuth()
@@ -48,6 +58,25 @@ export function PermissionProvider({ children }) {
             return
         }
 
+        if (user?.app_metadata?.provider === 'app-user') {
+            try {
+                const { data } = await supabase.from('app_users').select('*').eq('id', userId).single()
+                const perms = data?.permissions || user.user_metadata?.permissions || []
+                const r = data?.role || user.user_metadata?.role || 'user'
+                setPermissions(perms)
+                setRole(r)
+                localStorage.setItem('user_permissions', JSON.stringify(perms))
+                localStorage.setItem('user_role', r)
+            } catch (error) {
+                console.error('App user permission fetch error:', error)
+                setPermissions(user.user_metadata?.permissions || [])
+                setRole(user.user_metadata?.role || 'user')
+            } finally {
+                setLoading(false)
+            }
+            return
+        }
+
         // Don't set loading=true if we have cache - fresh silently in background
         if (!localStorage.getItem('user_permissions')) {
             setLoading(true)
@@ -62,7 +91,7 @@ export function PermissionProvider({ children }) {
 
             // 2. If not found, create it (Auto-registration of profile)
             if (error && error.code === 'PGRST116') {
-                const defaultPerms = ["dashboard", "sales", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "settings"]
+                const defaultPerms = ["dashboard", "sales", "showcase", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "settings"]
                 const { data: newData, error: createError } = await supabase
                     .from('user_profiles')
                     .insert([{
@@ -104,18 +133,66 @@ export function PermissionProvider({ children }) {
 
     // Admin: Get all users
     const getAllUsers = async () => {
-        const { data, error } = await supabase.from('user_profiles').select('*').order('email')
-        if (error) throw error
-        return data
+        const { data, error } = await supabase.from('app_users').select('id,name,email,role,permissions,is_active,last_login_at,created_at').order('created_at', { ascending: false })
+        if (error) {
+            console.warn('Could not load app users, showing system owner only:', error)
+            return [SYSTEM_OWNER_USER]
+        }
+        return [SYSTEM_OWNER_USER, ...(data || [])]
     }
 
     // Admin: Update user permissions
     const updateUserPermissions = async (targetId, newPermissions) => {
+        if (targetId === '00000000-0000-4000-8000-000000000001') return { success: true }
+
         const { error } = await supabase
-            .from('user_profiles')
-            .update({ permissions: newPermissions })
+            .from('app_users')
+            .update({ permissions: newPermissions, updated_at: new Date().toISOString() })
             .eq('id', targetId)
 
+        if (error) throw error
+        return { success: true }
+    }
+
+    const createAppUser = async ({ name, email, password, role: newRole, permissions: newPermissions }) => {
+        const normalizedEmail = email.trim().toLowerCase()
+        const passwordRecord = await createPasswordRecord(password)
+        const { data, error } = await supabase
+            .from('app_users')
+            .insert([{
+                name: name.trim(),
+                email: normalizedEmail,
+                ...passwordRecord,
+                role: newRole || 'user',
+                permissions: newPermissions || [],
+                is_active: true
+            }])
+            .select('id,name,email,role,permissions,is_active,last_login_at,created_at')
+            .single()
+        if (error) throw error
+        return data
+    }
+
+    const updateAppUser = async (targetId, updates) => {
+        if (targetId === '00000000-0000-4000-8000-000000000001') return { success: true }
+
+        const payload = { ...updates, updated_at: new Date().toISOString() }
+        if (payload.email) payload.email = payload.email.trim().toLowerCase()
+        if (payload.password) {
+            const passwordRecord = await createPasswordRecord(payload.password)
+            payload.password_hash = passwordRecord.password_hash
+            payload.password_salt = passwordRecord.password_salt
+            delete payload.password
+        }
+
+        const { error } = await supabase.from('app_users').update(payload).eq('id', targetId)
+        if (error) throw error
+        return { success: true }
+    }
+
+    const deleteAppUser = async (targetId) => {
+        if (targetId === '00000000-0000-4000-8000-000000000001') return { success: true }
+        const { error } = await supabase.from('app_users').delete().eq('id', targetId)
         if (error) throw error
         return { success: true }
     }
@@ -127,7 +204,10 @@ export function PermissionProvider({ children }) {
             loading,
             checkAccess,
             getAllUsers,
-            updateUserPermissions
+            updateUserPermissions,
+            createAppUser,
+            updateAppUser,
+            deleteAppUser
         }}>
             {children}
         </PermissionContext.Provider>

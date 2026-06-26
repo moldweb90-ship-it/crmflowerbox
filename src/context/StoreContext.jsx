@@ -43,6 +43,7 @@ export function StoreProvider({ children }) {
     const [settings, setSettings] = usePersistedState('store_settings', { markup_percentage: 30, delivery_cost: 500 })
     const [stock, setStock] = usePersistedState('store_stock', [])
     const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
+    const [showcaseBouquets, setShowcaseBouquets] = usePersistedState('store_showcase_bouquets', [])
     const [customers, setCustomers] = usePersistedState('store_customers', [])
     const [customerImportantDates, setCustomerImportantDates] = usePersistedState('store_customer_dates', [])
     const [tasks, setTasks] = usePersistedState('store_tasks', [])
@@ -76,10 +77,11 @@ export function StoreProvider({ children }) {
                 supabase.from('settings').select('*').single(),
                 supabase.from('stock').select('*'),
                 supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(100),
+                supabase.from('showcase_bouquets').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('customers').select('*').order('created_at', { ascending: false })
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, cust] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, showcase, cust] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -108,6 +110,7 @@ export function StoreProvider({ children }) {
             }
             if (stk.data) setStock(stk.data)
             if (stkTrans.data) setStockTransactions(stkTrans.data)
+            if (showcase.data) setShowcaseBouquets(showcase.data)
             if (cust.data) setCustomers(cust.data)
         } catch (error) {
             console.error('Error fetching data:', error)
@@ -800,6 +803,7 @@ export function StoreProvider({ children }) {
     // Sales
     const addSale = async (sale) => {
         try {
+            const skipStockDeduction = Boolean(sale.skip_stock_deduction)
             // 1. Найти или создать клиента по email/phone (только если они не пустые)
             let customerId = sale.customer_id
             const hasEmail = sale.customer_email && sale.customer_email.trim()
@@ -821,6 +825,7 @@ export function StoreProvider({ children }) {
 
             // 2. Очистить все UUID поля от пустых строк
             const salePayload = { ...sale }
+            delete salePayload.skip_stock_deduction
 
             // Очищаем customer_id
             if (customerId && typeof customerId === 'string' && customerId.length > 0) {
@@ -872,28 +877,30 @@ export function StoreProvider({ children }) {
                 } catch (e) { console.warn('Could not save important date:', e) }
 
                 // 4. Auto-deduct stock from composition (custom_composition или product.composition)
-                const compToDeduct = (salePayload.custom_composition && Array.isArray(salePayload.custom_composition) && salePayload.custom_composition.length > 0)
-                    ? salePayload.custom_composition.map(c => ({ type: c.type, id: c.item_id || c.id, qty: c.quantity || c.qty || 1 }))
-                    : (() => {
-                        const product = products.find(p => p.id === sale.product_id)
-                        return product?.composition || []
-                    })()
-                for (const comp of compToDeduct) {
-                    const itemType = comp.type
-                    const itemId = comp.id
-                    const qty = comp.qty || 1
-                    const existing = stock.find(s => s.item_type === itemType && s.item_id === itemId)
-                    if (existing) {
-                        const newQty = Math.max(0, existing.quantity - qty)
-                        await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
-                        setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
-                        await supabase.from('stock_transactions').insert([{
-                            item_type: itemType,
-                            item_id: itemId,
-                            quantity: -qty,
-                            transaction_type: 'sale',
-                            reference_id: saleData.id
-                        }])
+                if (!skipStockDeduction) {
+                    const compToDeduct = (salePayload.custom_composition && Array.isArray(salePayload.custom_composition) && salePayload.custom_composition.length > 0)
+                        ? salePayload.custom_composition.map(c => ({ type: c.type, id: c.item_id || c.id, qty: c.quantity || c.qty || 1 }))
+                        : (() => {
+                            const product = products.find(p => p.id === sale.product_id)
+                            return product?.composition || []
+                        })()
+                    for (const comp of compToDeduct) {
+                        const itemType = comp.type
+                        const itemId = comp.id
+                        const qty = comp.qty || 1
+                        const existing = stock.find(s => s.item_type === itemType && s.item_id === itemId)
+                        if (existing) {
+                            const newQty = Math.max(0, existing.quantity - qty)
+                            await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
+                            setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+                            await supabase.from('stock_transactions').insert([{
+                                item_type: itemType,
+                                item_id: itemId,
+                                quantity: -qty,
+                                transaction_type: 'sale',
+                                reference_id: saleData.id
+                            }])
+                        }
                     }
                 }
             }
@@ -1322,14 +1329,14 @@ export function StoreProvider({ children }) {
                     .update({ quantity: newQty, updated_at: new Date().toISOString() })
                     .eq('id', existing.id)
                 if (error) throw error
-                setStock(stock.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+                setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
             } else {
                 const { data, error } = await supabase
                     .from('stock')
                     .insert([{ item_type: itemType, item_id: itemId, quantity: qty }])
                     .select()
                 if (error) throw error
-                if (data) setStock([...stock, data[0]])
+                if (data) setStock(prev => [...prev, data[0]])
             }
 
             // 2. Add transaction record
@@ -1346,7 +1353,7 @@ export function StoreProvider({ children }) {
                 }])
                 .select()
             if (txError) throw txError
-            if (txData) setStockTransactions([txData[0], ...stockTransactions])
+            if (txData) setStockTransactions(prev => [txData[0], ...prev])
 
             return { success: true }
         } catch (error) {
@@ -1369,7 +1376,7 @@ export function StoreProvider({ children }) {
                 .update({ quantity: newQty, updated_at: new Date().toISOString() })
                 .eq('id', existing.id)
             if (error) throw error
-            setStock(stock.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
+            setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
 
             // Add transaction (negative quantity)
             const { data: txData, error: txError } = await supabase
@@ -1387,7 +1394,7 @@ export function StoreProvider({ children }) {
                 }])
                 .select()
             if (txError) throw txError
-            if (txData) setStockTransactions([txData[0], ...stockTransactions])
+            if (txData) setStockTransactions(prev => [txData[0], ...prev])
 
             return { success: true }
         } catch (error) {
@@ -1409,7 +1416,7 @@ export function StoreProvider({ children }) {
                 .update({ min_quantity: minQty })
                 .eq('id', stockId)
             if (error) throw error
-            setStock(stock.map(s => s.id === stockId ? { ...s, min_quantity: minQty } : s))
+            setStock(prev => prev.map(s => s.id === stockId ? { ...s, min_quantity: minQty } : s))
             return { success: true }
         } catch (error) {
             return { success: false, error }
@@ -1720,6 +1727,109 @@ export function StoreProvider({ children }) {
         setTasks(tasks.filter(t => !t.is_completed))
     }
 
+    const getShowcaseItemStockIssues = (composition = []) => {
+        return composition
+            .map(item => {
+                const itemId = item.item_id || item.id
+                const qty = Number(item.quantity || item.qty || 0)
+                const existing = stock.find(s => s.item_type === item.type && s.item_id === itemId)
+                return {
+                    ...item,
+                    item_id: itemId,
+                    quantity: qty,
+                    available: Number(existing?.quantity || 0),
+                    missing: Math.max(0, qty - Number(existing?.quantity || 0))
+                }
+            })
+            .filter(item => item.missing > 0)
+    }
+
+    const addShowcaseBouquet = async (bouquet) => {
+        try {
+            const stockIssues = getShowcaseItemStockIssues(bouquet.composition)
+            if (stockIssues.length > 0) {
+                return { success: false, error: { message: 'Недостаточно остатков на складе для сборки витрины' }, stockIssues }
+            }
+
+            const payload = {
+                name: bouquet.name,
+                composition: bouquet.composition || [],
+                cost_price: Number(bouquet.cost_price || 0),
+                sale_price: Number(bouquet.sale_price || 0),
+                status: 'active',
+                notes: bouquet.notes || ''
+            }
+
+            const { data, error } = await supabase.from('showcase_bouquets').insert([payload]).select()
+            if (error) throw error
+            const created = data?.[0]
+            if (!created) return { success: false, error: { message: 'Не удалось создать букет на витрине' } }
+
+            for (const item of payload.composition) {
+                await removeFromStock(
+                    item.type,
+                    item.item_id || item.id,
+                    Number(item.quantity || item.qty || 1),
+                    'showcase_build',
+                    created.id,
+                    `Сборка витрины: ${payload.name}`
+                )
+            }
+
+            setShowcaseBouquets([created, ...showcaseBouquets])
+            return { success: true, data: created }
+        } catch (error) {
+            console.error('Error adding showcase bouquet:', error)
+            return { success: false, error }
+        }
+    }
+
+    const markShowcaseBouquetSold = async (id, saleId = null) => {
+        try {
+            const updates = { status: 'sold', sold_at: new Date().toISOString(), sale_id: saleId }
+            const { error } = await supabase.from('showcase_bouquets').update(updates).eq('id', id)
+            if (error) throw error
+            setShowcaseBouquets(showcaseBouquets.map(b => b.id === id ? { ...b, ...updates } : b))
+            return { success: true }
+        } catch (error) {
+            console.error('Error marking showcase bouquet sold:', error)
+            return { success: false, error }
+        }
+    }
+
+    const writeOffShowcaseBouquet = async (id, reason = 'Списание витрины') => {
+        try {
+            const bouquet = showcaseBouquets.find(b => b.id === id)
+            if (!bouquet) return { success: false, error: { message: 'Букет не найден' } }
+
+            const updates = { status: 'waste', written_off_at: new Date().toISOString(), waste_reason: reason }
+            const { error } = await supabase.from('showcase_bouquets').update(updates).eq('id', id)
+            if (error) throw error
+
+            const wasteRows = (bouquet.composition || []).map(item => ({
+                item_type: item.type,
+                item_id: item.item_id || item.id,
+                quantity: -Number(item.quantity || item.qty || 1),
+                transaction_type: 'waste',
+                reference_id: id,
+                cost_price: Number(item.cost || 0),
+                notes: `Списание витрины: ${bouquet.name}`,
+                reason
+            }))
+            if (wasteRows.length > 0) {
+                const { data: txData, error: txError } = await supabase.from('stock_transactions').insert(wasteRows).select()
+                if (txError) throw txError
+                if (txData) setStockTransactions(prev => [...txData, ...prev])
+            }
+
+            setShowcaseBouquets(showcaseBouquets.map(b => b.id === id ? { ...b, ...updates } : b))
+            return { success: true }
+        } catch (error) {
+            console.error('Error writing off showcase bouquet:', error)
+            return { success: false, error }
+        }
+    }
+
     return (
         <StoreContext.Provider value={{
             flowers, addFlower, updateFlower, deleteFlower,
@@ -1739,6 +1849,7 @@ export function StoreProvider({ children }) {
             settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,
             stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
+            showcaseBouquets, addShowcaseBouquet, markShowcaseBouquetSold, writeOffShowcaseBouquet, getShowcaseItemStockIssues,
             customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, deleteCustomer, getCustomerOrders,
             customerImportantDates, saveImportantDate, deleteImportantDate, getCustomerImportantDates, getUpcomingReminders,
             refreshCustomersAndDates, loading

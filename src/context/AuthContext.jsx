@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../supabase'
+import { createPasswordRecord, verifyPassword } from '../lib/passwordHash'
 
 const AuthContext = createContext()
 const DEV_ADMIN_EMAIL = 'admin@crm.local'
@@ -11,14 +12,16 @@ const LOCAL_ADMIN_USER = {
     user_metadata: { role: 'admin' }
 }
 
-const getSavedLocalUser = () => {
-    if (!LOCAL_ADMIN_PASSWORD) return null
-
+const getSavedAppUser = () => {
     try {
-        const saved = localStorage.getItem('app_local_user')
-        return saved ? JSON.parse(saved) : null
+        const saved = localStorage.getItem('app_user')
+        const parsed = saved ? JSON.parse(saved) : null
+        const provider = parsed?.app_metadata?.provider
+        if (provider === 'local-admin' && !LOCAL_ADMIN_PASSWORD) return null
+        return provider === 'local-admin' || provider === 'app-user' ? parsed : null
     } catch (e) {
         localStorage.removeItem('app_local_user')
+        localStorage.removeItem('app_user')
         return null
     }
 }
@@ -39,17 +42,19 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         // Check active sessions and sets the user
         supabase.auth.getSession().then(({ data: { session } }) => {
-            const currentUser = session?.user ?? getSavedLocalUser()
+            const currentUser = session?.user ?? getSavedAppUser()
             setUser(currentUser)
-            localStorage.setItem('app_user', JSON.stringify(currentUser))
+            if (currentUser) localStorage.setItem('app_user', JSON.stringify(currentUser))
+            else localStorage.removeItem('app_user')
             setLoading(false)
         })
 
         // Listen for changes on auth state (logged in, signed out, etc.)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            const currentUser = session?.user ?? getSavedLocalUser()
+            const currentUser = session?.user ?? getSavedAppUser()
             setUser(currentUser)
-            localStorage.setItem('app_user', JSON.stringify(currentUser))
+            if (currentUser) localStorage.setItem('app_user', JSON.stringify(currentUser))
+            else localStorage.removeItem('app_user')
             setLoading(false)
         })
 
@@ -57,15 +62,47 @@ export function AuthProvider({ children }) {
     }, [])
 
     const login = async (email, password) => {
-        if (LOCAL_ADMIN_PASSWORD && email === DEV_ADMIN_EMAIL && password === LOCAL_ADMIN_PASSWORD) {
+        const normalizedEmail = email.trim().toLowerCase()
+
+        if (LOCAL_ADMIN_PASSWORD && normalizedEmail === DEV_ADMIN_EMAIL && password === LOCAL_ADMIN_PASSWORD) {
             setUser(LOCAL_ADMIN_USER)
             localStorage.setItem('app_user', JSON.stringify(LOCAL_ADMIN_USER))
             localStorage.setItem('app_local_user', JSON.stringify(LOCAL_ADMIN_USER))
             return { user: LOCAL_ADMIN_USER, session: null }
         }
 
+        const { data: appUser, error: appUserError } = await supabase
+            .from('app_users')
+            .select('*')
+            .eq('email', normalizedEmail)
+            .eq('is_active', true)
+            .maybeSingle()
+
+        if (!appUserError && appUser) {
+            const ok = await verifyPassword(password, appUser.password_salt, appUser.password_hash)
+            if (!ok) throw new Error('Invalid login credentials')
+
+            await supabase.from('app_users').update({ last_login_at: new Date().toISOString() }).eq('id', appUser.id)
+
+            const currentUser = {
+                id: appUser.id,
+                email: appUser.email,
+                app_metadata: { provider: 'app-user' },
+                user_metadata: {
+                    name: appUser.name,
+                    role: appUser.role,
+                    permissions: appUser.permissions || []
+                }
+            }
+
+            setUser(currentUser)
+            localStorage.setItem('app_user', JSON.stringify(currentUser))
+            localStorage.removeItem('app_local_user')
+            return { user: currentUser, session: null }
+        }
+
         const { data, error } = await supabase.auth.signInWithPassword({
-            email,
+            email: normalizedEmail,
             password,
         })
         if (error) throw error
@@ -73,7 +110,7 @@ export function AuthProvider({ children }) {
     }
 
     const logout = async () => {
-        if (user?.app_metadata?.provider === 'local-admin') {
+        if (user?.app_metadata?.provider === 'local-admin' || user?.app_metadata?.provider === 'app-user') {
             setUser(null)
             localStorage.removeItem('app_local_user')
             localStorage.removeItem('app_user')
@@ -88,6 +125,20 @@ export function AuthProvider({ children }) {
     }
 
     const updatePassword = async (newPassword) => {
+        if (user?.app_metadata?.provider === 'local-admin') {
+            throw new Error('Пароль владельца задается в переменной VITE_LOCAL_ADMIN_PASSWORD на сервере')
+        }
+
+        if (user?.app_metadata?.provider === 'app-user') {
+            const passwordRecord = await createPasswordRecord(newPassword)
+            const { error } = await supabase
+                .from('app_users')
+                .update({ ...passwordRecord, updated_at: new Date().toISOString() })
+                .eq('id', user.id)
+            if (error) throw error
+            return
+        }
+
         const { error } = await supabase.auth.updateUser({ password: newPassword })
         if (error) throw error
     }

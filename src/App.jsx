@@ -10,6 +10,7 @@ import Suppliers2 from './pages/Suppliers'
 import Stock from './pages/Stock'
 import Expenses from './pages/Expenses'
 import Sales from './pages/Sales'
+import Showcase from './pages/Showcase'
 import Customers from './pages/Customers'
 import Reminders from './pages/Reminders'
 import Employees from './pages/Employees'
@@ -37,6 +38,7 @@ function App() {
                                 <Route index element={<Navigate to="/dashboard" replace />} />
                                 <Route path="dashboard" element={<RequirePermission permission="dashboard"><Dashboard /></RequirePermission>} />
                                 <Route path="sales" element={<RequirePermission permission="sales"><Sales /></RequirePermission>} />
+                                <Route path="showcase" element={<RequirePermission permission="showcase"><Showcase /></RequirePermission>} />
                                 <Route path="flowers" element={<RequirePermission permission="flowers"><Inventory mode="flowers" /></RequirePermission>} />
                                 <Route path="goods" element={<RequirePermission permission="goods"><Inventory mode="goods" /></RequirePermission>} />
                                 <Route path="products" element={<RequirePermission permission="products"><Products /></RequirePermission>} />

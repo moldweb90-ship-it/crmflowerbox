@@ -63,8 +63,9 @@ export default function Sales() {
         sales, addSale, updateSale, deleteSale,
         products, couriers, florists, addCourier, addFlorist,
         expenses, addExpense,
-        calculateCostPrice, calculatePrice,
-        flowers, goods, stock, settings, removeFromStock
+        calculateCostPrice,
+        flowers, goods, settings,
+        showcaseBouquets, markShowcaseBouquetSold
     } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
@@ -87,6 +88,7 @@ export default function Sales() {
                 ...emptySalonForm,
                 // If needed, preset fields here
             }))
+            setSelectedShowcaseId('')
             setIsSalonModalOpen(true)
             searchParams.delete('salon')
             setSearchParams(searchParams, { replace: true })
@@ -146,9 +148,12 @@ export default function Sales() {
         delivery_address: '',
         delivery_status: 'not_delivered',
         courier_id: ''
+        ,
+        sale_price_override: ''
     }
     const [salonFormData, setSalonFormData] = useState(emptySalonForm)
     const [editingSalonSaleId, setEditingSalonSaleId] = useState(null)
+    const [selectedShowcaseId, setSelectedShowcaseId] = useState('')
     const [salonItemSearch, setSalonItemSearch] = useState('')
     const [showSalonItemDropdown, setShowSalonItemDropdown] = useState(false)
 
@@ -383,6 +388,7 @@ export default function Sales() {
         p.name?.toLowerCase().includes(productSearch.toLowerCase()) ||
         p.sku?.toLowerCase().includes(productSearch.toLowerCase())
     ).slice(0, 10)
+    const activeShowcaseBouquets = showcaseBouquets.filter(b => b.status === 'active')
 
     // Handlers
     const openNewSaleModal = () => {
@@ -414,8 +420,10 @@ export default function Sales() {
                 delivery_date: sale.delivery_date?.slice(0, 16) || '',
                 delivery_address: sale.delivery_address || '',
                 delivery_status: sale.delivery_status || 'not_delivered',
-                courier_id: sale.courier_id || ''
+                courier_id: sale.courier_id || '',
+                sale_price_override: sale.sale_price || ''
             })
+            setSelectedShowcaseId('')
             setIsSalonModalOpen(true)
         } else {
             // Open regular Site Sale modal for editing
@@ -2164,7 +2172,7 @@ export default function Sales() {
             {/* Salon Sale Modal */}
             < Modal
                 isOpen={isSalonModalOpen}
-                onClose={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch('') }}
+                onClose={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch(''); setSelectedShowcaseId('') }}
                 title={editingSalonSaleId ? '✏️ Редактирование продажи' : '🏪 Продажа в Салоне'}
                 maxWidth="700px"
                 closeOnOverlayClick={false}
@@ -2205,6 +2213,52 @@ export default function Sales() {
                             🌸 Состав букета
                         </h4>
 
+                        {!editingSalonSaleId && activeShowcaseBouquets.length > 0 && (
+                            <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'white', borderRadius: '12px', border: '1px solid #e9d5ff' }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#7c3aed', marginBottom: '0.45rem' }}>Источник продажи</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.65rem' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedShowcaseId('')
+                                            setSalonFormData({ ...salonFormData, custom_name: '', composition: [], sale_price_override: '' })
+                                        }}
+                                        style={{
+                                            padding: '0.75rem',
+                                            borderRadius: '12px',
+                                            background: !selectedShowcaseId ? '#111827' : '#f8fafc',
+                                            color: !selectedShowcaseId ? 'white' : '#374151',
+                                            fontWeight: 900
+                                        }}
+                                    >
+                                        Собрать вручную
+                                    </button>
+                                    <select
+                                        className="input"
+                                        value={selectedShowcaseId}
+                                        onChange={(e) => {
+                                            const id = e.target.value
+                                            setSelectedShowcaseId(id)
+                                            const bouquet = activeShowcaseBouquets.find(b => b.id === id)
+                                            if (bouquet) {
+                                                setSalonFormData({
+                                                    ...salonFormData,
+                                                    custom_name: bouquet.name,
+                                                    composition: (bouquet.composition || []).map(item => ({ ...item })),
+                                                    sale_price_override: String(bouquet.sale_price || 0)
+                                                })
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Продать с витрины...</option>
+                                        {activeShowcaseBouquets.map(b => (
+                                            <option key={b.id} value={b.id}>{b.name} - {Number(b.sale_price || 0).toLocaleString()} lei</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Existing items */}
                         {salonFormData.composition.length > 0 && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -2222,6 +2276,7 @@ export default function Sales() {
                                         <span style={{ flex: 1, fontWeight: 500 }}>{item.name}</span>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                             <button
+                                                disabled={Boolean(selectedShowcaseId)}
                                                 onClick={() => {
                                                     const newComp = [...salonFormData.composition]
                                                     // Ensure it is treated as a number
@@ -2231,12 +2286,13 @@ export default function Sales() {
                                                         setSalonFormData({ ...salonFormData, composition: newComp })
                                                     }
                                                 }}
-                                                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                                                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: selectedShowcaseId ? 0.45 : 1 }}
                                             >−</button>
                                             <input
                                                 type="number"
                                                 min="1"
                                                 className="no-spinners"
+                                                disabled={Boolean(selectedShowcaseId)}
                                                 value={item.quantity}
                                                 onChange={(e) => {
                                                     const val = e.target.value
@@ -2266,13 +2322,14 @@ export default function Sales() {
                                                 onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                                             />
                                             <button
+                                                disabled={Boolean(selectedShowcaseId)}
                                                 onClick={() => {
                                                     const newComp = [...salonFormData.composition]
                                                     // Handle case where quantity is '' by treating it as 0, then add 1 -> 1
                                                     newComp[idx].quantity = (Number(newComp[idx].quantity) || 0) + 1
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 }}
-                                                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                                                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: selectedShowcaseId ? 0.45 : 1 }}
                                             >+</button>
                                         </div>
                                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '92px 88px', gap: '0.5rem', alignItems: 'center' }}>
@@ -2282,6 +2339,7 @@ export default function Sales() {
                                                     type="number"
                                                     min="0"
                                                     className="no-spinners"
+                                                    disabled={Boolean(selectedShowcaseId)}
                                                     value={item.price}
                                                     onChange={(e) => {
                                                         const val = e.target.value
@@ -2298,7 +2356,7 @@ export default function Sales() {
                                                         borderRadius: '10px',
                                                         color: '#7c3aed',
                                                         outline: 'none',
-                                                        background: '#faf5ff'
+                                                        background: selectedShowcaseId ? '#f3f4f6' : '#faf5ff'
                                                     }}
                                                     onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
                                                     onBlur={(e) => e.target.style.borderColor = '#e9d5ff'}
@@ -2309,11 +2367,12 @@ export default function Sales() {
                                             </div>
                                         </div>
                                         <button
+                                            disabled={Boolean(selectedShowcaseId)}
                                             onClick={() => {
                                                 const newComp = salonFormData.composition.filter((_, i) => i !== idx)
                                                 setSalonFormData({ ...salonFormData, composition: newComp })
                                             }}
-                                            style={{ width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer' }}
+                                            style={{ width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', opacity: selectedShowcaseId ? 0.45 : 1 }}
                                         >×</button>
                                     </div>
                                 ))}
@@ -2321,7 +2380,12 @@ export default function Sales() {
                         )}
 
                         {/* Add item search */}
-                        <div style={{ position: 'relative' }}>
+                        {selectedShowcaseId && (
+                            <div style={{ padding: '0.75rem', background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#166534', borderRadius: '12px', fontWeight: 800 }}>
+                                Букет выбран с витрины: склад уже был списан при сборке, повторного списания при продаже не будет.
+                            </div>
+                        )}
+                        {!selectedShowcaseId && <div style={{ position: 'relative' }}>
                             <input
                                 type="text"
                                 value={salonItemSearch}
@@ -2421,12 +2485,13 @@ export default function Sales() {
                                         )}
                                 </div>
                             )}
-                        </div>
+                        </div>}
 
                         {/* Price Summary */}
                         {salonFormData.composition.length > 0 && (() => {
                             const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0)
-                            const salePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
+                            const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
+                            const salePrice = selectedShowcaseId ? Number(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice
                             const margin = salePrice - costPrice
                             const marginPercent = costPrice > 0 ? ((margin / costPrice) * 100).toFixed(0) : 0
                             return (
@@ -2434,7 +2499,17 @@ export default function Sales() {
                                     {/* Big Sale Price */}
                                     <div style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
                                         <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', marginBottom: '0.25rem' }}>Цена продажи</div>
-                                        <div style={{ fontSize: '2rem', fontWeight: 800, color: 'white', letterSpacing: '-0.02em' }}>{salePrice.toFixed(0)} lei</div>
+                                        {selectedShowcaseId ? (
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                value={salonFormData.sale_price_override}
+                                                onChange={(e) => setSalonFormData({ ...salonFormData, sale_price_override: e.target.value })}
+                                                style={{ maxWidth: '220px', margin: '0 auto', textAlign: 'center', fontSize: '1.55rem', fontWeight: 900, color: '#7c3aed', background: 'white' }}
+                                            />
+                                        ) : (
+                                            <div style={{ fontSize: '2rem', fontWeight: 800, color: 'white', letterSpacing: '-0.02em' }}>{salePrice.toFixed(0)} lei</div>
+                                        )}
                                     </div>
                                     {/* Cost and Margin Row */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.15)', borderRadius: '8px' }}>
@@ -2602,7 +2677,7 @@ export default function Sales() {
                     }}>
                         <button
                             className="btn"
-                            onClick={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch('') }}
+                            onClick={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch(''); setSelectedShowcaseId('') }}
                             style={{ padding: isMobile ? '0.875rem 1rem' : '0.75rem 1.5rem', flex: isMobile ? 1 : 'initial' }}
                         >
                             Отмена
@@ -2614,7 +2689,8 @@ export default function Sales() {
                                 setLoading(true)
                                 try {
                                     const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0)
-                                    const salePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
+                                    const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
+                                    const salePrice = selectedShowcaseId ? Number(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice
 
                                     // Create/Update sale record
                                     const saleData = {
@@ -2633,7 +2709,8 @@ export default function Sales() {
                                         delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
                                         sales_channel: 'store',
-                                        profit: salePrice - costPrice
+                                        profit: salePrice - costPrice,
+                                        skip_stock_deduction: Boolean(selectedShowcaseId)
                                     }
 
                                     if (editingSalonSaleId) {
@@ -2641,10 +2718,11 @@ export default function Sales() {
                                         await updateSale(editingSalonSaleId, saleData)
                                     } else {
                                         // Create new sale
-                                        await addSale(saleData)
-                                        // Deduct from stock only for new sales
-                                        for (const item of salonFormData.composition) {
-                                            await removeFromStock(item.type, item.item_id, item.quantity, 'sale')
+                                        const result = await addSale(saleData)
+                                        if (!result.success) throw result.error
+                                        if (selectedShowcaseId) {
+                                            const soldResult = await markShowcaseBouquetSold(selectedShowcaseId, result.data?.id)
+                                            if (!soldResult.success) throw soldResult.error
                                         }
                                     }
 
@@ -2652,6 +2730,7 @@ export default function Sales() {
                                     setSalonFormData(emptySalonForm)
                                     setEditingSalonSaleId(null)
                                     setSalonItemSearch('')
+                                    setSelectedShowcaseId('')
                                 } catch (error) {
                                     console.error('Error saving salon sale:', error)
                                     alert('Ошибка при сохранении продажи: ' + error.message)
