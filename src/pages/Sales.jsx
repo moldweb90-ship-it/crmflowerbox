@@ -175,7 +175,7 @@ export default function Sales() {
         payment_method: 'cash',
         payment_status: 'unpaid',
         delivery_status: 'not_delivered',
-        sales_channel: 'store',
+        sales_channel: 'website',
         occasion: ''
     }
     const [formData, setFormData] = useState(savedState?.formData || emptyForm)
@@ -185,6 +185,8 @@ export default function Sales() {
     const [siteComposition, setSiteComposition] = useState([])
     const [siteItemSearch, setSiteItemSearch] = useState('')
     const [showSiteItemDropdown, setShowSiteItemDropdown] = useState(false)
+    const [siteSaleMode, setSiteSaleMode] = useState('catalog')
+    const [siteCustomName, setSiteCustomName] = useState('')
     const siteSaleFormRef = useRef(null)
     const salonSaleFormRef = useRef(null)
 
@@ -354,15 +356,16 @@ export default function Sales() {
 
     // Selected product data
     const selectedProduct = products.find(p => p.id === formData.product_id)
+    const calculateSiteCompositionPrice = (composition) => {
+        const base = composition.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
+        const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
+        return withMarkup + Number(formData.extra_delivery_cost || 0)
+    }
     const costPrice = siteComposition.length > 0
-        ? siteComposition.reduce((s, i) => s + (i.cost * i.quantity), 0) + Number(settings.deliveryCost || 0) + Number(formData.extra_delivery_cost || 0)
+        ? siteComposition.reduce((s, i) => s + (Number(i.cost || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0) + Number(formData.extra_delivery_cost || 0)
         : (selectedProduct ? calculateCostPrice(selectedProduct.composition, formData.extra_delivery_cost) : Number(formData.extra_delivery_cost || 0))
     const calculatedSalePrice = siteComposition.length > 0
-        ? (() => {
-            const base = siteComposition.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
-            const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
-            return withMarkup + Number(formData.extra_delivery_cost || 0)
-        })()
+        ? calculateSiteCompositionPrice(siteComposition)
         : ((selectedProduct?.price || 0) + Number(formData.extra_delivery_cost || 0))
     const salePrice = Number(formData.sale_price) || calculatedSalePrice
     const profit = salePrice - costPrice
@@ -390,12 +393,14 @@ export default function Sales() {
         setSiteComposition([])
         setSiteItemSearch('')
         setShowSiteItemDropdown(false)
+        setSiteSaleMode('catalog')
+        setSiteCustomName('')
         setIsModalOpen(true)
     }
 
     const handleEditClick = (sale) => {
         // Check if this is a custom/salon sale
-        if (sale.is_custom) {
+        if (sale.is_custom && sale.sales_channel === 'store') {
             // Open Salon Sale modal for editing
             setEditingSalonSaleId(sale.id)
             setSalonFormData({
@@ -440,6 +445,8 @@ export default function Sales() {
             })
             const prod = products.find(p => p.id === sale.product_id)
             setProductSearch(prod?.name || '')
+            setSiteSaleMode(sale.product_id ? 'catalog' : 'custom')
+            setSiteCustomName(sale.custom_name || '')
             if (sale.custom_composition && sale.custom_composition.length > 0) {
                 setSiteComposition(sale.custom_composition)
             } else if (prod) {
@@ -488,6 +495,8 @@ export default function Sales() {
             sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0))
         })
         setProductSearch(product.name)
+        setSiteSaleMode('catalog')
+        setSiteCustomName('')
     }
 
     const handleAddCourier = async () => {
@@ -509,8 +518,14 @@ export default function Sales() {
     }
 
     const handleSaveSale = async () => {
-        if (!formData.product_id) {
+        const isCustomSiteSale = siteSaleMode === 'custom'
+
+        if (!isCustomSiteSale && !formData.product_id) {
             alert('Выберите букет')
+            return
+        }
+        if (isCustomSiteSale && !siteCustomName.trim()) {
+            alert('Введите название индивидуального букета')
             return
         }
         if (siteComposition.length === 0) {
@@ -522,6 +537,9 @@ export default function Sales() {
         const salePrice = Number(formData.sale_price) || calculatedSalePrice
         const payload = {
             ...formData,
+            product_id: isCustomSiteSale ? '' : formData.product_id,
+            is_custom: isCustomSiteSale,
+            custom_name: isCustomSiteSale ? siteCustomName.trim() : undefined,
             sale_price: salePrice,
             cost_price: costPrice,
             profit: salePrice - costPrice,
@@ -550,6 +568,8 @@ export default function Sales() {
             setIsModalOpen(false)
             setSiteComposition([])
             setSiteItemSearch('')
+            setSiteSaleMode('catalog')
+            setSiteCustomName('')
         } else {
             alert('Ошибка: ' + (result.error?.message || ''))
         }
@@ -1202,7 +1222,7 @@ export default function Sales() {
             </div>}
 
             {/* Add/Edit Sale Modal */}
-            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSiteComposition([]); setSiteItemSearch(''); setShowSiteItemDropdown(false) }} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px" closeOnOverlayClick={false}>
+            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setSiteComposition([]); setSiteItemSearch(''); setShowSiteItemDropdown(false); setSiteSaleMode('catalog'); setSiteCustomName('') }} title={modalMode === 'add' ? 'Новая продажа' : 'Редактировать'} maxWidth="900px" closeOnOverlayClick={false}>
                 <div
                     ref={siteSaleFormRef}
                     style={{
@@ -1223,35 +1243,77 @@ export default function Sales() {
                         <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
                             🌸 Букет и Стоимость
                         </h4>
+                        <div style={{ display: 'inline-flex', padding: '0.25rem', background: '#eef2f7', borderRadius: '999px', marginBottom: '1rem', gap: '0.25rem' }}>
+                            {[
+                                { id: 'catalog', label: 'Готовый букет' },
+                                { id: 'custom', label: 'Собрать вручную' }
+                            ].map(mode => (
+                                <button
+                                    key={mode.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setSiteSaleMode(mode.id)
+                                        setFormData({ ...formData, product_id: mode.id === 'custom' ? '' : formData.product_id, sale_price: mode.id === 'custom' ? '' : formData.sale_price })
+                                        setProductSearch(mode.id === 'custom' ? '' : productSearch)
+                                        setSiteComposition(mode.id === 'custom' ? [] : siteComposition)
+                                    }}
+                                    style={{
+                                        padding: isMobile ? '0.55rem 0.8rem' : '0.55rem 1rem',
+                                        borderRadius: '999px',
+                                        background: siteSaleMode === mode.id ? '#111827' : 'transparent',
+                                        color: siteSaleMode === mode.id ? 'white' : '#4b5563',
+                                        fontWeight: 800,
+                                        fontSize: isMobile ? '0.82rem' : '0.9rem',
+                                        boxShadow: siteSaleMode === mode.id ? '0 8px 18px rgba(17, 24, 39, 0.18)' : 'none'
+                                    }}
+                                >
+                                    {mode.label}
+                                </button>
+                            ))}
+                        </div>
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: '1rem', alignItems: 'start' }}>
                             {/* Product Search */}
                             <div style={{ position: 'relative' }}>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Букет</label>
-                                <input
-                                    className="input"
-                                    placeholder="Поиск по названию или артикулу..."
-                                    value={productSearch}
-                                    onChange={(e) => { setProductSearch(e.target.value); setFormData({ ...formData, product_id: '' }); setSiteComposition([]) }}
-                                    style={{ width: '100%' }}
-                                />
-                                {productSearch && !formData.product_id && (
-                                    <div style={{
-                                        position: 'absolute', top: '100%', left: 0, right: 0,
-                                        background: 'white', border: '1px solid var(--border)', borderRadius: '12px',
-                                        boxShadow: '0 8px 25px rgba(0,0,0,0.1)', zIndex: 10, maxHeight: '200px', overflowY: 'auto'
-                                    }}>
-                                        {filteredProducts.map(p => (
-                                            <div key={p.id} onClick={() => handleSelectProduct(p)} style={{ padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>{p.name}</span>
-                                                <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{p.price} lei</span>
+                                {siteSaleMode === 'catalog' ? (
+                                    <>
+                                        <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Букет</label>
+                                        <input
+                                            className="input"
+                                            placeholder="Поиск по названию или артикулу..."
+                                            value={productSearch}
+                                            onChange={(e) => { setProductSearch(e.target.value); setFormData({ ...formData, product_id: '' }); setSiteComposition([]) }}
+                                            style={{ width: '100%' }}
+                                        />
+                                        {productSearch && !formData.product_id && (
+                                            <div style={{
+                                                position: 'absolute', top: '100%', left: 0, right: 0,
+                                                background: 'white', border: '1px solid var(--border)', borderRadius: '12px',
+                                                boxShadow: '0 8px 25px rgba(0,0,0,0.1)', zIndex: 10, maxHeight: '200px', overflowY: 'auto'
+                                            }}>
+                                                {filteredProducts.map(p => (
+                                                    <div key={p.id} onClick={() => handleSelectProduct(p)} style={{ padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span>{p.name}</span>
+                                                        <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{p.price} lei</span>
+                                                    </div>
+                                                ))}
+                                                {filteredProducts.length === 0 && <div style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'center' }}>Не найдено</div>}
                                             </div>
-                                        ))}
-                                        {filteredProducts.length === 0 && <div style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'center' }}>Не найдено</div>}
-                                    </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Название индивидуального букета</label>
+                                        <input
+                                            className="input"
+                                            placeholder="Например: Instagram mix, Нежный сборный..."
+                                            value={siteCustomName}
+                                            onChange={(e) => setSiteCustomName(e.target.value)}
+                                            style={{ width: '100%' }}
+                                        />
+                                    </>
                                 )}
-                                {selectedProduct && (
+                                {(selectedProduct || siteSaleMode === 'custom') && siteComposition.length > 0 && (
                                     <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.8rem' }}>
-                                        <span style={{ color: '#6b7280' }}>Себест: <b>{costPrice} L</b></span>
                                         <span style={{ color: '#6b7280' }}>Себест: <b>{costPrice} L</b></span>
                                         <span style={{ color: '#10b981' }}>Прибыль: <b>{Number(formData.sale_price || 0) - costPrice} L</b></span>
                                     </div>
@@ -1273,9 +1335,9 @@ export default function Sales() {
                         </div>
 
                         {/* Состав букета (редактируемый) */}
-                        {selectedProduct && (
+                        {(selectedProduct || siteSaleMode === 'custom') && (
                             <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
-                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#6b7280', marginBottom: '0.5rem' }}>Состав (можно изменить)</div>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#6b7280', marginBottom: '0.5rem' }}>{siteSaleMode === 'custom' ? 'Состав букета' : 'Состав (можно изменить)'}</div>
                                 {siteComposition.length > 0 ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
                                         {siteComposition.map((item, idx) => (
@@ -1582,7 +1644,7 @@ export default function Sales() {
                         </button>
                         <button
                             className="btn btn-primary"
-                            disabled={loading || !formData.product_id || (selectedProduct && siteComposition.length === 0)}
+                            disabled={loading || (siteSaleMode === 'catalog' && !formData.product_id) || (siteSaleMode === 'custom' && !siteCustomName.trim()) || siteComposition.length === 0}
                             onClick={handleSaveSale}
                             style={{ flex: 2, justifyContent: 'center', padding: '1rem', fontSize: '1.1rem' }}
                         >
@@ -2213,9 +2275,39 @@ export default function Sales() {
                                                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontWeight: 700 }}
                                             >+</button>
                                         </div>
-                                        <span style={{ minWidth: '80px', textAlign: 'right', fontWeight: 600, color: '#7c3aed' }}>
-                                            {(item.price * item.quantity).toFixed(0)} lei
-                                        </span>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '92px 88px', gap: '0.5rem', alignItems: 'center' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: '#9ca3af', marginBottom: '0.2rem' }}>Цена/шт</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    className="no-spinners"
+                                                    value={item.price}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value
+                                                        const newComp = [...salonFormData.composition]
+                                                        newComp[idx].price = val === '' ? '' : Math.max(0, Number(val))
+                                                        setSalonFormData({ ...salonFormData, composition: newComp })
+                                                    }}
+                                                    style={{
+                                                        width: '100%',
+                                                        height: '36px',
+                                                        textAlign: 'center',
+                                                        fontWeight: 800,
+                                                        border: '2px solid #e9d5ff',
+                                                        borderRadius: '10px',
+                                                        color: '#7c3aed',
+                                                        outline: 'none',
+                                                        background: '#faf5ff'
+                                                    }}
+                                                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
+                                                    onBlur={(e) => e.target.style.borderColor = '#e9d5ff'}
+                                                />
+                                            </div>
+                                            <div style={{ minWidth: '80px', textAlign: isMobile ? 'left' : 'right', fontWeight: 800, color: '#7c3aed' }}>
+                                                {(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(0)} lei
+                                            </div>
+                                        </div>
                                         <button
                                             onClick={() => {
                                                 const newComp = salonFormData.composition.filter((_, i) => i !== idx)
@@ -2333,8 +2425,8 @@ export default function Sales() {
 
                         {/* Price Summary */}
                         {salonFormData.composition.length > 0 && (() => {
-                            const costPrice = salonFormData.composition.reduce((sum, item) => sum + (item.cost * item.quantity), 0)
-                            const salePrice = salonFormData.composition.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+                            const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0)
+                            const salePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
                             const margin = salePrice - costPrice
                             const marginPercent = costPrice > 0 ? ((margin / costPrice) * 100).toFixed(0) : 0
                             return (
@@ -2521,8 +2613,8 @@ export default function Sales() {
                             onClick={async () => {
                                 setLoading(true)
                                 try {
-                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (item.cost * item.quantity), 0)
-                                    const salePrice = salonFormData.composition.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0)
+                                    const salePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
 
                                     // Create/Update sale record
                                     const saleData = {
