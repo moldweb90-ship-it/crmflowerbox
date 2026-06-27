@@ -23,6 +23,8 @@ create index if not exists claims_created_at_idx on public.claims(created_at des
 
 alter table public.claims enable row level security;
 
+grant select, insert, update, delete on public.claims to anon;
+
 do $$
 begin
     if not exists (
@@ -37,3 +39,5 @@ begin
             with check (true);
     end if;
 end $$;
+
+notify pgrst, 'reload schema';
