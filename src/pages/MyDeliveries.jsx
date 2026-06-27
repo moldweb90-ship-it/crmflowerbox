@@ -26,11 +26,31 @@ const STATUS_META = {
     returned: { label: 'Возврат', color: '#7c3aed', bg: '#ede9fe' }
 }
 
-const DONE_STATUSES = ['delivered', 'cancelled', 'returned', 'postponed']
+const DONE_STATUSES = ['delivered', 'cancelled', 'returned']
 const COURIER_STATUS_ACTIONS = [
     ['postponed', 'Перенесен'],
     ['returned', 'Возврат'],
     ['cancelled', 'Отменен']
+]
+
+const ALL_STATUS_FILTERS = [
+    ['all', 'Все статусы'],
+    ['active', 'В работе'],
+    ['not_delivered', 'Ждет доставки'],
+    ['delivering', 'В пути'],
+    ['postponed', 'Перенесен'],
+    ['delivered', 'Доставлен'],
+    ['returned', 'Возврат'],
+    ['cancelled', 'Отменен']
+]
+
+const DATE_PRESETS = [
+    ['all', 'Все даты'],
+    ['today', 'Сегодня'],
+    ['tomorrow', 'Завтра'],
+    ['week', '7 дней'],
+    ['month', '30 дней'],
+    ['custom', 'Диапазон']
 ]
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase()
@@ -101,6 +121,12 @@ export default function MyDeliveries() {
     const [savingId, setSavingId] = useState(null)
     const [refreshing, setRefreshing] = useState(false)
     const [lastSync, setLastSync] = useState(null)
+    const [postponeSale, setPostponeSale] = useState(null)
+    const [postponeDate, setPostponeDate] = useState('')
+    const [allStatusFilter, setAllStatusFilter] = useState('all')
+    const [datePreset, setDatePreset] = useState('week')
+    const [dateFrom, setDateFrom] = useState('')
+    const [dateTo, setDateTo] = useState('')
 
     const myCourier = useMemo(() => {
         const email = normalizeEmail(user?.email)
@@ -148,20 +174,45 @@ export default function MyDeliveries() {
             if (filter === 'tomorrow') return key === tomorrowKey && isActiveDelivery(sale)
             if (filter === 'active') return isActiveDelivery(sale)
             if (filter === 'done') return !isActiveDelivery(sale)
+            if (filter === 'all') {
+                if (allStatusFilter === 'active' && !isActiveDelivery(sale)) return false
+                if (allStatusFilter !== 'all' && allStatusFilter !== 'active' && sale.delivery_status !== allStatusFilter) return false
+                if (datePreset !== 'all') {
+                    const saleTime = new Date(deliveryDate(sale) || 0).getTime()
+                    const start = new Date()
+                    start.setHours(0, 0, 0, 0)
+                    const end = new Date(start)
+                    if (datePreset === 'today') end.setDate(end.getDate() + 1)
+                    if (datePreset === 'tomorrow') {
+                        start.setDate(start.getDate() + 1)
+                        end.setDate(end.getDate() + 2)
+                    }
+                    if (datePreset === 'week') end.setDate(end.getDate() + 7)
+                    if (datePreset === 'month') end.setDate(end.getDate() + 30)
+                    if (datePreset === 'custom') {
+                        const from = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null
+                        const to = dateTo ? new Date(`${dateTo}T23:59:59`).getTime() : null
+                        if (from && saleTime < from) return false
+                        if (to && saleTime > to) return false
+                        return true
+                    }
+                    return saleTime >= start.getTime() && saleTime < end.getTime()
+                }
+            }
             return true
         })
         if (filter === 'done') {
             return [...filtered].sort((a, b) => new Date(deliveryDate(b) || 0) - new Date(deliveryDate(a) || 0))
         }
         return [...filtered].sort(sortByRoutePriority)
-    }, [filter, mySales, todayKey, tomorrowKey])
+    }, [filter, mySales, todayKey, tomorrowKey, allStatusFilter, datePreset, dateFrom, dateTo])
 
     const nextDelivery = useMemo(() => visibleSales.find(isActiveDelivery), [visibleSales])
 
-    const setDeliveryStatus = async (sale, status) => {
+    const setDeliveryStatus = async (sale, status, extraUpdates = {}) => {
         setSavingId(sale.id)
         try {
-            const result = await updateSale(sale.id, { delivery_status: status })
+            const result = await updateSale(sale.id, { delivery_status: status, ...extraUpdates })
             if (!result.success) throw result.error
             await refreshNow(true)
         } catch (error) {
@@ -169,6 +220,18 @@ export default function MyDeliveries() {
         } finally {
             setSavingId(null)
         }
+    }
+
+    const openPostpone = (sale) => {
+        setPostponeSale(sale)
+        setPostponeDate(deliveryDate(sale) ? new Date(deliveryDate(sale)).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16))
+    }
+
+    const savePostpone = async () => {
+        if (!postponeSale || !postponeDate) return
+        await setDeliveryStatus(postponeSale, 'postponed', { delivery_date: new Date(postponeDate).toISOString() })
+        setPostponeSale(null)
+        setPostponeDate('')
     }
 
     const copyAddress = async (address) => {
@@ -235,6 +298,23 @@ export default function MyDeliveries() {
                         <button key={id} onClick={() => setFilter(id)} style={{ border: 0, borderRadius: 14, padding: '0.62rem 0.24rem', fontWeight: 900, background: filter === id ? '#111827' : 'transparent', color: filter === id ? 'white' : '#475569', cursor: 'pointer', fontSize: '0.78rem' }}>{label}</button>
                     ))}
                 </div>
+
+                {filter === 'all' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.65rem', padding: '0.6rem', borderRadius: 18, background: 'rgba(255,255,255,0.82)', border: '1px solid rgba(226,232,240,0.9)', boxShadow: '0 10px 24px rgba(15,23,42,0.05)' }}>
+                        <select className="input" value={allStatusFilter} onChange={e => setAllStatusFilter(e.target.value)} style={{ minHeight: 42, borderRadius: 14, fontWeight: 800 }}>
+                            {ALL_STATUS_FILTERS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                        </select>
+                        <select className="input" value={datePreset} onChange={e => setDatePreset(e.target.value)} style={{ minHeight: 42, borderRadius: 14, fontWeight: 800 }}>
+                            {DATE_PRESETS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                        </select>
+                        {datePreset === 'custom' && (
+                            <>
+                                <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ minHeight: 42, borderRadius: 14, fontWeight: 800 }} />
+                                <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ minHeight: 42, borderRadius: 14, fontWeight: 800 }} />
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
 
             {nextDelivery && (
@@ -352,7 +432,8 @@ export default function MyDeliveries() {
                                             value=""
                                             disabled={isSaving}
                                             onChange={(e) => {
-                                                if (e.target.value) setDeliveryStatus(sale, e.target.value)
+                                                if (e.target.value === 'postponed') openPostpone(sale)
+                                                else if (e.target.value) setDeliveryStatus(sale, e.target.value)
                                             }}
                                             style={{ gridColumn: '1 / -1', minHeight: 48, borderRadius: 16, fontWeight: 850, color: '#475569', background: '#f8fafc' }}
                                         >
@@ -364,6 +445,32 @@ export default function MyDeliveries() {
                             </article>
                         )
                     })}
+                </div>
+            )}
+
+            {postponeSale && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'rgba(15,23,42,0.34)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ width: 'min(100%, 460px)', background: 'white', borderRadius: 28, padding: '1rem', boxShadow: '0 24px 70px rgba(15,23,42,0.25)', border: '1px solid rgba(255,255,255,0.75)' }}>
+                        <div style={{ width: 44, height: 5, borderRadius: 999, background: '#dbe3ea', margin: '0 auto 1rem' }} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                            <div>
+                                <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 900, textTransform: 'uppercase' }}>Перенос доставки</div>
+                                <h3 style={{ margin: '0.2rem 0 0', fontSize: '1.25rem' }}>{getSaleTitle(postponeSale)}</h3>
+                            </div>
+                            <span style={{ borderRadius: 999, padding: '0.35rem 0.65rem', background: '#fef3c7', color: '#d97706', fontWeight: 900, fontSize: '0.78rem' }}>Перенос</span>
+                        </div>
+                        <label style={{ display: 'block', fontWeight: 900, color: '#334155', marginBottom: '0.4rem' }}>Новая дата и время</label>
+                        <input className="input" type="datetime-local" value={postponeDate} onChange={e => setPostponeDate(e.target.value)} style={{ width: '100%', minHeight: 52, borderRadius: 18, fontWeight: 850, marginBottom: '0.85rem' }} />
+                        <div style={{ background: '#f8fafc', color: '#64748b', borderRadius: 16, padding: '0.75rem', fontWeight: 750, marginBottom: '1rem', lineHeight: 1.35 }}>
+                            После сохранения новое время сразу обновится в общем списке заказов и у курьера в маршруте.
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: '0.65rem' }}>
+                            <button onClick={() => { setPostponeSale(null); setPostponeDate('') }} style={{ minHeight: 54, border: 0, borderRadius: 18, background: '#f1f5f9', color: '#334155', fontWeight: 950 }}>Отмена</button>
+                            <button onClick={savePostpone} disabled={!postponeDate || savingId === postponeSale.id} style={{ minHeight: 54, border: 0, borderRadius: 18, background: '#f59e0b', color: 'white', fontWeight: 950, boxShadow: '0 14px 28px rgba(245,158,11,0.22)' }}>
+                                {savingId === postponeSale.id ? 'Сохраняю...' : 'Перенести'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
