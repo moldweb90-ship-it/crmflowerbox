@@ -77,25 +77,22 @@ export default function Analytics() {
         const { filteredSales, filteredExpenses, filteredWaste } = filteredData
 
         // 1. Revenue
-        const revenue = filteredSales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
+        const grossRevenue = filteredSales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
 
         // 2. COGS (Cost of Goods Sold)
         const cogs = filteredSales.reduce((sum, s) => sum + (Number(s.cost_price) || 0), 0)
-
-        // 3. Gross Profit
-        const grossProfit = revenue - cogs
 
         // 4. Deductions
         // 4a. Write-offs (Waste)
         // 4b. OpEx
         const opex = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
 
-        return { revenue, cogs, grossProfit, opex, wasteTransactions: filteredWaste }
+        return { grossRevenue, cogs, opex, wasteTransactions: filteredWaste }
     }, [filteredData])
 
     // Final P&L with Waste Cost
     const finalPnl = useMemo(() => {
-        const { revenue, cogs, grossProfit, opex, wasteTransactions } = pnlStats
+        const { grossRevenue, cogs, opex, wasteTransactions } = pnlStats
         const { filteredClaims } = filteredData
 
         const wasteCost = wasteTransactions.reduce((sum, tx) => {
@@ -116,9 +113,18 @@ export default function Analytics() {
         const claimLoss = filteredClaims.reduce((sum, claim) => sum + Number(claim.loss_amount || 0), 0)
         const refundLoss = filteredClaims.reduce((sum, claim) => sum + Number(claim.refund_amount || 0), 0)
         const compensationLoss = filteredClaims.reduce((sum, claim) => sum + Number(claim.compensation_cost || 0), 0)
-        const netProfit = grossProfit - wasteCost - opex - claimLoss
+        const manualClaimLoss = filteredClaims.reduce((sum, claim) => {
+            const loss = Number(claim.loss_amount || 0)
+            const refund = Number(claim.refund_amount || 0)
+            const compensation = Number(claim.compensation_cost || 0)
+            return sum + Math.max(0, loss - refund - compensation)
+        }, 0)
+        const revenue = grossRevenue - refundLoss
+        const grossProfit = revenue - cogs
+        const netProfit = grossProfit - wasteCost - opex - compensationLoss - manualClaimLoss
 
         return {
+            grossRevenue,
             revenue,
             cogs,
             grossProfit,
@@ -126,6 +132,7 @@ export default function Analytics() {
             claimLoss,
             refundLoss,
             compensationLoss,
+            manualClaimLoss,
             claimsCount: filteredClaims.length,
             opex,
             netProfit,
@@ -136,8 +143,15 @@ export default function Analytics() {
 
     // ABC Analysis
     const abcAnalysis = useMemo(() => {
-        const { filteredSales } = filteredData
+        const { filteredSales, filteredClaims } = filteredData
         const productStats = {}
+        const claimsBySale = {}
+        filteredClaims.forEach(claim => {
+            if (!claim.sale_id) return
+            if (!claimsBySale[claim.sale_id]) claimsBySale[claim.sale_id] = { refund: 0, loss: 0 }
+            claimsBySale[claim.sale_id].refund += Number(claim.refund_amount || 0)
+            claimsBySale[claim.sale_id].loss += Number(claim.loss_amount || 0)
+        })
 
         filteredSales.forEach(s => {
             // Group by product name OR custom name
@@ -153,9 +167,10 @@ export default function Analytics() {
             const price = Number(s.sale_price) || 0
             const cost = Number(s.cost_price) || 0
             const profit = (s.profit !== undefined && s.profit !== null) ? Number(s.profit) : (price - cost)
+            const saleClaims = claimsBySale[s.id] || { refund: 0, loss: 0 }
 
-            productStats[name].revenue += price
-            productStats[name].margin += profit
+            productStats[name].revenue += price - saleClaims.refund
+            productStats[name].margin += profit - saleClaims.loss
             productStats[name].count += 1
         })
 
@@ -243,7 +258,19 @@ export default function Analytics() {
                     {/* Revenue */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '1.1rem' }}>
                         <span style={{ color: '#4b5563' }}>Выручка</span>
-                        <span style={{ fontWeight: 700 }}>{formatMoney(finalPnl.revenue)}</span>
+                        <span style={{ fontWeight: 700 }}>{formatMoney(finalPnl.grossRevenue)}</span>
+                    </div>
+
+                    {finalPnl.refundLoss > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.95rem', color: '#dc2626' }}>
+                            <span>− Возвраты клиентам</span>
+                            <span style={{ fontWeight: 700 }}>{formatMoney(finalPnl.refundLoss)}</span>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', padding: '0.55rem 0.75rem', background: '#f8fafc', borderRadius: '10px', fontSize: '0.98rem' }}>
+                        <span style={{ color: '#334155', fontWeight: 800 }}>Выручка нетто</span>
+                        <span style={{ fontWeight: 900 }}>{formatMoney(finalPnl.revenue)}</span>
                     </div>
 
                     {/* COGS */}

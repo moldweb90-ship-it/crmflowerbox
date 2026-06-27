@@ -81,6 +81,8 @@ const localDateTimeInputToIso = (value) => {
     return date.toISOString()
 }
 
+const formatSignedLei = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${Number(value || 0).toLocaleString('ru-RU')} lei`
+
 export default function Sales() {
     const {
         sales, addSale, updateSale, deleteSale,
@@ -88,8 +90,8 @@ export default function Sales() {
         expenses, addExpense,
         calculateCostPrice,
         flowers, goods, settings,
-        showcaseBouquets, markShowcaseBouquetSold
-        , getSaleClaims
+        showcaseBouquets, markShowcaseBouquetSold,
+        claims, getSaleClaims
     } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
@@ -319,25 +321,68 @@ export default function Sales() {
         return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]))
     }, [filteredSales])
 
-    const periodTotal = filteredSales.reduce((a, s) => a + Number(s.sale_price || 0), 0)
-    const periodProfit = filteredSales.reduce((a, s) => a + Number(s.profit || 0), 0)
+    const filteredClaims = useMemo(() => {
+        return (claims || []).filter(claim => {
+            const claimDate = toLocalDateKey(claim.created_at)
+            if (!dateFilter.start && !dateFilter.end) return true
+            if (dateFilter.start && claimDate < dateFilter.start) return false
+            if (dateFilter.end && claimDate > dateFilter.end) return false
+            return true
+        })
+    }, [claims, dateFilter])
+
+    const claimAdjustments = useMemo(() => {
+        const bySale = {}
+        const totals = { refund: 0, loss: 0, storeRefund: 0, storeLoss: 0, onlineRefund: 0, onlineLoss: 0 }
+        filteredClaims.forEach(claim => {
+            const sale = sales.find(s => s.id === claim.sale_id)
+            const refund = Number(claim.refund_amount || 0)
+            const loss = Number(claim.loss_amount || 0)
+            if (claim.sale_id) {
+                if (!bySale[claim.sale_id]) bySale[claim.sale_id] = { refund: 0, loss: 0 }
+                bySale[claim.sale_id].refund += refund
+                bySale[claim.sale_id].loss += loss
+            }
+            totals.refund += refund
+            totals.loss += loss
+            if (sale?.sales_channel === 'store') {
+                totals.storeRefund += refund
+                totals.storeLoss += loss
+            } else {
+                totals.onlineRefund += refund
+                totals.onlineLoss += loss
+            }
+        })
+        return { bySale, totals }
+    }, [filteredClaims, sales])
+
+    const periodGrossTotal = filteredSales.reduce((a, s) => a + Number(s.sale_price || 0), 0)
+    const periodGrossProfit = filteredSales.reduce((a, s) => a + Number(s.profit || 0), 0)
+    const periodTotal = periodGrossTotal - claimAdjustments.totals.refund
+    const periodProfit = periodGrossProfit - claimAdjustments.totals.loss
 
     // Split Sales (Salon vs Site)
     const salonSales = filteredSales.filter(s => s.sales_channel === 'store')
     const siteSales = filteredSales.filter(s => s.sales_channel !== 'store')
 
-    const salonTotal = salonSales.reduce((a, s) => a + Number(s.sale_price || 0), 0)
-    const salonProfit = salonSales.reduce((a, s) => a + Number(s.profit || 0), 0)
+    const salonTotal = salonSales.reduce((a, s) => a + Number(s.sale_price || 0), 0) - claimAdjustments.totals.storeRefund
+    const salonProfit = salonSales.reduce((a, s) => a + Number(s.profit || 0), 0) - claimAdjustments.totals.storeLoss
 
-    const siteTotal = siteSales.reduce((a, s) => a + Number(s.sale_price || 0), 0)
-    const siteProfit = siteSales.reduce((a, s) => a + Number(s.profit || 0), 0)
+    const siteTotal = siteSales.reduce((a, s) => a + Number(s.sale_price || 0), 0) - claimAdjustments.totals.onlineRefund
+    const siteProfit = siteSales.reduce((a, s) => a + Number(s.profit || 0), 0) - claimAdjustments.totals.onlineLoss
 
     // Cashbox Balance Calculation
     const cashBalance = useMemo(() => {
-        // Cash Sales (Store + Cash payment)
+        // Cash Sales (all channels + cash payment + actually paid)
         const cashSales = sales
-            .filter(s => s.sales_channel === 'store' && s.payment_method === 'cash')
+            .filter(s => s.payment_method === 'cash' && (s.payment_status === 'paid' || s.status === 'completed'))
             .reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
+        const cashRefunds = (claims || [])
+            .filter(claim => {
+                const sale = sales.find(s => s.id === claim.sale_id)
+                return sale?.payment_method === 'cash'
+            })
+            .reduce((sum, claim) => sum + Number(claim.refund_amount || 0), 0)
 
         // Cash Expenses (Source = cash_box)
         const cashExpenses = expenses
@@ -349,8 +394,8 @@ export default function Sales() {
             .filter(e => e.payment_method === 'cash_box' && e.category === 'deposit')
             .reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
-        return cashSales + cashDeposits - cashExpenses
-    }, [sales, expenses])
+        return cashSales + cashDeposits - cashExpenses - cashRefunds
+    }, [sales, expenses, claims])
 
     const handleQuickExpense = async () => {
         if (!expenseData.amount) return
@@ -808,7 +853,7 @@ export default function Sales() {
                 }}>
                     <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи (Всего)</div>
                     <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-                        +{periodTotal.toLocaleString('ru-RU')} lei
+                        {formatSignedLei(periodTotal)}
                     </div>
                     <div style={{ fontSize: '0.9rem', opacity: 0.9, marginTop: '0.5rem' }}>{filteredSales.length} заказов</div>
                     {showProfit && (
@@ -829,7 +874,7 @@ export default function Sales() {
                 }}>
                     <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Онлайн-заказы</div>
                     <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-                        +{siteTotal.toLocaleString('ru-RU')} lei
+                        {formatSignedLei(siteTotal)}
                     </div>
                 </div>
 
@@ -843,7 +888,7 @@ export default function Sales() {
                 }}>
                     <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи в салоне</div>
                     <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-                        +{salonTotal.toLocaleString('ru-RU')} lei
+                        {formatSignedLei(salonTotal)}
                     </div>
                 </div>
 

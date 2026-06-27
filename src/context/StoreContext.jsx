@@ -1107,12 +1107,18 @@ export function StoreProvider({ children }) {
 
     const getCashBalance = () => {
         const cashSales = sales
-            .filter(s => s.sales_channel === 'store' && s.payment_method === 'cash')
+            .filter(s => s.payment_method === 'cash' && (s.payment_status === 'paid' || s.status === 'completed'))
             .reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
+        const cashRefunds = claims
+            .filter(claim => {
+                const sale = sales.find(s => s.id === claim.sale_id)
+                return sale?.payment_method === 'cash'
+            })
+            .reduce((sum, claim) => sum + Number(claim.refund_amount || 0), 0)
         const cashExpenses = expenses
             .filter(e => e.payment_method === 'cash_box')
             .reduce((sum, e) => sum + Number(e.amount || 0), 0)
-        return cashSales - cashExpenses
+        return cashSales - cashExpenses - cashRefunds
     }
 
     const uploadEmployeePhoto = async (file, employeeId = 'temp') => {

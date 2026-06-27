@@ -11,6 +11,19 @@ const STALE_DAYS = 7
 const SHIFT_START_H = 9
 const SHIFT_END_H = 21
 
+function toLocalDateKey(date = new Date()) {
+    const d = date instanceof Date ? date : new Date(date)
+    if (Number.isNaN(d.getTime())) return ''
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function isSameLocalDay(value, dateKey) {
+    if (!value || !dateKey) return false
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) return toLocalDateKey(parsed) === dateKey
+    return String(value).startsWith(dateKey)
+}
+
 // FIFO: по транзакциям поставок и продаж/брака вычисляет остатки по «партиям» (дата поставки)
 function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies) {
     const suppliesList = stockTransactions
@@ -45,7 +58,7 @@ function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies
 
 export default function Dashboard() {
     const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, customers, getItemName,
-        employees, shifts, startShift, endShift, getActiveShifts, getCashBalance } = useStore()
+        employees, shifts, startShift, endShift, getActiveShifts, getCashBalance, claims } = useStore()
     const navigate = useNavigate()
 
     // Waste Analytics — один период 30 дней для списаний и выручки
@@ -165,20 +178,24 @@ export default function Dashboard() {
     // 1. Money Today
     const moneyStats = React.useMemo(() => {
         const now = new Date()
-        const todayStr = now.toISOString().split('T')[0]
+        const todayStr = toLocalDateKey(now)
         const yesterday = new Date(now)
         yesterday.setDate(now.getDate() - 1)
-        const yesterdayStr = yesterday.toISOString().split('T')[0]
+        const yesterdayStr = toLocalDateKey(yesterday)
 
         // Filter sales for today
-        const todaySales = sales.filter(s => s.order_date?.startsWith(todayStr))
-        const yesterdaySales = sales.filter(s => s.order_date?.startsWith(yesterdayStr))
+        const todaySales = sales.filter(s => isSameLocalDay(s.order_date, todayStr))
+        const yesterdaySales = sales.filter(s => isSameLocalDay(s.order_date, yesterdayStr))
+        const todayClaims = (claims || []).filter(c => isSameLocalDay(c.created_at, todayStr))
+        const salesById = new Map(sales.map(s => [s.id, s]))
 
-        const revenueToday = todaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
+        const grossRevenueToday = todaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
         const revenueYesterday = yesterdaySales.reduce((sum, s) => sum + (Number(s.sale_price) || 0), 0)
+        const refundsToday = todayClaims.reduce((sum, c) => sum + (Number(c.refund_amount) || 0), 0)
+        const claimLossToday = todayClaims.reduce((sum, c) => sum + (Number(c.loss_amount) || 0), 0)
 
         // Calculate actual profit (Gross Margin) strictly from data
-        let profitToday = 0
+        let grossProfitToday = 0
         todaySales.forEach(s => {
             const price = Number(s.sale_price) || 0
             const cost = Number(s.cost_price) || 0
@@ -186,19 +203,23 @@ export default function Dashboard() {
             // Priority: 'profit' field -> (price - cost)
             // We do NOT use estimates/percentages anymore.
             if (s.profit !== undefined && s.profit !== null) {
-                profitToday += Number(s.profit)
+                grossProfitToday += Number(s.profit)
             } else {
-                profitToday += (price - cost)
+                grossProfitToday += (price - cost)
             }
         })
 
         const countToday = todaySales.length
+        const revenueToday = grossRevenueToday - refundsToday
+        const profitToday = grossProfitToday - claimLossToday
         const avgCheck = countToday > 0 ? Math.round(revenueToday / countToday) : 0
 
         // Breakdown: Cash, Card, Debt/In-Transit
         let cash = 0
         let card = 0
         let debt = 0 // In transit or unpaid
+        let cashRefunds = 0
+        let cardRefunds = 0
 
         todaySales.forEach(s => {
             const price = Number(s.sale_price) || 0
@@ -224,9 +245,24 @@ export default function Dashboard() {
             }
         })
 
+        todayClaims.forEach(claim => {
+            const refund = Number(claim.refund_amount) || 0
+            if (!refund) return
+            const sale = salesById.get(claim.sale_id)
+            const pMethod = (sale?.payment_method || '').toLowerCase()
+            if (pMethod.includes('cash') || pMethod.includes('nal')) {
+                cashRefunds += refund
+            } else {
+                cardRefunds += refund
+            }
+        })
+
+        cash -= cashRefunds
+        card -= cardRefunds
+
         const marginPct = revenueToday > 0 ? (profitToday / revenueToday) * 100 : 0
-        return { revenueToday, revenueYesterday, profitToday, avgCheck, cash, card, debt, marginPct }
-    }, [sales])
+        return { revenueToday, grossRevenueToday, revenueYesterday, profitToday, grossProfitToday, refundsToday, claimLossToday, avgCheck, cash, card, debt, marginPct }
+    }, [sales, claims])
 
     // 2. Recent Orders & Problem Orders
     const { recentOrders, problemOrders } = React.useMemo(() => {
@@ -841,6 +877,13 @@ export default function Dashboard() {
                                 </div>
                             </div>
                         </div>
+
+                        {moneyStats.refundsToday > 0 && (
+                            <div style={{ margin: '-0.35rem 0 0.85rem', display: 'flex', justifyContent: 'space-between', color: '#dc2626', fontSize: '0.78rem', fontWeight: 800, background: 'rgba(254,226,226,0.65)', padding: '6px 8px', borderRadius: '8px' }}>
+                                <span>↩ Возвраты сегодня</span>
+                                <span>-{moneyStats.refundsToday.toLocaleString()} lei</span>
+                            </div>
+                        )}
 
                         <div style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
