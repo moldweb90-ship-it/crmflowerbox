@@ -800,7 +800,7 @@ export default function Sales() {
                     borderRadius: '20px',
                     boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)'
                 }}>
-                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи (Сайт)</div>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Онлайн-заказы</div>
                     <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
                         +{siteTotal.toLocaleString('ru-RU')} lei
                     </div>
@@ -814,7 +814,7 @@ export default function Sales() {
                     borderRadius: '20px',
                     boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.4)'
                 }}>
-                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи (Салон)</div>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи в салоне</div>
                     <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
                         +{salonTotal.toLocaleString('ru-RU')} lei
                     </div>
@@ -1172,7 +1172,7 @@ export default function Sales() {
                         onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(0,0,0,0.15)' }}
                     >
                         <span style={{ fontSize: '1.25rem' }}>🌐</span>
-                        Продажа Сайт
+                        Онлайн-заказ
                     </button>
 
                     {/* Salon Sale Button */}
@@ -1198,7 +1198,7 @@ export default function Sales() {
                         onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(139, 92, 246, 0.4)' }}
                     >
                         <span style={{ fontSize: '1.25rem' }}>🏪</span>
-                        Продажа Салон
+                        Продажа в салоне
                     </button>
                 </div>
 
