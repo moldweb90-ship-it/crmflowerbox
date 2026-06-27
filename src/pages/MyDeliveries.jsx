@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
     AlertCircle,
+    CalendarDays,
     CheckCircle2,
     Clock3,
     Copy,
@@ -87,6 +88,15 @@ const mapUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${e
 const firstPhone = (sale) => sale.recipient_phone || sale.customer_phone || ''
 const deliveryDate = (sale) => sale.delivery_date || sale.order_date
 const isActiveDelivery = (sale) => !DONE_STATUSES.includes(sale.delivery_status)
+const isRouteDelivery = (sale) => sale.delivery_status === 'delivering'
+
+const formatDayLabel = (key) => {
+    if (!key || key === 'no-date') return 'Без даты'
+    if (key === addDaysKey(0)) return 'Сегодня'
+    if (key === addDaysKey(1)) return 'Завтра'
+    const [year, month, day] = key.split('-').map(Number)
+    return new Date(year, month - 1, day).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' })
+}
 
 function getSaleTitle(sale) {
     if (sale.custom_name) return sale.custom_name
@@ -161,7 +171,7 @@ export default function MyDeliveries() {
     const tomorrowKey = addDaysKey(1)
 
     const stats = useMemo(() => ({
-        active: mySales.filter(isActiveDelivery).length,
+        active: mySales.filter(isRouteDelivery).length,
         today: mySales.filter(sale => toDateKey(deliveryDate(sale)) === todayKey && isActiveDelivery(sale)).length,
         tomorrow: mySales.filter(sale => toDateKey(deliveryDate(sale)) === tomorrowKey && isActiveDelivery(sale)).length,
         done: mySales.filter(sale => !isActiveDelivery(sale)).length
@@ -172,7 +182,16 @@ export default function MyDeliveries() {
             const key = toDateKey(deliveryDate(sale))
             if (filter === 'today') return key === todayKey && isActiveDelivery(sale)
             if (filter === 'tomorrow') return key === tomorrowKey && isActiveDelivery(sale)
-            if (filter === 'active') return isActiveDelivery(sale)
+            if (filter === 'route') return isRouteDelivery(sale)
+            if (filter === 'calendar') {
+                if (!isActiveDelivery(sale)) return false
+                const saleTime = new Date(deliveryDate(sale) || 0).getTime()
+                const start = new Date()
+                start.setHours(0, 0, 0, 0)
+                const end = new Date(start)
+                end.setDate(end.getDate() + 30)
+                return saleTime >= start.getTime() && saleTime < end.getTime()
+            }
             if (filter === 'done') return !isActiveDelivery(sale)
             if (filter === 'all') {
                 if (allStatusFilter === 'active' && !isActiveDelivery(sale)) return false
@@ -208,6 +227,14 @@ export default function MyDeliveries() {
     }, [filter, mySales, todayKey, tomorrowKey, allStatusFilter, datePreset, dateFrom, dateTo])
 
     const nextDelivery = useMemo(() => visibleSales.find(isActiveDelivery), [visibleSales])
+    const calendarGroups = useMemo(() => {
+        return visibleSales.reduce((groups, sale) => {
+            const key = toDateKey(deliveryDate(sale)) || 'no-date'
+            if (!groups[key]) groups[key] = []
+            groups[key].push(sale)
+            return groups
+        }, {})
+    }, [visibleSales])
 
     const setDeliveryStatus = async (sale, status, extraUpdates = {}) => {
         setSavingId(sale.id)
@@ -277,7 +304,7 @@ export default function MyDeliveries() {
                     {[
                         ['Сегодня', stats.today, '#2563eb'],
                         ['Завтра', stats.tomorrow, '#7c3aed'],
-                        ['Активные', stats.active, '#f97316'],
+                        ['В пути', stats.active, '#f97316'],
                         ['Готово', stats.done, '#16a34a']
                     ].map(([label, value, color]) => (
                         <div key={label} style={{ background: 'rgba(255,255,255,0.84)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.8)', borderRadius: 18, padding: '0.72rem', boxShadow: '0 12px 30px rgba(15,23,42,0.07)' }}>
@@ -287,11 +314,12 @@ export default function MyDeliveries() {
                     ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.35rem', padding: 5, borderRadius: 18, background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 10px 30px rgba(15,23,42,0.06)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.35rem', padding: 5, borderRadius: 18, background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 10px 30px rgba(15,23,42,0.06)' }}>
                     {[
                         ['today', 'Сегодня'],
                         ['tomorrow', 'Завтра'],
-                        ['active', 'Везу'],
+                        ['route', 'В пути'],
+                        ['calendar', 'Календарь'],
                         ['done', 'Готово'],
                         ['all', 'Все']
                     ].map(([id, label]) => (
@@ -341,6 +369,113 @@ export default function MyDeliveries() {
                     <PackageCheck size={44} style={{ marginBottom: '0.75rem' }} />
                     <div style={{ fontWeight: 900, color: '#334155' }}>Доставок нет</div>
                     <div style={{ marginTop: '0.35rem' }}>Когда заказ назначат на тебя, он появится здесь.</div>
+                </div>
+            ) : filter === 'calendar' ? (
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                    {Object.entries(calendarGroups)
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([dayKey, daySales]) => (
+                            <section key={dayKey} style={{ display: 'grid', gap: '0.7rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '0.1rem 0.25rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#334155', fontWeight: 950 }}>
+                                        <CalendarDays size={18} color="#2563eb" />
+                                        {formatDayLabel(dayKey)}
+                                    </div>
+                                    <span style={{ borderRadius: 999, background: 'rgba(37,99,235,0.08)', color: '#2563eb', padding: '0.3rem 0.6rem', fontWeight: 900, fontSize: '0.78rem' }}>
+                                        {daySales.length} дост.
+                                    </span>
+                                </div>
+
+                                {daySales.map(sale => {
+                                    const status = getStatus(sale.delivery_status)
+                                    const phone = firstPhone(sale)
+                                    const address = sale.delivery_address || ''
+                                    const isSaving = savingId === sale.id
+                                    const composition = getCompositionPreview(sale)
+                                    const isPostponed = sale.delivery_status === 'postponed'
+
+                                    return (
+                                        <article key={sale.id} style={{
+                                            background: isPostponed ? 'linear-gradient(135deg, #fffbeb, #ffffff)' : 'white',
+                                            borderRadius: 24,
+                                            padding: '0.9rem',
+                                            border: isPostponed ? '1px solid #fde68a' : '1px solid #e5e7eb',
+                                            boxShadow: '0 14px 34px rgba(15,23,42,0.07)'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                                                <div>
+                                                    <div style={{ fontSize: '0.76rem', color: '#94a3b8', fontWeight: 850 }}>#{sale.order_number || sale.id?.slice(0, 8)}</div>
+                                                    <h2 style={{ margin: '0.08rem 0 0', fontSize: '1.08rem', lineHeight: 1.12 }}>{getSaleTitle(sale)}</h2>
+                                                </div>
+                                                <span style={{ whiteSpace: 'nowrap', borderRadius: 999, padding: '0.34rem 0.62rem', background: status.bg, color: status.color, fontWeight: 900, fontSize: '0.76rem' }}>{status.label}</span>
+                                            </div>
+
+                                            <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: '0.7rem', alignItems: 'stretch', marginBottom: '0.75rem' }}>
+                                                <div style={{ borderRadius: 20, background: '#f8fafc', border: '1px solid #e5e7eb', display: 'grid', placeItems: 'center', color: '#111827' }}>
+                                                    <div style={{ textAlign: 'center' }}>
+                                                        <div style={{ fontSize: '1.05rem', fontWeight: 950 }}>{formatTime(deliveryDate(sale))}</div>
+                                                        <Clock3 size={17} color="#64748b" style={{ marginTop: 3 }} />
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'grid', gap: '0.42rem', alignContent: 'center' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.55rem', color: '#334155', fontWeight: 850, lineHeight: 1.3 }}>
+                                                        <MapPin size={17} color="#ef4444" style={{ marginTop: 2, flexShrink: 0 }} />
+                                                        <span>{address || 'Адрес не указан'}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', color: '#334155', fontWeight: 800 }}>
+                                                        <WalletCards size={17} color="#f59e0b" /> {Number(sale.sale_price || 0).toLocaleString()} lei
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {composition && (
+                                                <div style={{ background: '#f8fafc', borderRadius: 15, padding: '0.62rem 0.7rem', color: '#475569', fontWeight: 750, marginBottom: '0.68rem' }}>
+                                                    {composition}
+                                                </div>
+                                            )}
+
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 44px', gap: '0.5rem', marginBottom: '0.62rem' }}>
+                                                <a href={phone ? `tel:${phone}` : undefined} style={{ textDecoration: 'none', pointerEvents: phone ? 'auto' : 'none' }}>
+                                                    <button style={{ width: '100%', minHeight: 48, border: 0, borderRadius: 17, background: phone ? '#0f172a' : '#e5e7eb', color: phone ? 'white' : '#94a3b8', fontWeight: 900, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 7 }}>
+                                                        <Phone size={17} /> Позвонить
+                                                    </button>
+                                                </a>
+                                                <a href={address ? mapUrl(address) : undefined} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', pointerEvents: address ? 'auto' : 'none' }}>
+                                                    <button style={{ width: '100%', minHeight: 48, border: 0, borderRadius: 17, background: address ? '#2563eb' : '#e5e7eb', color: address ? 'white' : '#94a3b8', fontWeight: 900, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 7 }}>
+                                                        <Navigation size={17} /> Маршрут
+                                                    </button>
+                                                </a>
+                                                <button onClick={() => copyAddress(address)} disabled={!address} style={{ minHeight: 48, border: 0, borderRadius: 17, background: address ? '#f1f5f9' : '#f8fafc', color: address ? '#334155' : '#cbd5e1', display: 'grid', placeItems: 'center' }} title="Скопировать адрес">
+                                                    <Copy size={17} />
+                                                </button>
+                                            </div>
+
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: '0.5rem' }}>
+                                                <button disabled={isSaving} onClick={() => setDeliveryStatus(sale, 'delivering')} style={{ minHeight: 50, borderRadius: 17, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontWeight: 900, cursor: 'pointer' }}>
+                                                    {isSaving ? <RefreshCw size={17} className="spin" /> : 'В пути'}
+                                                </button>
+                                                <button disabled={isSaving} onClick={() => setDeliveryStatus(sale, 'delivered')} style={{ minHeight: 50, borderRadius: 17, border: 0, background: '#16a34a', color: 'white', fontWeight: 950, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 12px 24px rgba(22,163,74,0.2)' }}>
+                                                    {isSaving ? <RefreshCw size={17} className="spin" /> : <CheckCircle2 size={19} />} Доставлен
+                                                </button>
+                                                <select
+                                                    className="input"
+                                                    value=""
+                                                    disabled={isSaving}
+                                                    onChange={(e) => {
+                                                        if (e.target.value === 'postponed') openPostpone(sale)
+                                                        else if (e.target.value) setDeliveryStatus(sale, e.target.value)
+                                                    }}
+                                                    style={{ gridColumn: '1 / -1', minHeight: 46, borderRadius: 16, fontWeight: 850, color: '#475569', background: '#f8fafc' }}
+                                                >
+                                                    <option value="">Другой статус...</option>
+                                                    {COURIER_STATUS_ACTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                                                </select>
+                                            </div>
+                                        </article>
+                                    )
+                                })}
+                            </section>
+                        ))}
                 </div>
             ) : (
                 <div style={{ display: 'grid', gap: '0.9rem' }}>
