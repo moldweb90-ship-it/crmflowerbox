@@ -137,6 +137,13 @@ export default function MyDeliveries() {
     const [datePreset, setDatePreset] = useState('week')
     const [dateFrom, setDateFrom] = useState('')
     const [dateTo, setDateTo] = useState('')
+    const [calendarOpen, setCalendarOpen] = useState(false)
+    const [selectedCalendarDay, setSelectedCalendarDay] = useState(addDaysKey(0))
+    const [calendarMonth, setCalendarMonth] = useState(() => {
+        const date = new Date()
+        date.setDate(1)
+        return date
+    })
 
     const myCourier = useMemo(() => {
         const email = normalizeEmail(user?.email)
@@ -183,15 +190,6 @@ export default function MyDeliveries() {
             if (filter === 'today') return key === todayKey && isActiveDelivery(sale)
             if (filter === 'tomorrow') return key === tomorrowKey && isActiveDelivery(sale)
             if (filter === 'route') return isRouteDelivery(sale)
-            if (filter === 'calendar') {
-                if (!isActiveDelivery(sale)) return false
-                const saleTime = new Date(deliveryDate(sale) || 0).getTime()
-                const start = new Date()
-                start.setHours(0, 0, 0, 0)
-                const end = new Date(start)
-                end.setDate(end.getDate() + 30)
-                return saleTime >= start.getTime() && saleTime < end.getTime()
-            }
             if (filter === 'done') return !isActiveDelivery(sale)
             if (filter === 'all') {
                 if (allStatusFilter === 'active' && !isActiveDelivery(sale)) return false
@@ -227,14 +225,32 @@ export default function MyDeliveries() {
     }, [filter, mySales, todayKey, tomorrowKey, allStatusFilter, datePreset, dateFrom, dateTo])
 
     const nextDelivery = useMemo(() => visibleSales.find(isActiveDelivery), [visibleSales])
-    const calendarGroups = useMemo(() => {
-        return visibleSales.reduce((groups, sale) => {
+    const calendarSales = useMemo(() => mySales.filter(isActiveDelivery).sort(sortByRoutePriority), [mySales])
+    const calendarCountByDay = useMemo(() => {
+        return calendarSales.reduce((acc, sale) => {
             const key = toDateKey(deliveryDate(sale)) || 'no-date'
-            if (!groups[key]) groups[key] = []
-            groups[key].push(sale)
-            return groups
+            acc[key] = (acc[key] || 0) + 1
+            return acc
         }, {})
-    }, [visibleSales])
+    }, [calendarSales])
+    const selectedDaySales = useMemo(() => {
+        return calendarSales.filter(sale => toDateKey(deliveryDate(sale)) === selectedCalendarDay)
+    }, [calendarSales, selectedCalendarDay])
+    const calendarCells = useMemo(() => {
+        const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1)
+        const start = new Date(first)
+        const weekday = (first.getDay() + 6) % 7
+        start.setDate(first.getDate() - weekday)
+        return Array.from({ length: 42 }, (_, index) => {
+            const date = new Date(start)
+            date.setDate(start.getDate() + index)
+            return date
+        })
+    }, [calendarMonth])
+    const calendarMonthLabel = calendarMonth.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
+    const changeCalendarMonth = (delta) => {
+        setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
+    }
 
     const setDeliveryStatus = async (sale, status, extraUpdates = {}) => {
         setSavingId(sale.id)
@@ -295,9 +311,14 @@ export default function MyDeliveries() {
                             {lastSync ? `обновлено ${formatTime(lastSync)}` : 'автообновление включено'}
                         </div>
                     </div>
-                    <button onClick={() => refreshNow(false)} disabled={refreshing} style={{ width: 56, height: 56, border: 0, borderRadius: 20, background: '#111827', color: 'white', display: 'grid', placeItems: 'center', boxShadow: '0 12px 28px rgba(17,24,39,0.22)', cursor: 'pointer' }}>
-                        <RefreshCw size={25} className={refreshing ? 'spin' : ''} />
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.55rem', flexShrink: 0 }}>
+                        <button onClick={() => setCalendarOpen(true)} style={{ width: 56, height: 56, border: '1px solid rgba(37,99,235,0.12)', borderRadius: 20, background: 'rgba(255,255,255,0.86)', color: '#2563eb', display: 'grid', placeItems: 'center', boxShadow: '0 12px 28px rgba(37,99,235,0.11)', cursor: 'pointer' }} title="Календарь доставок">
+                            <CalendarDays size={25} />
+                        </button>
+                        <button onClick={() => refreshNow(false)} disabled={refreshing} style={{ width: 56, height: 56, border: 0, borderRadius: 20, background: '#111827', color: 'white', display: 'grid', placeItems: 'center', boxShadow: '0 12px 28px rgba(17,24,39,0.22)', cursor: 'pointer' }}>
+                            <RefreshCw size={25} className={refreshing ? 'spin' : ''} />
+                        </button>
+                    </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.55rem', marginBottom: '0.85rem' }}>
@@ -314,12 +335,11 @@ export default function MyDeliveries() {
                     ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.35rem', padding: 5, borderRadius: 18, background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 10px 30px rgba(15,23,42,0.06)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.35rem', padding: 5, borderRadius: 18, background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 10px 30px rgba(15,23,42,0.06)' }}>
                     {[
                         ['today', 'Сегодня'],
                         ['tomorrow', 'Завтра'],
                         ['route', 'В пути'],
-                        ['calendar', 'Календарь'],
                         ['done', 'Готово'],
                         ['all', 'Все']
                     ].map(([id, label]) => (
@@ -580,6 +600,141 @@ export default function MyDeliveries() {
                             </article>
                         )
                     })}
+                </div>
+            )}
+
+            {calendarOpen && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 115, background: 'rgba(15,23,42,0.36)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '0.75rem' }}>
+                    <div style={{ width: 'min(100%, 520px)', maxHeight: '88vh', overflow: 'auto', background: 'rgba(255,255,255,0.96)', borderRadius: 30, padding: '1rem', boxShadow: '0 28px 80px rgba(15,23,42,0.28)', border: '1px solid rgba(255,255,255,0.85)' }}>
+                        <div style={{ width: 44, height: 5, borderRadius: 999, background: '#dbe3ea', margin: '0 auto 0.85rem' }} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '0.85rem' }}>
+                            <div>
+                                <div style={{ color: '#64748b', fontWeight: 900, fontSize: '0.74rem', textTransform: 'uppercase' }}>Календарь доставок</div>
+                                <h3 style={{ margin: '0.12rem 0 0', fontSize: '1.25rem' }}>{calendarMonthLabel}</h3>
+                            </div>
+                            <button onClick={() => setCalendarOpen(false)} style={{ width: 42, height: 42, borderRadius: 15, border: 0, background: '#f1f5f9', color: '#0f172a', fontSize: '1.7rem', lineHeight: 1, cursor: 'pointer' }}>×</button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr 48px', gap: '0.6rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                            <button onClick={() => changeCalendarMonth(-1)} style={{ height: 44, borderRadius: 15, border: 0, background: '#f8fafc', color: '#334155', fontWeight: 950, fontSize: '1.2rem', cursor: 'pointer' }}>‹</button>
+                            <button onClick={() => {
+                                const today = new Date()
+                                setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1))
+                                setSelectedCalendarDay(addDaysKey(0))
+                            }} style={{ height: 44, borderRadius: 15, border: 0, background: '#eff6ff', color: '#2563eb', fontWeight: 950, cursor: 'pointer' }}>
+                                Сегодня
+                            </button>
+                            <button onClick={() => changeCalendarMonth(1)} style={{ height: 44, borderRadius: 15, border: 0, background: '#f8fafc', color: '#334155', fontWeight: 950, fontSize: '1.2rem', cursor: 'pointer' }}>›</button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.35rem', marginBottom: '0.35rem' }}>
+                            {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => (
+                                <div key={day} style={{ textAlign: 'center', color: '#94a3b8', fontWeight: 900, fontSize: '0.74rem' }}>{day}</div>
+                            ))}
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.35rem', marginBottom: '1rem' }}>
+                            {calendarCells.map(date => {
+                                const key = toDateKey(date)
+                                const count = calendarCountByDay[key] || 0
+                                const isSelected = key === selectedCalendarDay
+                                const isToday = key === todayKey
+                                const isCurrentMonth = date.getMonth() === calendarMonth.getMonth()
+
+                                return (
+                                    <button
+                                        key={key}
+                                        onClick={() => setSelectedCalendarDay(key)}
+                                        style={{
+                                            minHeight: 52,
+                                            border: isSelected ? '1px solid #2563eb' : isToday ? '1px solid #bfdbfe' : '1px solid transparent',
+                                            borderRadius: 17,
+                                            background: isSelected ? '#2563eb' : count ? '#f8fafc' : 'transparent',
+                                            color: isSelected ? 'white' : isCurrentMonth ? '#0f172a' : '#cbd5e1',
+                                            display: 'grid',
+                                            placeItems: 'center',
+                                            gap: 2,
+                                            cursor: 'pointer',
+                                            boxShadow: isSelected ? '0 12px 24px rgba(37,99,235,0.22)' : 'none'
+                                        }}
+                                    >
+                                        <span style={{ fontWeight: 950, fontSize: '0.95rem' }}>{date.getDate()}</span>
+                                        {count > 0 ? (
+                                            <span style={{
+                                                minWidth: 19,
+                                                height: 19,
+                                                borderRadius: 999,
+                                                background: isSelected ? 'rgba(255,255,255,0.22)' : '#dbeafe',
+                                                color: isSelected ? 'white' : '#2563eb',
+                                                fontSize: '0.68rem',
+                                                fontWeight: 950,
+                                                display: 'grid',
+                                                placeItems: 'center'
+                                            }}>
+                                                {count}
+                                            </span>
+                                        ) : (
+                                            <span style={{ width: 5, height: 5 }} />
+                                        )}
+                                    </button>
+                                )
+                            })}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.65rem' }}>
+                            <div style={{ fontWeight: 950, color: '#0f172a' }}>{formatDayLabel(selectedCalendarDay)}</div>
+                            <span style={{ borderRadius: 999, background: '#f1f5f9', color: '#475569', padding: '0.32rem 0.62rem', fontWeight: 900, fontSize: '0.76rem' }}>
+                                {selectedDaySales.length} достав.
+                            </span>
+                        </div>
+
+                        {selectedDaySales.length === 0 ? (
+                            <div style={{ borderRadius: 22, background: '#f8fafc', border: '1px solid #e5e7eb', padding: '1.1rem', color: '#94a3b8', fontWeight: 850, textAlign: 'center' }}>
+                                На этот день доставок нет
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gap: '0.65rem' }}>
+                                {selectedDaySales.map(sale => {
+                                    const status = getStatus(sale.delivery_status)
+                                    const address = sale.delivery_address || ''
+                                    const phone = firstPhone(sale)
+                                    const isSaving = savingId === sale.id
+
+                                    return (
+                                        <article key={sale.id} style={{ borderRadius: 22, background: 'white', border: '1px solid #e5e7eb', padding: '0.78rem', boxShadow: '0 10px 26px rgba(15,23,42,0.06)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.7rem', alignItems: 'flex-start', marginBottom: '0.55rem' }}>
+                                                <div>
+                                                    <div style={{ color: '#94a3b8', fontWeight: 850, fontSize: '0.74rem' }}>#{sale.order_number || sale.id?.slice(0, 8)}</div>
+                                                    <div style={{ color: '#0f172a', fontWeight: 950, lineHeight: 1.15 }}>{getSaleTitle(sale)}</div>
+                                                </div>
+                                                <span style={{ whiteSpace: 'nowrap', borderRadius: 999, padding: '0.32rem 0.58rem', background: status.bg, color: status.color, fontWeight: 900, fontSize: '0.74rem' }}>{status.label}</span>
+                                            </div>
+                                            <div style={{ display: 'grid', gap: '0.38rem', color: '#475569', fontWeight: 800, marginBottom: '0.7rem' }}>
+                                                <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}><Clock3 size={16} /> {formatTime(deliveryDate(sale))}</div>
+                                                <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'flex-start' }}><MapPin size={16} color="#ef4444" style={{ marginTop: 2, flexShrink: 0 }} /> {address || 'Адрес не указан'}</div>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                <a href={phone ? `tel:${phone}` : undefined} style={{ textDecoration: 'none', pointerEvents: phone ? 'auto' : 'none' }}>
+                                                    <button style={{ width: '100%', minHeight: 44, border: 0, borderRadius: 15, background: phone ? '#0f172a' : '#e5e7eb', color: phone ? 'white' : '#94a3b8', fontWeight: 900 }}>Позвонить</button>
+                                                </a>
+                                                <a href={address ? mapUrl(address) : undefined} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', pointerEvents: address ? 'auto' : 'none' }}>
+                                                    <button style={{ width: '100%', minHeight: 44, border: 0, borderRadius: 15, background: address ? '#2563eb' : '#e5e7eb', color: address ? 'white' : '#94a3b8', fontWeight: 900 }}>Маршрут</button>
+                                                </a>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: '0.5rem' }}>
+                                                <button disabled={isSaving} onClick={() => setDeliveryStatus(sale, 'delivering')} style={{ minHeight: 44, borderRadius: 15, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontWeight: 900 }}>
+                                                    В пути
+                                                </button>
+                                                <button disabled={isSaving} onClick={() => setDeliveryStatus(sale, 'delivered')} style={{ minHeight: 44, borderRadius: 15, border: 0, background: '#16a34a', color: 'white', fontWeight: 950 }}>
+                                                    Доставлен
+                                                </button>
+                                            </div>
+                                        </article>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
