@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
 import { Plus, Trash2, Edit, Eye, EyeOff, Tag } from 'lucide-react'
 import Modal from '../components/ui/Modal'
@@ -8,6 +8,7 @@ export default function Categories() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [newCategoryName, setNewCategoryName] = useState('')
     const [editingCategory, setEditingCategory] = useState(null)
+    const [sortMode, setSortMode] = useState('name_asc')
 
     // Responsive
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -46,6 +47,26 @@ export default function Categories() {
         return products.filter(p => p.categoryIds && p.categoryIds.includes(catId))
     }
 
+    const sortedCategories = useMemo(() => {
+        const prepared = categories.map(cat => ({
+            ...cat,
+            productCount: getCategoryProducts(cat.id).length
+        }))
+
+        return [...prepared].sort((a, b) => {
+            if (sortMode === 'count_desc') {
+                return b.productCount - a.productCount || a.name.localeCompare(b.name, 'ru')
+            }
+            if (sortMode === 'count_asc') {
+                return a.productCount - b.productCount || a.name.localeCompare(b.name, 'ru')
+            }
+            if (sortMode === 'name_desc') {
+                return b.name.localeCompare(a.name, 'ru')
+            }
+            return a.name.localeCompare(b.name, 'ru')
+        })
+    }, [categories, products, sortMode])
+
     return (
         <div style={{ paddingBottom: '5rem' }}>
             {/* Header */}
@@ -64,22 +85,64 @@ export default function Categories() {
                     </h1>
                     <p style={{ color: 'var(--text-muted)', fontSize: isMobile ? '0.875rem' : '1rem' }}>Управление категориями товаров</p>
                 </div>
-                <button
-                    className="btn btn-primary"
-                    onClick={handleAddClick}
-                    style={{ width: isMobile ? '100%' : 'auto', justifyContent: 'center', padding: isMobile ? '0.75rem' : '0.5rem 1rem' }}
-                >
-                    <Plus size={20} style={{ marginRight: '0.5rem' }} />
-                    Добавить категорию
-                </button>
+                <div style={{
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    gap: '0.75rem',
+                    width: isMobile ? '100%' : 'auto'
+                }}>
+                    <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        background: '#fff',
+                        border: '1px solid var(--border)',
+                        borderRadius: '999px',
+                        padding: '0.35rem 0.5rem 0.35rem 0.9rem',
+                        boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
+                        width: isMobile ? '100%' : 'auto'
+                    }}>
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                            Сортировка
+                        </span>
+                        <select
+                            value={sortMode}
+                            onChange={e => setSortMode(e.target.value)}
+                            style={{
+                                border: 'none',
+                                background: '#f8fafc',
+                                borderRadius: '999px',
+                                padding: '0.55rem 0.75rem',
+                                fontWeight: 700,
+                                color: 'var(--text)',
+                                outline: 'none',
+                                width: isMobile ? '100%' : '12rem'
+                            }}
+                        >
+                            <option value="name_asc">По алфавиту А-Я</option>
+                            <option value="name_desc">По алфавиту Я-А</option>
+                            <option value="count_desc">Больше букетов</option>
+                            <option value="count_asc">Меньше букетов</option>
+                        </select>
+                    </label>
+                    <button
+                        className="btn btn-primary"
+                        onClick={handleAddClick}
+                        style={{ width: isMobile ? '100%' : 'auto', justifyContent: 'center', padding: isMobile ? '0.75rem' : '0.5rem 1rem' }}
+                    >
+                        <Plus size={20} style={{ marginRight: '0.5rem' }} />
+                        Добавить категорию
+                    </button>
+                </div>
             </div>
 
             {/* Content */}
             {isMobile ? (
                 // Mobile Card View
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {categories.map(cat => {
-                        const count = getCategoryProducts(cat.id).length
+                    {sortedCategories.map(cat => {
+                        const count = cat.productCount
                         const isPublished = cat.is_published !== false
                         return (
                             <div
@@ -111,7 +174,7 @@ export default function Categories() {
                                                 cursor: 'pointer'
                                             }}
                                         >
-                                            {count} товаров
+                                            {count} букетов
                                         </a>
                                         {!isPublished && (
                                             <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>Скрыта</span>
@@ -142,13 +205,13 @@ export default function Categories() {
                         <thead style={{ backgroundColor: '#f9fafb' }}>
                             <tr style={{ borderBottom: '2px solid var(--border)' }}>
                                 <th style={{ textAlign: 'left', padding: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Название</th>
-                                <th style={{ textAlign: 'center', padding: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Кол-во товаров</th>
+                                <th style={{ textAlign: 'center', padding: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Кол-во букетов</th>
                                 <th style={{ textAlign: 'right', padding: '1rem', fontWeight: 600, color: 'var(--text-muted)' }}>Действия</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {categories.map(cat => {
-                                const count = getCategoryProducts(cat.id).length
+                            {sortedCategories.map(cat => {
+                                const count = cat.productCount
                                 const isPublished = cat.is_published !== false
                                 return (
                                     <tr key={cat.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
