@@ -51,13 +51,17 @@ export default function Layout() {
         setIsQuickSaleOpen(false)
     }, [location, isMobile])
 
+    // Filter groups based on permissions
+    const { checkAccess, role } = usePermissions()
+    const isCourierOnly = role === 'courier'
+
     // Navigation structure with groups
     const navGroups = [
         {
             items: [
                 { label: 'Дашборд', path: '/dashboard', icon: LayoutDashboard },
                 { label: 'Аналитика', path: '/analytics', icon: PieChart },
-                { label: 'Мои доставки', path: '/my-deliveries', icon: Truck, permission: 'my_deliveries', primary: true },
+                ...(isCourierOnly ? [{ label: 'Мои доставки', path: '/my-deliveries', icon: Truck, permission: 'my_deliveries', primary: true }] : []),
             ]
         },
         {
@@ -92,9 +96,6 @@ export default function Layout() {
             ]
         },
     ]
-
-    // Filter groups based on permissions
-    const { checkAccess } = usePermissions()
 
     const filteredNavGroups = navGroups.map(group => ({
         ...group,

@@ -20,11 +20,17 @@ const STATUS_OPTIONS = [
     ['returned', 'Возврат']
 ]
 
-const todayKey = () => new Date().toISOString().slice(0, 10)
+const localDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const todayKey = () => localDateKey(new Date())
+const tomorrowKey = () => {
+    const date = new Date()
+    date.setDate(date.getDate() + 1)
+    return localDateKey(date)
+}
 const toDateKey = (value) => {
     if (!value) return ''
     const date = new Date(value)
-    return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
+    return Number.isNaN(date.getTime()) ? '' : localDateKey(date)
 }
 const formatDateTime = (value) => {
     if (!value) return 'Без времени'
@@ -33,6 +39,7 @@ const formatDateTime = (value) => {
     return date.toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 const isDeliverySale = (sale) => sale.delivery_method !== 'pickup' && sale.is_pickup !== true && !!(sale.delivery_address || sale.courier_id)
+const isActiveDelivery = (sale) => !['delivered', 'cancelled', 'returned'].includes(sale.delivery_status)
 const getStatus = (status) => STATUS_META[status] || STATUS_META.not_delivered
 const mapUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || '')}`
 const getSaleTitle = (sale) => sale.custom_name || sale.products?.name || (Array.isArray(sale.custom_composition) && sale.custom_composition.length ? sale.custom_composition.slice(0, 2).map(i => i.name).join(', ') : 'Букет')
@@ -58,18 +65,14 @@ export default function Couriers() {
             .filter(sale => courierFilter === 'all' ? true : (courierFilter === 'empty' ? !sale.courier_id : sale.courier_id === courierFilter))
             .filter(sale => {
                 if (statusFilter === 'all') return true
-                if (statusFilter === 'active') return !['delivered', 'cancelled', 'returned'].includes(sale.delivery_status)
+                if (statusFilter === 'active') return isActiveDelivery(sale)
                 return sale.delivery_status === statusFilter
             })
             .filter(sale => {
                 const key = toDateKey(sale.delivery_date || sale.order_date)
                 if (dateFilter === 'all') return true
                 if (dateFilter === 'today') return key === todayKey()
-                if (dateFilter === 'tomorrow') {
-                    const d = new Date()
-                    d.setDate(d.getDate() + 1)
-                    return key === d.toISOString().slice(0, 10)
-                }
+                if (dateFilter === 'tomorrow') return key === tomorrowKey()
                 return key === dateFilter
             })
             .filter(sale => {
@@ -93,19 +96,25 @@ export default function Couriers() {
                 courier,
                 total: list.length,
                 today: today.length,
+                todayActive: today.filter(isActiveDelivery).length,
                 delivered: list.filter(sale => sale.delivery_status === 'delivered').length,
-                active: list.filter(sale => !['delivered', 'cancelled', 'returned'].includes(sale.delivery_status)).length
+                deliveredToday: today.filter(sale => sale.delivery_status === 'delivered').length,
+                active: list.filter(isActiveDelivery).length
             }
         })
-        return result.sort((a, b) => b.active - a.active || b.today - a.today || a.courier.name.localeCompare(b.courier.name))
+        return result.sort((a, b) => b.todayActive - a.todayActive || b.active - a.active || b.today - a.today || a.courier.name.localeCompare(b.courier.name))
     }, [couriers, deliveries])
 
-    const totals = useMemo(() => ({
-        active: deliveries.filter(sale => !['delivered', 'cancelled', 'returned'].includes(sale.delivery_status)).length,
-        today: deliveries.filter(sale => toDateKey(sale.delivery_date || sale.order_date) === todayKey()).length,
-        delivered: deliveries.filter(sale => sale.delivery_status === 'delivered').length,
-        empty: deliveries.filter(sale => !sale.courier_id).length
-    }), [deliveries])
+    const totals = useMemo(() => {
+        const todayDeliveries = deliveries.filter(sale => toDateKey(sale.delivery_date || sale.order_date) === todayKey())
+        return {
+            today: todayDeliveries.length,
+            todayActive: todayDeliveries.filter(isActiveDelivery).length,
+            deliveredToday: todayDeliveries.filter(sale => sale.delivery_status === 'delivered').length,
+            active: deliveries.filter(isActiveDelivery).length,
+            empty: deliveries.filter(sale => !sale.courier_id && isActiveDelivery(sale)).length
+        }
+    }, [deliveries])
 
     const handleStatusChange = async (sale, value) => {
         const result = await updateSale(sale.id, { delivery_status: value })
@@ -125,9 +134,9 @@ export default function Couriers() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                 {[
-                    ['Активные', totals.active, '#2563eb', Clock],
-                    ['Сегодня', totals.today, '#7c3aed', CalendarDays],
-                    ['Доставлено', totals.delivered, '#16a34a', CheckCircle2],
+                    ['Сегодня всего', totals.today, '#7c3aed', CalendarDays],
+                    ['Сегодня осталось', totals.todayActive, '#2563eb', Clock],
+                    ['Сегодня доставлено', totals.deliveredToday, '#16a34a', CheckCircle2],
                     ['Без курьера', totals.empty, '#ef4444', UserRound]
                 ].map(([label, value, color, Icon]) => (
                     <div key={label} style={{ background: 'white', borderRadius: 18, padding: '1rem', border: '1px solid #e5e7eb', boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}>
@@ -146,9 +155,9 @@ export default function Couriers() {
                         <div style={{ fontWeight: 950, fontSize: '1rem', marginBottom: '0.25rem' }}>{row.courier.name}</div>
                         <div style={{ fontSize: '0.8rem', opacity: 0.75, marginBottom: '0.8rem' }}>{row.courier.email || row.courier.phone || 'контакты не указаны'}</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.45rem' }}>
-                            <span><b>{row.active}</b><br /><small>актив.</small></span>
                             <span><b>{row.today}</b><br /><small>сегодня</small></span>
-                            <span><b>{row.delivered}</b><br /><small>готово</small></span>
+                            <span><b>{row.todayActive}</b><br /><small>осталось</small></span>
+                            <span><b>{row.deliveredToday}</b><br /><small>готово</small></span>
                         </div>
                     </button>
                 ))}
@@ -166,7 +175,7 @@ export default function Couriers() {
                         {couriers.map(courier => <option key={courier.id} value={courier.id}>{courier.name}</option>)}
                     </select>
                     <select className="input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-                        <option value="active">Активные</option>
+                        <option value="active">Осталось</option>
                         <option value="all">Все статусы</option>
                         {STATUS_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                     </select>
