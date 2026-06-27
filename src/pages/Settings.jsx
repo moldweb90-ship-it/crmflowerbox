@@ -124,7 +124,7 @@ export default function Settings() {
         { key: 'stock', label: 'Склад' },
         { key: 'expenses', label: 'Расходы' },
         { key: 'employees', label: 'Сотрудники' },
-        { key: 'couriers', label: 'Курьеры' },
+        { key: 'couriers', label: 'Логистика' },
         { key: 'my_deliveries', label: 'Мои доставки' },
         { key: 'settings', label: 'Настройки' },
     ]

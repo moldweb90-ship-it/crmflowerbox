@@ -126,9 +126,9 @@ export default function Couriers() {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                 <div>
                     <h1 style={{ fontSize: '1.875rem', fontWeight: 900, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <Truck size={34} color="var(--primary)" /> Курьеры
+                        <Truck size={34} color="var(--primary)" /> Логистика
                     </h1>
-                    <p style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Доставки, статусы, маршруты и история по каждому курьеру.</p>
+                    <p style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Доставки, курьеры, маршруты и история заказов.</p>
                 </div>
             </div>
 

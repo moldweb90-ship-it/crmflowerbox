@@ -21,7 +21,7 @@ const pageTitles = {
     '/stock': 'Склад',
     '/expenses': 'Расходы',
     '/employees': 'Сотрудники',
-    '/couriers': 'Курьеры',
+    '/couriers': 'Логистика',
     '/my-deliveries': 'Мои доставки',
     '/settings': 'Настройки'
 }
@@ -92,7 +92,7 @@ export default function Layout() {
             items: [
                 { label: 'Расходы', path: '/expenses', icon: Receipt },
                 { label: 'Сотрудники', path: '/employees', icon: UserCheck },
-                { label: 'Курьеры', path: '/couriers', icon: Truck, permission: 'couriers' },
+                { label: 'Логистика', path: '/couriers', icon: Truck, permission: 'couriers' },
             ]
         },
     ]
