@@ -68,6 +68,19 @@ const toDateKey = (value) => {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+const toLocalDateTimeInput = (value = new Date()) => {
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    return `${toDateKey(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+const localDateTimeInputToIso = (value) => {
+    if (!value) return null
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return null
+    return date.toISOString()
+}
+
 const addDaysKey = (days) => {
     const date = new Date()
     date.setDate(date.getDate() + days)
@@ -285,12 +298,12 @@ export default function MyDeliveries() {
 
     const openPostpone = (sale) => {
         setPostponeSale(sale)
-        setPostponeDate(deliveryDate(sale) ? new Date(deliveryDate(sale)).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16))
+        setPostponeDate(toLocalDateTimeInput(deliveryDate(sale) || new Date()))
     }
 
     const savePostpone = async () => {
         if (!postponeSale || !postponeDate) return
-        await setDeliveryStatus(postponeSale, 'postponed', { delivery_date: new Date(postponeDate).toISOString() })
+        await setDeliveryStatus(postponeSale, 'postponed', { delivery_date: localDateTimeInputToIso(postponeDate) })
         setPostponeSale(null)
         setPostponeDate('')
     }

@@ -59,6 +59,27 @@ const getDeliveryStatusLabel = (status, method) => {
 
 const getStatusData = (arr, id) => arr.find(s => s.id === id) || arr[0]
 
+const padDatePart = (value) => String(value).padStart(2, '0')
+
+const toLocalDateKey = (value = new Date()) => {
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`
+}
+
+const toLocalDateTimeInput = (value = new Date()) => {
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    return `${toLocalDateKey(date)}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`
+}
+
+const localDateTimeInputToIso = (value) => {
+    if (!value) return null
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return null
+    return date.toISOString()
+}
+
 export default function Sales() {
     const {
         sales, addSale, updateSale, deleteSale,
@@ -140,7 +161,7 @@ export default function Sales() {
     const emptySalonForm = {
         custom_name: '',
         composition: [], // [{ type: 'flower'|'good', item_id, name, quantity, purchase_price, sale_price }]
-        order_date: new Date().toISOString().slice(0, 16),
+        order_date: toLocalDateTimeInput(),
         payment_method: 'cash',
         payment_status: 'paid',
         florist_id: '',
@@ -167,7 +188,7 @@ export default function Sales() {
     const emptyForm = {
         product_id: '',
         order_number: '',
-        order_date: new Date().toISOString().slice(0, 16),
+        order_date: toLocalDateTimeInput(),
         delivery_date: '',
         delivery_address: '',
         customer_phone: '',
@@ -239,21 +260,21 @@ export default function Sales() {
 
     const applyPreset = (preset) => {
         const now = new Date()
-        const today = now.toISOString().split('T')[0]
+        const today = toLocalDateKey(now)
         let start = today
         let end = today
 
         if (preset === 'yesterday') {
             const d = new Date()
             d.setDate(d.getDate() - 1)
-            start = end = d.toISOString().split('T')[0]
+            start = end = toLocalDateKey(d)
         } else if (preset === 'week') {
             const d = new Date()
             d.setDate(d.getDate() - 7)
-            start = d.toISOString().split('T')[0]
+            start = toLocalDateKey(d)
         } else if (preset === 'month') {
             const d = new Date(now.getFullYear(), now.getMonth(), 1)
-            start = d.toISOString().split('T')[0]
+            start = toLocalDateKey(d)
         } else if (preset === 'all') {
             start = ''
             end = ''
@@ -272,12 +293,12 @@ export default function Sales() {
             }
             // If filtering by delivery date (from calendar click)
             if (deliveryDateFilter) {
-                const deliveryDate = sale.delivery_date?.split('T')[0]
+                const deliveryDate = toLocalDateKey(sale.delivery_date)
                 return deliveryDate === deliveryDateFilter
             }
             // Otherwise filter by order date
             if (!dateFilter.start && !dateFilter.end) return true
-            const saleDate = sale.order_date?.split('T')[0]
+            const saleDate = toLocalDateKey(sale.order_date)
             if (dateFilter.start && saleDate < dateFilter.start) return false
             if (dateFilter.end && saleDate > dateFilter.end) return false
             return true
@@ -287,7 +308,7 @@ export default function Sales() {
     const groupedSales = useMemo(() => {
         const groups = {}
         filteredSales.forEach(sale => {
-            const dateKey = sale.order_date?.split('T')[0] || 'unknown'
+            const dateKey = toLocalDateKey(sale.order_date) || 'unknown'
             if (!groups[dateKey]) groups[dateKey] = []
             groups[dateKey].push(sale)
         })
@@ -395,7 +416,7 @@ export default function Sales() {
     const openNewSaleModal = () => {
         setModalMode('add')
         setEditingSaleId(null)
-        setFormData({ ...emptyForm, order_date: new Date().toISOString().slice(0, 16) })
+        setFormData({ ...emptyForm, order_date: toLocalDateTimeInput() })
         setProductSearch('')
         setSiteComposition([])
         setSiteItemSearch('')
@@ -413,12 +434,12 @@ export default function Sales() {
             setSalonFormData({
                 custom_name: sale.custom_name || '',
                 composition: sale.custom_composition || [],
-                order_date: sale.order_date?.slice(0, 16) || new Date().toISOString().slice(0, 16),
+                order_date: toLocalDateTimeInput(sale.order_date) || toLocalDateTimeInput(),
                 payment_method: sale.payment_method || 'cash',
                 payment_status: sale.payment_status || 'paid',
                 florist_id: sale.florist_id || '',
                 needs_delivery: sale.delivery_method === 'delivery',
-                delivery_date: sale.delivery_date?.slice(0, 16) || '',
+                delivery_date: toLocalDateTimeInput(sale.delivery_date),
                 delivery_address: sale.delivery_address || '',
                 delivery_status: sale.delivery_status || 'not_delivered',
                 courier_id: sale.courier_id || '',
@@ -433,8 +454,8 @@ export default function Sales() {
             setFormData({
                 product_id: sale.product_id || '',
                 order_number: sale.order_number || '',
-                order_date: sale.order_date?.slice(0, 16) || '',
-                delivery_date: sale.delivery_date?.slice(0, 16) || '',
+                order_date: toLocalDateTimeInput(sale.order_date),
+                delivery_date: toLocalDateTimeInput(sale.delivery_date),
                 delivery_address: sale.delivery_address || '',
                 customer_phone: sale.customer_phone || '',
                 customer_email: sale.customer_email || '',
@@ -549,6 +570,8 @@ export default function Sales() {
             product_id: isCustomSiteSale ? '' : formData.product_id,
             is_custom: isCustomSiteSale,
             custom_name: isCustomSiteSale ? siteCustomName.trim() : undefined,
+            order_date: localDateTimeInputToIso(formData.order_date),
+            delivery_date: formData.delivery_method === 'delivery' ? localDateTimeInputToIso(formData.delivery_date) : null,
             sale_price: salePrice,
             cost_price: costPrice,
             profit: salePrice - costPrice,
@@ -590,8 +613,8 @@ export default function Sales() {
 
     // Date helpers
     const formatDateLabel = (dateStr) => {
-        const today = new Date().toISOString().split('T')[0]
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+        const today = toLocalDateKey()
+        const yesterday = toLocalDateKey(new Date(Date.now() - 86400000))
         if (dateStr === today) return 'Сегодня'
         if (dateStr === yesterday) return 'Вчера'
         return new Date(dateStr).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -621,7 +644,7 @@ export default function Sales() {
         const map = {}
         sales.forEach(sale => {
             if (sale.delivery_date) {
-                const dateKey = sale.delivery_date.split('T')[0]
+                const dateKey = toLocalDateKey(sale.delivery_date)
                 if (!map[dateKey]) map[dateKey] = []
                 map[dateKey].push(sale)
             }
@@ -2698,14 +2721,14 @@ export default function Sales() {
                                         is_custom: true,
                                         custom_name: salonFormData.custom_name,
                                         custom_composition: salonFormData.composition,
-                                        order_date: salonFormData.order_date,
+                                        order_date: localDateTimeInputToIso(salonFormData.order_date),
                                         payment_method: salonFormData.payment_method,
                                         payment_status: salonFormData.payment_status,
                                         florist_id: salonFormData.florist_id || null,
                                         cost_price: costPrice,
                                         sale_price: salePrice,
                                         delivery_method: salonFormData.needs_delivery ? 'delivery' : 'pickup',
-                                        delivery_date: salonFormData.needs_delivery ? salonFormData.delivery_date : null,
+                                        delivery_date: salonFormData.needs_delivery ? localDateTimeInputToIso(salonFormData.delivery_date) : null,
                                         delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
                                         delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
