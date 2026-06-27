@@ -1006,6 +1006,17 @@ export function StoreProvider({ children }) {
                 )
             }
 
+            if (sale && payload.resolution === 'full_refund') {
+                const salePatch = {
+                    status: 'returned',
+                    delivery_status: 'returned',
+                    updated_at: new Date().toISOString()
+                }
+                const { data: updatedSale } = await supabase.from('sales').update(salePatch).eq('id', sale.id).select()
+                const nextSale = updatedSale?.[0] || { ...sale, ...salePatch }
+                setSales(prev => prev.map(s => s.id === sale.id ? nextSale : s))
+            }
+
             setClaims(prev => [created, ...prev])
             return { success: true, data: created }
         } catch (error) {
@@ -1020,6 +1031,17 @@ export function StoreProvider({ children }) {
         if (!error) {
             const updated = data?.[0] || { ...claims.find(c => c.id === id), ...payload }
             setClaims(prev => prev.map(c => c.id === id ? updated : c))
+            const sale = sales.find(s => s.id === updated.sale_id)
+            if (sale && updated.resolution === 'full_refund') {
+                const salePatch = {
+                    status: 'returned',
+                    delivery_status: 'returned',
+                    updated_at: new Date().toISOString()
+                }
+                const { data: updatedSale } = await supabase.from('sales').update(salePatch).eq('id', sale.id).select()
+                const nextSale = updatedSale?.[0] || { ...sale, ...salePatch }
+                setSales(prev => prev.map(s => s.id === sale.id ? nextSale : s))
+            }
             return { success: true, data: updated }
         }
         return { success: false, error }

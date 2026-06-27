@@ -108,6 +108,7 @@ const firstPhone = (sale) => sale.recipient_phone || sale.customer_phone || ''
 const deliveryDate = (sale) => sale.delivery_date || sale.order_date
 const isActiveDelivery = (sale) => !DONE_STATUSES.includes(sale.delivery_status)
 const isRouteDelivery = (sale) => sale.delivery_status === 'delivering'
+const hasFullRefundClaim = (saleId, claims = []) => claims.some(claim => claim.sale_id === saleId && claim.resolution === 'full_refund')
 
 const formatDayLabel = (key) => {
     if (!key || key === 'no-date') return 'Без даты'
@@ -145,7 +146,7 @@ function sortByRoutePriority(a, b) {
 
 export default function MyDeliveries() {
     const { user } = useAuth()
-    const { sales, couriers, updateSale, refreshDeliveryData } = useStore()
+    const { sales, couriers, updateSale, refreshDeliveryData, claims } = useStore()
     const [filter, setFilter] = useState('today')
     const [savingId, setSavingId] = useState(null)
     const [refreshing, setRefreshing] = useState(false)
@@ -190,9 +191,9 @@ export default function MyDeliveries() {
     const mySales = useMemo(() => {
         if (!myCourier) return []
         return sales
-            .filter(sale => sale.courier_id === myCourier.id && isDeliverySale(sale))
+            .filter(sale => sale.courier_id === myCourier.id && isDeliverySale(sale) && !hasFullRefundClaim(sale.id, claims))
             .sort(sortByRoutePriority)
-    }, [sales, myCourier])
+    }, [sales, myCourier, claims])
 
     const todayKey = addDaysKey(0)
     const tomorrowKey = addDaysKey(1)

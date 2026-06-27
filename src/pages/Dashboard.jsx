@@ -24,6 +24,19 @@ function isSameLocalDay(value, dateKey) {
     return String(value).startsWith(dateKey)
 }
 
+const TERMINAL_SALE_STATUSES = ['cancelled', 'canceled', 'returned']
+const TERMINAL_DELIVERY_STATUSES = ['delivered', 'cancelled', 'canceled', 'returned']
+
+function hasFullRefundClaim(saleId, claims = []) {
+    return claims.some(claim => claim.sale_id === saleId && claim.resolution === 'full_refund')
+}
+
+function isOperationallyClosedSale(sale, claims = []) {
+    return TERMINAL_SALE_STATUSES.includes((sale.status || '').toLowerCase()) ||
+        TERMINAL_DELIVERY_STATUSES.includes((sale.delivery_status || '').toLowerCase()) ||
+        hasFullRefundClaim(sale.id, claims)
+}
+
 // FIFO: по транзакциям поставок и продаж/брака вычисляет остатки по «партиям» (дата поставки)
 function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies) {
     const suppliesList = stockTransactions
@@ -271,7 +284,7 @@ export default function Dashboard() {
         // Problem orders: Delivery < Now AND Status != Completed/Delivered/Cancelled
         const problems = sales.filter(s => {
             if (!s.delivery_date) return false
-            if (['completed', 'delivered', 'cancelled', 'canceled'].includes((s.status || '').toLowerCase())) return false
+            if (isOperationallyClosedSale(s, claims)) return false
             const dDate = new Date(s.delivery_date)
             // Buffer: 15 mins late is a problem? Or strict?
             return dDate < now
@@ -294,15 +307,15 @@ export default function Dashboard() {
         }))
 
         return { recentOrders: recent, problemOrders: problems }
-    }, [sales])
+    }, [sales, claims])
 
     // 3. Tomorrow (Planning) -> "К ВЫДАЧЕ"
     const tomorrowStats = React.useMemo(() => {
         const tomorrow = new Date()
         tomorrow.setDate(tomorrow.getDate() + 1)
-        const tomorrowStr = tomorrow.toISOString().split('T')[0] // YYYY-MM-DD
+        const tomorrowStr = toLocalDateKey(tomorrow) // YYYY-MM-DD
 
-        const ordersTomorrow = sales.filter(s => s.delivery_date && s.delivery_date.startsWith(tomorrowStr))
+        const ordersTomorrow = sales.filter(s => s.delivery_date && s.delivery_date.startsWith(tomorrowStr) && !isOperationallyClosedSale(s, claims))
         const count = ordersTomorrow.length
         const sum = ordersTomorrow.reduce((acc, s) => acc + (Number(s.sale_price) || 0), 0)
 
@@ -383,7 +396,7 @@ export default function Dashboard() {
         })
 
         return { count, sum, alert, shortageList, deliveryList, deliveryCount, pickupCount }
-    }, [sales, stock, flowers])
+    }, [sales, stock, flowers, claims])
 
     // 4. Sources (Marketing)
     const sourceStats = React.useMemo(() => {

@@ -45,7 +45,7 @@ const mapUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${e
 const getSaleTitle = (sale) => sale.custom_name || sale.products?.name || (Array.isArray(sale.custom_composition) && sale.custom_composition.length ? sale.custom_composition.slice(0, 2).map(i => i.name).join(', ') : 'Букет')
 
 export default function Couriers() {
-    const { sales, couriers, updateSale } = useStore()
+    const { sales, couriers, updateSale, claims } = useStore()
     const [courierFilter, setCourierFilter] = useState('all')
     const [statusFilter, setStatusFilter] = useState('active')
     const [dateFilter, setDateFilter] = useState('today')
@@ -58,7 +58,7 @@ export default function Couriers() {
         return () => window.removeEventListener('resize', handleResize)
     }, [])
 
-    const deliveries = useMemo(() => sales.filter(isDeliverySale), [sales])
+    const deliveries = useMemo(() => sales.filter(sale => isDeliverySale(sale) && !(claims || []).some(claim => claim.sale_id === sale.id && claim.resolution === 'full_refund')), [sales, claims])
     const filteredDeliveries = useMemo(() => {
         const q = search.trim().toLowerCase()
         return deliveries

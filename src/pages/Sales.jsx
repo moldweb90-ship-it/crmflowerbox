@@ -1020,7 +1020,7 @@ export default function Sales() {
                                 {formatDateLabel(dateKey)}
                             </span>
                             <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                                {daySales.length} продаж • {daySales.reduce((a, s) => a + Number(s.sale_price || 0), 0).toLocaleString()} lei
+                                {daySales.length} продаж • {daySales.reduce((a, s) => a + Number(s.sale_price || 0) - Number(claimAdjustments.bySale[s.id]?.refund || 0), 0).toLocaleString()} lei
                             </span>
                         </div>
 
@@ -1028,10 +1028,12 @@ export default function Sales() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             {daySales.map((sale, idx) => {
                                 const paymentStatus = getStatusData(PAYMENT_STATUSES, sale.payment_status)
-                                const deliveryStatus = getStatusData(DELIVERY_STATUSES, sale.delivery_status)
+                                const saleClaims = getSaleClaims ? getSaleClaims(sale.id) : []
+                                const hasFullRefund = saleClaims.some(claim => claim.resolution === 'full_refund')
+                                const effectiveDeliveryStatus = hasFullRefund ? 'returned' : sale.delivery_status
+                                const deliveryStatus = getStatusData(DELIVERY_STATUSES, effectiveDeliveryStatus)
                                 const courierName = couriers.find(c => c.id === sale.courier_id)?.name
                                 const floristName = florists.find(f => f.id === sale.florist_id)?.name
-                                const saleClaims = getSaleClaims ? getSaleClaims(sale.id) : []
                                 return (
                                     <div
                                         key={sale.id}
@@ -1166,7 +1168,7 @@ export default function Sales() {
                                                 {PAYMENT_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                                             </select>
                                             <select
-                                                value={sale.delivery_status}
+                                                value={effectiveDeliveryStatus}
                                                 onChange={(e) => handleStatusChange(sale.id, 'delivery_status', e.target.value)}
                                                 style={{
                                                     padding: '0.25rem 0.5rem',
