@@ -58,6 +58,8 @@ const DATE_PRESETS = [
     ['custom', 'Диапазон']
 ]
 
+const ALL_PAGE_SIZE = 10
+
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase()
 
 const toDateKey = (value) => {
@@ -141,6 +143,7 @@ export default function MyDeliveries() {
     const [datePreset, setDatePreset] = useState('week')
     const [dateFrom, setDateFrom] = useState('')
     const [dateTo, setDateTo] = useState('')
+    const [allPage, setAllPage] = useState(1)
     const [calendarOpen, setCalendarOpen] = useState(false)
     const [selectedCalendarDay, setSelectedCalendarDay] = useState(addDaysKey(0))
     const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -228,7 +231,18 @@ export default function MyDeliveries() {
         return [...filtered].sort(sortByRoutePriority)
     }, [filter, mySales, todayKey, tomorrowKey, allStatusFilter, datePreset, dateFrom, dateTo])
 
+    useEffect(() => {
+        setAllPage(1)
+    }, [filter, allStatusFilter, datePreset, dateFrom, dateTo])
+
     const nextDelivery = useMemo(() => visibleSales.find(isActiveDelivery), [visibleSales])
+    const allTotalPages = filter === 'all' ? Math.max(1, Math.ceil(visibleSales.length / ALL_PAGE_SIZE)) : 1
+    const safeAllPage = Math.min(allPage, allTotalPages)
+    const paginatedSales = filter === 'all'
+        ? visibleSales.slice((safeAllPage - 1) * ALL_PAGE_SIZE, safeAllPage * ALL_PAGE_SIZE)
+        : visibleSales
+    const allPageStart = visibleSales.length === 0 ? 0 : (safeAllPage - 1) * ALL_PAGE_SIZE + 1
+    const allPageEnd = Math.min(safeAllPage * ALL_PAGE_SIZE, visibleSales.length)
     const calendarSales = useMemo(() => mySales.filter(isActiveDelivery).sort(sortByRoutePriority), [mySales])
     const calendarCountByDay = useMemo(() => {
         return calendarSales.reduce((acc, sale) => {
@@ -503,7 +517,7 @@ export default function MyDeliveries() {
                 </div>
             ) : (
                 <div style={{ display: 'grid', gap: '0.9rem' }}>
-                    {visibleSales.map(sale => {
+                    {paginatedSales.map(sale => {
                         const status = getStatus(sale.delivery_status)
                         const phone = firstPhone(sale)
                         const address = sale.delivery_address || ''
@@ -604,6 +618,60 @@ export default function MyDeliveries() {
                             </article>
                         )
                     })}
+                    {filter === 'all' && visibleSales.length > ALL_PAGE_SIZE && (
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: '46px 1fr 46px',
+                            gap: '0.55rem',
+                            alignItems: 'center',
+                            padding: '0.55rem',
+                            borderRadius: 22,
+                            background: 'rgba(255,255,255,0.82)',
+                            border: '1px solid rgba(226,232,240,0.95)',
+                            boxShadow: '0 12px 30px rgba(15,23,42,0.045)'
+                        }}>
+                            <button
+                                onClick={() => setAllPage(page => Math.max(1, page - 1))}
+                                disabled={safeAllPage <= 1}
+                                style={{
+                                    height: 46,
+                                    borderRadius: 16,
+                                    border: 0,
+                                    background: safeAllPage <= 1 ? '#f1f5f9' : '#0f172a',
+                                    color: safeAllPage <= 1 ? '#cbd5e1' : 'white',
+                                    fontSize: '1.25rem',
+                                    fontWeight: 950,
+                                    cursor: safeAllPage <= 1 ? 'default' : 'pointer'
+                                }}
+                            >
+                                ‹
+                            </button>
+                            <div style={{ textAlign: 'center' }}>
+                                <div style={{ color: '#0f172a', fontWeight: 950, lineHeight: 1.1 }}>
+                                    {safeAllPage} / {allTotalPages}
+                                </div>
+                                <div style={{ marginTop: '0.15rem', color: '#94a3b8', fontWeight: 800, fontSize: '0.75rem' }}>
+                                    {allPageStart}-{allPageEnd} из {visibleSales.length}
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setAllPage(page => Math.min(allTotalPages, page + 1))}
+                                disabled={safeAllPage >= allTotalPages}
+                                style={{
+                                    height: 46,
+                                    borderRadius: 16,
+                                    border: 0,
+                                    background: safeAllPage >= allTotalPages ? '#f1f5f9' : '#0f172a',
+                                    color: safeAllPage >= allTotalPages ? '#cbd5e1' : 'white',
+                                    fontSize: '1.25rem',
+                                    fontWeight: 950,
+                                    cursor: safeAllPage >= allTotalPages ? 'default' : 'pointer'
+                                }}
+                            >
+                                ›
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
