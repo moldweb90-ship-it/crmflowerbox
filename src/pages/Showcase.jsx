@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { Plus, Search, Store, Trash2, BadgeCheck, Sparkles, PackageCheck, RotateCcw } from 'lucide-react'
+import { Plus, Search, Store, Trash2, BadgeCheck, Sparkles, PackageCheck, RotateCcw, AlarmClock, Flame } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import { useStore } from '../context/StoreContext'
 
@@ -8,6 +8,49 @@ const emptyForm = {
     composition: [],
     sale_price: '',
     notes: ''
+}
+
+const getShowcaseAgeDays = (dateValue) => {
+    if (!dateValue) return 0
+    const created = new Date(dateValue).getTime()
+    if (Number.isNaN(created)) return 0
+    return Math.max(0, Math.floor((Date.now() - created) / 86400000))
+}
+
+const getShowcaseAgeMeta = (bouquet) => {
+    const days = getShowcaseAgeDays(bouquet.created_at)
+    if (bouquet.status !== 'active') return { days, level: 'idle', label: '', note: '', color: '#64748b', bg: '#f8fafc', border: '#e5e7eb' }
+    if (days >= 4) {
+        return {
+            days,
+            level: 'critical',
+            label: `${days} дн. на витрине`,
+            note: 'Срочно продавать: предложить первым, сделать акцент или скидку.',
+            color: '#dc2626',
+            bg: '#fef2f2',
+            border: '#fecaca'
+        }
+    }
+    if (days >= 3) {
+        return {
+            days,
+            level: 'warning',
+            label: '3-й день на витрине',
+            note: 'Пора продвигать: показывать клиентам в первую очередь.',
+            color: '#d97706',
+            bg: '#fffbeb',
+            border: '#fde68a'
+        }
+    }
+    return {
+        days,
+        level: 'fresh',
+        label: days === 0 ? 'Сегодня собран' : `${days} дн. на витрине`,
+        note: '',
+        color: '#16a34a',
+        bg: '#f0fdf4',
+        border: '#bbf7d0'
+    }
 }
 
 export default function Showcase() {
@@ -33,10 +76,21 @@ export default function Showcase() {
     const activeBouquets = showcaseBouquets.filter(b => b.status === 'active')
     const soldBouquets = showcaseBouquets.filter(b => b.status === 'sold')
     const wasteBouquets = showcaseBouquets.filter(b => b.status === 'waste')
+    const staleBouquets = activeBouquets.filter(b => getShowcaseAgeDays(b.created_at) >= 3)
+    const urgentBouquets = activeBouquets.filter(b => getShowcaseAgeDays(b.created_at) >= 4)
 
     const visibleBouquets = showcaseBouquets
-        .filter(b => statusFilter === 'all' ? true : b.status === statusFilter)
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .filter(b => {
+            if (statusFilter === 'all') return true
+            if (statusFilter === 'stale') return b.status === 'active' && getShowcaseAgeDays(b.created_at) >= 3
+            return b.status === statusFilter
+        })
+        .sort((a, b) => {
+            if (statusFilter === 'active' || statusFilter === 'stale') {
+                return getShowcaseAgeDays(b.created_at) - getShowcaseAgeDays(a.created_at) || new Date(a.created_at) - new Date(b.created_at)
+            }
+            return new Date(b.created_at) - new Date(a.created_at)
+        })
 
     const totals = useMemo(() => {
         const activeCost = activeBouquets.reduce((sum, b) => sum + Number(b.cost_price || 0), 0)
@@ -45,7 +99,9 @@ export default function Showcase() {
             count: activeBouquets.length,
             activeCost,
             activeRetail,
-            potentialProfit: activeRetail - activeCost
+            potentialProfit: activeRetail - activeCost,
+            staleCount: staleBouquets.length,
+            urgentCount: urgentBouquets.length
         }
     }, [showcaseBouquets])
 
@@ -165,9 +221,10 @@ export default function Showcase() {
                 </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 {[
                     { label: 'На витрине', value: totals.count, color: '#7c3aed' },
+                    { label: 'Зависшие 3+ дня', value: totals.staleCount, color: totals.urgentCount > 0 ? '#dc2626' : '#d97706' },
                     { label: 'Заморожено', value: `${totals.activeCost.toLocaleString()} lei`, color: '#0f766e' },
                     { label: 'Цена витрины', value: `${totals.activeRetail.toLocaleString()} lei`, color: '#2563eb' },
                     { label: 'Потенциал', value: `${totals.potentialProfit.toLocaleString()} lei`, color: '#16a34a' }
@@ -179,9 +236,53 @@ export default function Showcase() {
                 ))}
             </div>
 
+            {staleBouquets.length > 0 && (
+                <div style={{
+                    marginBottom: '1rem',
+                    padding: '1rem',
+                    borderRadius: 22,
+                    background: urgentBouquets.length > 0 ? 'linear-gradient(135deg, #fef2f2, #fff7ed)' : 'linear-gradient(135deg, #fffbeb, #ffffff)',
+                    border: urgentBouquets.length > 0 ? '1px solid #fecaca' : '1px solid #fde68a',
+                    display: 'flex',
+                    alignItems: isMobile ? 'flex-start' : 'center',
+                    gap: '0.8rem',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    boxShadow: '0 16px 40px rgba(15,23,42,0.06)'
+                }}>
+                    <div style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 16,
+                        display: 'grid',
+                        placeItems: 'center',
+                        background: urgentBouquets.length > 0 ? '#fee2e2' : '#fef3c7',
+                        color: urgentBouquets.length > 0 ? '#dc2626' : '#d97706',
+                        flexShrink: 0
+                    }}>
+                        {urgentBouquets.length > 0 ? <Flame size={24} /> : <AlarmClock size={24} />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 950, color: '#111827', fontSize: '1.05rem' }}>
+                            {urgentBouquets.length > 0 ? 'Есть букеты 4+ дня на витрине' : 'Есть букеты на 3-й день'}
+                        </div>
+                        <div style={{ color: '#64748b', fontWeight: 750, lineHeight: 1.35, marginTop: '0.2rem' }}>
+                            Продвигайте их первыми: предлагать клиентам, ставить ближе к глазам, обсуждать скидку или замену до списания.
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setStatusFilter('stale')}
+                        className="btn"
+                        style={{ background: '#111827', color: 'white', justifyContent: 'center', width: isMobile ? '100%' : 'auto' }}
+                    >
+                        Показать зависшие
+                    </button>
+                </div>
+            )}
+
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
                 {[
                     { id: 'active', label: `На витрине (${activeBouquets.length})` },
+                    { id: 'stale', label: `Зависшие (${staleBouquets.length})` },
                     { id: 'sold', label: `Продано (${soldBouquets.length})` },
                     { id: 'waste', label: `Списано (${wasteBouquets.length})` },
                     { id: 'all', label: 'Все' }
@@ -207,8 +308,14 @@ export default function Showcase() {
                 {visibleBouquets.map(bouquet => {
                     const profit = Number(bouquet.sale_price || 0) - Number(bouquet.cost_price || 0)
                     const margin = Number(bouquet.cost_price || 0) > 0 ? Math.round((profit / Number(bouquet.cost_price)) * 100) : 0
+                    const ageMeta = getShowcaseAgeMeta(bouquet)
                     return (
-                        <div key={bouquet.id} className="card" style={{ padding: '1.1rem', border: bouquet.status === 'active' ? '1px solid #ddd6fe' : 'none' }}>
+                        <div key={bouquet.id} className="card" style={{
+                            padding: '1.1rem',
+                            border: bouquet.status === 'active' ? `1px solid ${ageMeta.level === 'fresh' ? '#ddd6fe' : ageMeta.border}` : 'none',
+                            background: ageMeta.level === 'critical' ? 'linear-gradient(135deg, #fff, #fff7f7)' : ageMeta.level === 'warning' ? 'linear-gradient(135deg, #fff, #fffbeb)' : 'white',
+                            boxShadow: ageMeta.level === 'critical' ? '0 18px 45px rgba(220,38,38,0.10)' : 'var(--shadow-sm)'
+                        }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start' }}>
                                 <div>
                                     <h3 style={{ fontSize: '1.12rem' }}>{bouquet.name}</h3>
@@ -227,6 +334,26 @@ export default function Showcase() {
                                     {bouquet.status === 'active' ? 'На витрине' : bouquet.status === 'sold' ? 'Продан' : 'Списан'}
                                 </span>
                             </div>
+
+                            {bouquet.status === 'active' && (
+                                <div style={{
+                                    marginTop: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '0.55rem',
+                                    borderRadius: 14,
+                                    padding: '0.7rem',
+                                    background: ageMeta.bg,
+                                    border: `1px solid ${ageMeta.border}`,
+                                    color: ageMeta.color
+                                }}>
+                                    {ageMeta.level === 'critical' ? <Flame size={18} style={{ flexShrink: 0, marginTop: 1 }} /> : <AlarmClock size={18} style={{ flexShrink: 0, marginTop: 1 }} />}
+                                    <div>
+                                        <div style={{ fontWeight: 950, lineHeight: 1.1 }}>{ageMeta.label}</div>
+                                        {ageMeta.note && <div style={{ color: '#64748b', fontWeight: 750, fontSize: '0.78rem', lineHeight: 1.32, marginTop: '0.22rem' }}>{ageMeta.note}</div>}
+                                    </div>
+                                </div>
+                            )}
 
                             <div style={{ marginTop: '1rem', display: 'grid', gap: '0.4rem' }}>
                                 {(bouquet.composition || []).slice(0, 4).map((item, idx) => (
