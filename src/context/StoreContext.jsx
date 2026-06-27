@@ -122,6 +122,21 @@ export function StoreProvider({ children }) {
         }
     }
 
+    const refreshDeliveryData = async () => {
+        try {
+            const [sal, emp] = await Promise.all([
+                supabase.from('sales').select('*, products(name, sku, composition)').order('order_date', { ascending: false }),
+                supabase.from('employees').select('*').order('name', { ascending: true }).then(r => r).catch(() => ({ data: [] }))
+            ])
+            if (sal.data) setSales(sal.data)
+            if (emp?.data) setEmployees(emp.data)
+            return { success: true }
+        } catch (error) {
+            console.error('Error refreshing delivery data:', error)
+            return { success: false, error }
+        }
+    }
+
     // Загрузка customer_important_dates отдельно (таблица может не существовать)
     useEffect(() => {
         supabase.from('customer_important_dates').select('*')
@@ -2075,7 +2090,7 @@ export function StoreProvider({ children }) {
             showcaseBouquets, addShowcaseBouquet, markShowcaseBouquetSold, writeOffShowcaseBouquet, deleteShowcaseBouquet, getShowcaseItemStockIssues,
             customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, deleteCustomer, getCustomerOrders,
             customerImportantDates, saveImportantDate, deleteImportantDate, getCustomerImportantDates, getUpcomingReminders,
-            refreshCustomersAndDates, loading
+            refreshCustomersAndDates, refreshDeliveryData, loading
         }}>
             {children}
         </StoreContext.Provider>
