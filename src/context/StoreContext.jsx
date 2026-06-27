@@ -1830,6 +1830,72 @@ export function StoreProvider({ children }) {
         }
     }
 
+    const deleteShowcaseBouquet = async (id, { restoreStock = true } = {}) => {
+        try {
+            const bouquet = showcaseBouquets.find(b => b.id === id)
+            if (!bouquet) return { success: false, error: { message: 'Букет не найден' } }
+            if (bouquet.status === 'sold') {
+                return { success: false, error: { message: 'Проданный букет связан с продажей. Его лучше не удалять из витрины.' } }
+            }
+
+            let nextStock = [...stock]
+
+            if (restoreStock) {
+                const groupedItems = (bouquet.composition || []).reduce((acc, item) => {
+                    const itemType = item.type
+                    const itemId = item.item_id || item.id
+                    const qty = Number(item.quantity || item.qty || 0)
+                    if (!itemType || !itemId || qty <= 0) return acc
+                    const key = `${itemType}:${itemId}`
+                    acc[key] = acc[key] || { item_type: itemType, item_id: itemId, quantity: 0 }
+                    acc[key].quantity += qty
+                    return acc
+                }, {})
+
+                for (const item of Object.values(groupedItems)) {
+                    const existing = nextStock.find(s => s.item_type === item.item_type && s.item_id === item.item_id)
+
+                    if (existing) {
+                        const newQty = Number(existing.quantity || 0) + item.quantity
+                        const { error } = await supabase
+                            .from('stock')
+                            .update({ quantity: newQty, updated_at: new Date().toISOString() })
+                            .eq('id', existing.id)
+                        if (error) throw error
+                        nextStock = nextStock.map(s => s.id === existing.id ? { ...s, quantity: newQty, updated_at: new Date().toISOString() } : s)
+                    } else {
+                        const { data, error } = await supabase
+                            .from('stock')
+                            .insert([{ item_type: item.item_type, item_id: item.item_id, quantity: item.quantity }])
+                            .select()
+                        if (error) throw error
+                        if (data?.[0]) nextStock = [...nextStock, data[0]]
+                    }
+                }
+            }
+
+            const linkedTxTypes = ['showcase_build', 'waste']
+            const { error: txError } = await supabase
+                .from('stock_transactions')
+                .delete()
+                .eq('reference_id', id)
+                .in('transaction_type', linkedTxTypes)
+            if (txError) throw txError
+
+            const { error: bouquetError } = await supabase.from('showcase_bouquets').delete().eq('id', id)
+            if (bouquetError) throw bouquetError
+
+            if (restoreStock) setStock(nextStock)
+            setStockTransactions(prev => prev.filter(tx => !(tx.reference_id === id && linkedTxTypes.includes(tx.transaction_type))))
+            setShowcaseBouquets(prev => prev.filter(b => b.id !== id))
+
+            return { success: true }
+        } catch (error) {
+            console.error('Error deleting showcase bouquet:', error)
+            return { success: false, error }
+        }
+    }
+
     return (
         <StoreContext.Provider value={{
             flowers, addFlower, updateFlower, deleteFlower,
@@ -1849,7 +1915,7 @@ export function StoreProvider({ children }) {
             settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,
             stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
-            showcaseBouquets, addShowcaseBouquet, markShowcaseBouquetSold, writeOffShowcaseBouquet, getShowcaseItemStockIssues,
+            showcaseBouquets, addShowcaseBouquet, markShowcaseBouquetSold, writeOffShowcaseBouquet, deleteShowcaseBouquet, getShowcaseItemStockIssues,
             customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, deleteCustomer, getCustomerOrders,
             customerImportantDates, saveImportantDate, deleteImportantDate, getCustomerImportantDates, getUpcomingReminders,
             refreshCustomersAndDates, loading

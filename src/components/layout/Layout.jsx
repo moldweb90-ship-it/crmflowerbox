@@ -534,17 +534,17 @@ export default function Layout() {
 
                         <nav style={{
                             position: 'relative',
-                            height: '74px',
+                            height: '76px',
                             display: 'grid',
-                            gridTemplateColumns: '1fr 1fr 70px 1fr 1fr',
+                            gridTemplateColumns: '1fr 1fr 68px 1fr 1fr',
                             alignItems: 'center',
-                            padding: '0.35rem 0.65rem',
-                            borderRadius: '32px',
-                            background: 'linear-gradient(135deg, rgba(255,255,255,0.78), rgba(255,255,255,0.52))',
-                            border: '1px solid rgba(255,255,255,0.72)',
-                            boxShadow: '0 22px 60px rgba(15,23,42,0.22), inset 0 1px 0 rgba(255,255,255,0.8)',
-                            backdropFilter: 'blur(28px) saturate(1.35)',
-                            WebkitBackdropFilter: 'blur(28px) saturate(1.35)',
+                            padding: '0.38rem 0.55rem',
+                            borderRadius: '34px',
+                            background: 'linear-gradient(145deg, rgba(255,255,255,0.72), rgba(255,255,255,0.42))',
+                            border: '1px solid rgba(255,255,255,0.86)',
+                            boxShadow: '0 22px 48px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.92), inset 0 -18px 36px rgba(255,255,255,0.22)',
+                            backdropFilter: 'blur(34px) saturate(1.55)',
+                            WebkitBackdropFilter: 'blur(34px) saturate(1.55)',
                             pointerEvents: 'auto',
                             overflow: 'visible'
                         }}>
@@ -557,10 +557,10 @@ export default function Layout() {
                                         onClick={() => navigate(item.path)}
                                         style={{
                                             height: '58px',
-                                            border: 'none',
-                                            background: isActive ? 'rgba(17,24,39,0.9)' : 'transparent',
-                                            color: isActive ? '#fff' : '#334155',
-                                            borderRadius: '22px',
+                                            border: isActive ? '1px solid rgba(255,255,255,0.9)' : '1px solid transparent',
+                                            background: isActive ? 'rgba(255,255,255,0.74)' : 'transparent',
+                                            color: isActive ? '#0f766e' : '#334155',
+                                            borderRadius: '24px',
                                             display: 'flex',
                                             flexDirection: 'column',
                                             alignItems: 'center',
@@ -569,12 +569,25 @@ export default function Layout() {
                                             fontSize: '0.66rem',
                                             fontWeight: 800,
                                             cursor: 'pointer',
-                                            transition: 'background 0.24s ease, color 0.24s ease, transform 0.24s ease',
-                                            transform: isActive ? 'translateY(-1px)' : 'translateY(0)'
+                                            boxShadow: isActive
+                                                ? '0 10px 24px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.95)'
+                                                : 'none',
+                                            transition: 'background 0.24s ease, color 0.24s ease, transform 0.24s ease, box-shadow 0.24s ease',
+                                            transform: isActive ? 'translateY(-2px)' : 'translateY(0)'
                                         }}
                                     >
-                                        <Icon size={19} strokeWidth={isActive ? 2.6 : 2.2} />
-                                        <span>{item.label}</span>
+                                        <span style={{
+                                            width: '25px',
+                                            height: '23px',
+                                            borderRadius: '999px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            background: isActive ? 'rgba(20,184,166,0.12)' : 'transparent'
+                                        }}>
+                                            <Icon size={19} strokeWidth={isActive ? 2.7 : 2.2} />
+                                        </span>
+                                        <span style={{ color: isActive ? '#102a43' : '#334155' }}>{item.label}</span>
                                     </button>
                                 )
                             })}
@@ -583,30 +596,30 @@ export default function Layout() {
                                 onClick={() => setIsQuickSaleOpen(prev => !prev)}
                                 aria-label="Добавить заказ"
                                 style={{
-                                    width: '58px',
-                                    height: '58px',
+                                    width: '56px',
+                                    height: '56px',
                                     borderRadius: '50%',
-                                    border: '1px solid rgba(255,255,255,0.7)',
+                                    border: '1px solid rgba(255,255,255,0.95)',
                                     background: isQuickSaleOpen
-                                        ? 'rgba(100,116,139,0.92)'
-                                        : 'rgba(17,24,39,0.94)',
-                                    color: '#fff',
+                                        ? 'rgba(255,255,255,0.86)'
+                                        : 'linear-gradient(145deg, rgba(255,255,255,0.96), rgba(255,255,255,0.62))',
+                                    color: isQuickSaleOpen ? '#64748b' : 'var(--primary)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     justifySelf: 'center',
                                     marginTop: 0,
                                     boxShadow: isQuickSaleOpen
-                                        ? '0 14px 30px rgba(100,116,139,0.28), inset 0 1px 0 rgba(255,255,255,0.22)'
-                                        : '0 14px 30px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.18)',
-                                    backdropFilter: 'blur(18px) saturate(1.2)',
-                                    WebkitBackdropFilter: 'blur(18px) saturate(1.2)',
+                                        ? '0 12px 26px rgba(100,116,139,0.18), inset 0 1px 0 rgba(255,255,255,0.95)'
+                                        : '0 16px 34px rgba(232,93,66,0.24), 0 6px 18px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.98)',
+                                    backdropFilter: 'blur(24px) saturate(1.45)',
+                                    WebkitBackdropFilter: 'blur(24px) saturate(1.45)',
                                     cursor: 'pointer',
-                                    transition: 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), background 0.24s ease',
+                                    transition: 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), background 0.24s ease, box-shadow 0.24s ease',
                                     transform: isQuickSaleOpen ? 'rotate(45deg) scale(0.96)' : 'rotate(0deg) scale(1)'
                                 }}
                             >
-                                {isQuickSaleOpen ? <X size={28} /> : <Plus size={30} />}
+                                {isQuickSaleOpen ? <X size={27} /> : <Plus size={30} strokeWidth={2.4} />}
                             </button>
 
                             {mobileDockItems.slice(2).map(item => {
@@ -618,10 +631,10 @@ export default function Layout() {
                                         onClick={() => navigate(item.path)}
                                         style={{
                                             height: '58px',
-                                            border: 'none',
-                                            background: isActive ? 'rgba(17,24,39,0.9)' : 'transparent',
-                                            color: isActive ? '#fff' : '#334155',
-                                            borderRadius: '22px',
+                                            border: isActive ? '1px solid rgba(255,255,255,0.9)' : '1px solid transparent',
+                                            background: isActive ? 'rgba(255,255,255,0.74)' : 'transparent',
+                                            color: isActive ? '#0f766e' : '#334155',
+                                            borderRadius: '24px',
                                             display: 'flex',
                                             flexDirection: 'column',
                                             alignItems: 'center',
@@ -630,12 +643,25 @@ export default function Layout() {
                                             fontSize: '0.66rem',
                                             fontWeight: 800,
                                             cursor: 'pointer',
-                                            transition: 'background 0.24s ease, color 0.24s ease, transform 0.24s ease',
-                                            transform: isActive ? 'translateY(-1px)' : 'translateY(0)'
+                                            boxShadow: isActive
+                                                ? '0 10px 24px rgba(15,23,42,0.10), inset 0 1px 0 rgba(255,255,255,0.95)'
+                                                : 'none',
+                                            transition: 'background 0.24s ease, color 0.24s ease, transform 0.24s ease, box-shadow 0.24s ease',
+                                            transform: isActive ? 'translateY(-2px)' : 'translateY(0)'
                                         }}
                                     >
-                                        <Icon size={19} strokeWidth={isActive ? 2.6 : 2.2} />
-                                        <span>{item.label}</span>
+                                        <span style={{
+                                            width: '25px',
+                                            height: '23px',
+                                            borderRadius: '999px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            background: isActive ? 'rgba(20,184,166,0.12)' : 'transparent'
+                                        }}>
+                                            <Icon size={19} strokeWidth={isActive ? 2.7 : 2.2} />
+                                        </span>
+                                        <span style={{ color: isActive ? '#102a43' : '#334155' }}>{item.label}</span>
                                     </button>
                                 )
                             })}

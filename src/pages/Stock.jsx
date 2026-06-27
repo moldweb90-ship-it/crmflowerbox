@@ -7,9 +7,9 @@ import { supabase } from '../supabase'
 
 export default function Stock() {
     const {
-        stock, stockTransactions, flowers, goods, suppliers,
+        stock, stockTransactions, flowers, goods, suppliers, showcaseBouquets,
         addToStock, removeFromStock, recordWaste, updateMinQuantity,
-        getStockQty, getLowStockItems, getItemName
+        getStockQty, getLowStockItems, getItemName, deleteShowcaseBouquet
     } = useStore()
 
     const { user } = useAuth()
@@ -127,10 +127,11 @@ export default function Stock() {
                     ...tx,
                     itemName,
                     cost,
-                    totalLoss: Math.abs(tx.quantity) * cost
+                    totalLoss: Math.abs(tx.quantity) * cost,
+                    showcaseBouquet: showcaseBouquets.find(b => b.id === tx.reference_id)
                 }
             })
-    }, [stockTransactions, flowers, goods, getItemName])
+    }, [stockTransactions, flowers, goods, getItemName, showcaseBouquets])
 
     // Filtered Waste History
     const filteredWasteHistory = useMemo(() => {
@@ -258,6 +259,16 @@ export default function Stock() {
 
     // Undo waste transaction
     const handleUndoWaste = async (wasteItem) => {
+        if (wasteItem.showcaseBouquet) {
+            if (!window.confirm(`Это списание витринного букета "${wasteItem.showcaseBouquet.name}".\n\nУдалить весь букет из витрины, убрать связанные списания и вернуть весь состав на склад?`)) return
+
+            const result = await deleteShowcaseBouquet(wasteItem.showcaseBouquet.id, { restoreStock: true })
+            if (!result.success) {
+                alert(result.error?.message || 'Ошибка удаления витринного букета')
+            }
+            return
+        }
+
         if (!window.confirm(`Отменить списание "${wasteItem.itemName}" ? Товар вернется на склад.`)) return
 
         try {
@@ -875,6 +886,11 @@ export default function Stock() {
                                             {w.notes && (
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                                     {w.notes}
+                                                </div>
+                                            )}
+                                            {w.showcaseBouquet && (
+                                                <div style={{ fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700, marginTop: '0.15rem' }}>
+                                                    Витрина: удаление вернёт весь букет
                                                 </div>
                                             )}
                                         </div>

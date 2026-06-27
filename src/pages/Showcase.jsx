@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { Plus, Search, Store, Trash2, BadgeCheck, Sparkles, PackageCheck } from 'lucide-react'
+import { Plus, Search, Store, Trash2, BadgeCheck, Sparkles, PackageCheck, RotateCcw } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import { useStore } from '../context/StoreContext'
 
@@ -12,7 +12,7 @@ const emptyForm = {
 
 export default function Showcase() {
     const {
-        showcaseBouquets, addShowcaseBouquet, writeOffShowcaseBouquet,
+        showcaseBouquets, addShowcaseBouquet, writeOffShowcaseBouquet, deleteShowcaseBouquet,
         flowers, goods, settings, getShowcaseItemStockIssues
     } = useStore()
 
@@ -121,6 +121,14 @@ export default function Showcase() {
         if (!reason) return
         const result = await writeOffShowcaseBouquet(bouquet.id, reason)
         if (!result.success) alert(result.error?.message || 'Не удалось списать букет')
+    }
+
+    const removeTestBouquet = async (bouquet) => {
+        const statusText = bouquet.status === 'waste' ? 'списанный букет' : 'букет с витрины'
+        if (!window.confirm(`Удалить "${bouquet.name}" как тест?\n\nCRM вернёт состав на склад, удалит ${statusText} и уберёт связанные движения из истории склада.`)) return
+
+        const result = await deleteShowcaseBouquet(bouquet.id, { restoreStock: true })
+        if (!result.success) alert(result.error?.message || 'Не удалось удалить букет')
     }
 
     const searchFlowers = itemSearch
@@ -235,14 +243,27 @@ export default function Showcase() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: profit >= 0 ? '#16a34a' : '#dc2626' }}><span>Маржа</span><b>{profit.toLocaleString()} lei ({margin}%)</b></div>
                             </div>
 
-                            {bouquet.status === 'active' && (
-                                <button
-                                    className="btn"
-                                    onClick={() => writeOff(bouquet)}
-                                    style={{ marginTop: '1rem', width: '100%', justifyContent: 'center', background: '#fee2e2', color: '#991b1b' }}
-                                >
-                                    <Trash2 size={16} style={{ marginRight: '0.4rem' }} /> Списать
-                                </button>
+                            {bouquet.status !== 'sold' && (
+                                <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: bouquet.status === 'active' ? '1fr 1fr' : '1fr', gap: '0.55rem' }}>
+                                    {bouquet.status === 'active' && (
+                                        <button
+                                            className="btn"
+                                            onClick={() => writeOff(bouquet)}
+                                            style={{ width: '100%', justifyContent: 'center', background: '#fee2e2', color: '#991b1b' }}
+                                        >
+                                            <Trash2 size={16} style={{ marginRight: '0.4rem' }} /> Списать
+                                        </button>
+                                    )}
+                                    <button
+                                        className="btn"
+                                        onClick={() => removeTestBouquet(bouquet)}
+                                        style={{ width: '100%', justifyContent: 'center', background: '#ecfdf5', color: '#047857' }}
+                                        title="Удалить тестовый букет и вернуть состав на склад"
+                                    >
+                                        <RotateCcw size={16} style={{ marginRight: '0.4rem' }} />
+                                        {bouquet.status === 'waste' ? 'Вернуть и удалить' : 'Удалить тест'}
+                                    </button>
+                                </div>
                             )}
                         </div>
                     )
