@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
+const LOGO_SRC = '/fblogo.png'
+
 export default function Login() {
     const [loginEmail, setLoginEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -53,7 +55,11 @@ export default function Login() {
                 border: '1px solid rgba(255, 255, 255, 0.18)'
             }}>
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                    <h1 style={{ fontSize: '2rem', color: '#be185d', marginBottom: '0.5rem' }}>FlowerBox</h1>
+                    <img
+                        src={LOGO_SRC}
+                        alt="FlowerBox"
+                        style={{ display: 'block', width: 'min(100%, 290px)', height: 92, objectFit: 'contain', margin: '0 auto 0.55rem' }}
+                    />
                     <p style={{ color: '#64748b' }}>Вход в систему</p>
                 </div>
 

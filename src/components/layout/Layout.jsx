@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext'
 import { usePermissions } from '../../context/PermissionContext'
 import { getDailyFlowerNote } from '../../lib/dailyFlowerNotes'
 
+const LOGO_SRC = '/fblogo.png'
+
 const pageTitles = {
     '/dashboard': 'Обзор',
     '/analytics': 'Аналитика',
@@ -176,11 +178,12 @@ export default function Layout() {
                     zIndex: 40,
                     boxShadow: 'var(--shadow-sm)'
                 }}>
-                    <Link to={homePath} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--secondary)', fontWeight: 800, fontSize: '1.25rem', textDecoration: 'none' }}>
-                        <div style={{ background: 'var(--secondary)', color: 'white', padding: '6px', borderRadius: '12px' }}>
-                            <Flower2 size={24} />
-                        </div>
-                        FlowerBox
+                    <Link to={homePath} style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', minWidth: 0 }}>
+                        <img
+                            src={LOGO_SRC}
+                            alt="FlowerBox"
+                            style={{ display: 'block', width: 178, maxWidth: '58vw', height: 46, objectFit: 'contain', objectPosition: 'left center' }}
+                        />
                     </Link>
                     <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ border: 'none', background: 'none' }}>
                         {isSidebarOpen ? <X size={28} /> : <Menu size={28} />}
@@ -218,11 +221,12 @@ export default function Layout() {
                     // Actually, let's make it fixed left attached but styled internally.
                 }}>
                     {!isMobile && (
-                        <Link to={homePath} style={{ padding: '1rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none', color: 'inherit' }}>
-                            <div style={{ background: 'var(--secondary)', color: 'white', padding: '6px', borderRadius: '10px', display: 'flex' }}>
-                                <Flower2 size={20} />
-                            </div>
-                            <span style={{ fontSize: '1.1rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-main)' }}>FlowerBox</span>
+                        <Link to={homePath} style={{ padding: '1.05rem 1rem 0.75rem', display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+                            <img
+                                src={LOGO_SRC}
+                                alt="FlowerBox"
+                                style={{ display: 'block', width: '100%', maxWidth: 198, height: 54, objectFit: 'contain', objectPosition: 'left center' }}
+                            />
                         </Link>
                     )}
 
