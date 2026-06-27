@@ -13,6 +13,7 @@ const pageTitles = {
     '/sales': 'Заказы',
     '/showcase': 'Витрина',
     '/customers': 'Клиенты',
+    '/claims': 'Рекламации',
     '/reminders': 'Напоминания',
     '/products': 'Букеты',
     '/flowers': 'Цветы',
@@ -71,6 +72,7 @@ export default function Layout() {
                 { label: 'Заказы', path: '/sales', icon: ShoppingCart, primary: true },
                 { label: 'Витрина', path: '/showcase', icon: Store, primary: true },
                 { label: 'Клиенты', path: '/customers', icon: Users, primary: true },
+                { label: 'Рекламации', path: '/claims', icon: RotateCcw, permission: 'claims' },
                 { label: 'Напоминания', path: '/reminders', icon: Bell, permission: 'customers' },
             ]
         },
