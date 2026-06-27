@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2, Eye, EyeOff } from 'lucide-react'
+import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
@@ -15,6 +15,43 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [modalMode, setModalMode] = useState('add') // 'add' | 'edit'
     const [currentItem, setCurrentItem] = useState(null)
     const [formData, setFormData] = useState({ name: '', price: '', category: '', cost: '', markup: 2 })
+    const [searchQuery, setSearchQuery] = useState('')
+    const [sortMode, setSortMode] = useState('name_asc')
+
+    const visibleItems = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase()
+        const filtered = items.filter(item => {
+            if (!query) return true
+            return [
+                item.name,
+                item.category,
+                String(item.price || ''),
+                String(item.cost || '')
+            ].some(value => String(value || '').toLowerCase().includes(query))
+        })
+
+        return [...filtered].sort((a, b) => {
+            const nameA = String(a.name || '').localeCompare(String(b.name || ''), 'ru')
+            const priceA = Number(a.price || 0)
+            const priceB = Number(b.price || 0)
+            const costA = Number(a.cost || 0)
+            const costB = Number(b.cost || 0)
+
+            if (sortMode === 'name_desc') return -nameA
+            if (sortMode === 'price_asc') return priceA - priceB || nameA
+            if (sortMode === 'price_desc') return priceB - priceA || nameA
+            if (sortMode === 'cost_asc') return costA - costB || nameA
+            if (sortMode === 'cost_desc') return costB - costA || nameA
+            return nameA
+        })
+    }, [items, searchQuery, sortMode])
+
+    const totalLabel = isFlowers
+        ? `${items.length} видов цветов`
+        : `${items.length} товаров`
+    const shownLabel = searchQuery.trim()
+        ? `Найдено: ${visibleItems.length}`
+        : 'Показаны все'
 
     const openAddModal = () => {
         setModalMode('add')
@@ -89,10 +126,56 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                 </button>
             </div>
 
+            <div className="card" style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : 'minmax(260px, 1fr) 220px 180px',
+                gap: '0.75rem',
+                alignItems: 'center',
+                marginBottom: '1rem',
+                padding: '1rem'
+            }}>
+                <div style={{ position: 'relative' }}>
+                    <Search size={18} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    <input
+                        className="input"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder={isFlowers ? 'Быстрый поиск цветка...' : 'Быстрый поиск товара...'}
+                        style={{ width: '100%', paddingLeft: 42, minHeight: 46, fontWeight: 700 }}
+                    />
+                </div>
+                <div style={{ position: 'relative' }}>
+                    <ArrowUpDown size={18} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                    <select
+                        className="input"
+                        value={sortMode}
+                        onChange={e => setSortMode(e.target.value)}
+                        style={{ width: '100%', paddingLeft: 42, minHeight: 46, fontWeight: 700 }}
+                    >
+                        <option value="name_asc">А-Я</option>
+                        <option value="name_desc">Я-А</option>
+                        <option value="price_asc">Цена ↑</option>
+                        <option value="price_desc">Цена ↓</option>
+                        <option value="cost_asc">Закупка ↑</option>
+                        <option value="cost_desc">Закупка ↓</option>
+                    </select>
+                </div>
+                <div style={{
+                    borderRadius: 16,
+                    padding: '0.7rem 0.85rem',
+                    background: 'linear-gradient(135deg, #fff7ed, #ffffff)',
+                    border: '1px solid #fed7aa'
+                }}>
+                    <div style={{ color: 'var(--primary)', fontWeight: 950, fontSize: '1.15rem', lineHeight: 1 }}>{items.length}</div>
+                    <div style={{ color: '#64748b', fontWeight: 800, fontSize: '0.78rem', marginTop: '0.2rem' }}>{totalLabel}</div>
+                    <div style={{ color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', marginTop: '0.15rem' }}>{shownLabel}</div>
+                </div>
+            </div>
+
             {isMobile ? (
                 // Mobile Card View - Compact
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {items.map(item => {
+                    {visibleItems.map(item => {
                         const isPublished = item.is_published !== false
                         return (
                             <div key={item.id} className="card" style={{
@@ -126,7 +209,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             </div>
                         )
                     })}
-                    {items.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Список пуст.</p>}
+                    {visibleItems.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>{items.length === 0 ? 'Список пуст.' : 'Ничего не найдено.'}</p>}
                 </div>
             ) : (
                 // Desktop Table View
@@ -141,7 +224,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             </tr>
                         </thead>
                         <tbody>
-                            {items.map(item => {
+                            {visibleItems.map(item => {
                                 const isPublished = item.is_published !== false
                                 return (
                                     <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
@@ -161,10 +244,10 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                     </tr>
                                 )
                             })}
-                            {items.length === 0 && (
+                            {visibleItems.length === 0 && (
                                 <tr>
                                     <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                                        Список пуст.
+                                        {items.length === 0 ? 'Список пуст.' : 'Ничего не найдено.'}
                                     </td>
                                 </tr>
                             )}
