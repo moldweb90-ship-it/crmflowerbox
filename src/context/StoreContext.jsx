@@ -1008,9 +1008,7 @@ export function StoreProvider({ children }) {
 
             if (sale && payload.resolution === 'full_refund') {
                 const salePatch = {
-                    status: 'returned',
-                    delivery_status: 'returned',
-                    updated_at: new Date().toISOString()
+                    delivery_status: 'returned'
                 }
                 const { data: updatedSale } = await supabase.from('sales').update(salePatch).eq('id', sale.id).select()
                 const nextSale = updatedSale?.[0] || { ...sale, ...salePatch }
@@ -1034,9 +1032,7 @@ export function StoreProvider({ children }) {
             const sale = sales.find(s => s.id === updated.sale_id)
             if (sale && updated.resolution === 'full_refund') {
                 const salePatch = {
-                    status: 'returned',
-                    delivery_status: 'returned',
-                    updated_at: new Date().toISOString()
+                    delivery_status: 'returned'
                 }
                 const { data: updatedSale } = await supabase.from('sales').update(salePatch).eq('id', sale.id).select()
                 const nextSale = updatedSale?.[0] || { ...sale, ...salePatch }
