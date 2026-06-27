@@ -191,6 +191,8 @@ CREATE TABLE IF NOT EXISTS public.sales (
   items jsonb DEFAULT '[]'::jsonb,
   is_pickup boolean DEFAULT false,
   delivery_method text,
+  extra_delivery_cost numeric DEFAULT 0,
+  extra_delivery_reason text,
   is_custom boolean DEFAULT false,
   custom_name text,
   custom_composition jsonb DEFAULT '[]'::jsonb,
