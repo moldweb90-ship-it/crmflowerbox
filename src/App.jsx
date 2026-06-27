@@ -17,6 +17,7 @@ import Employees from './pages/Employees'
 import Analytics from './pages/Analytics'
 import Couriers from './pages/Couriers'
 import MyDeliveries from './pages/MyDeliveries'
+import Claims from './pages/Claims'
 import { StoreProvider } from './context/StoreContext'
 import { AuthProvider } from './context/AuthContext'
 import { PermissionProvider } from './context/PermissionContext'
@@ -50,6 +51,7 @@ function App() {
                                 <Route path="stock" element={<RequirePermission permission="stock"><Stock /></RequirePermission>} />
                                 <Route path="expenses" element={<RequirePermission permission="expenses"><Expenses /></RequirePermission>} />
                                 <Route path="customers" element={<RequirePermission permission="customers"><Customers /></RequirePermission>} />
+                                <Route path="claims" element={<RequirePermission permission="claims"><Claims /></RequirePermission>} />
                                 <Route path="reminders" element={<RequirePermission permission="customers"><Reminders /></RequirePermission>} />
                                 <Route path="employees" element={<RequirePermission permission="employees"><Employees /></RequirePermission>} />
                                 <Route path="couriers" element={<RequirePermission permission="couriers"><Couriers /></RequirePermission>} />

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
 import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye, Search } from 'lucide-react'
 import Modal from '../components/ui/Modal'
+import ClaimModal from '../components/claims/ClaimModal'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -88,6 +89,7 @@ export default function Sales() {
         calculateCostPrice,
         flowers, goods, settings,
         showcaseBouquets, markShowcaseBouquetSold
+        , getSaleClaims
     } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
@@ -148,6 +150,7 @@ export default function Sales() {
     const [loading, setLoading] = useState(false)
     const [showProfit, setShowProfit] = useState(true)
     const [isLoyalCustomersOpen, setIsLoyalCustomersOpen] = useState(false)
+    const [claimSale, setClaimSale] = useState(null)
 
     // Quick Expense (Cashbox) State
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
@@ -983,6 +986,7 @@ export default function Sales() {
                                 const deliveryStatus = getStatusData(DELIVERY_STATUSES, sale.delivery_status)
                                 const courierName = couriers.find(c => c.id === sale.courier_id)?.name
                                 const floristName = florists.find(f => f.id === sale.florist_id)?.name
+                                const saleClaims = getSaleClaims ? getSaleClaims(sale.id) : []
                                 return (
                                     <div
                                         key={sale.id}
@@ -1045,6 +1049,18 @@ export default function Sales() {
                                                     </span>
                                                 ) : null
                                             })()}
+                                            {saleClaims.length > 0 && (
+                                                <div style={{
+                                                    background: '#fee2e2',
+                                                    color: '#b91c1c',
+                                                    padding: '0.25rem 0.75rem',
+                                                    borderRadius: '99px',
+                                                    fontWeight: 800,
+                                                    fontSize: '0.78rem'
+                                                }}>
+                                                    Рекламация
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Middle: Product + Dates + Address */}
@@ -1129,6 +1145,9 @@ export default function Sales() {
                                             </button>
                                             <button onClick={() => handleEditClick(sale)} style={{ padding: '0.5rem', border: 'none', background: '#f3f4f6', borderRadius: '8px', cursor: 'pointer' }} title="Редактировать">
                                                 <Edit2 size={16} />
+                                            </button>
+                                            <button onClick={() => setClaimSale(sale)} style={{ padding: '0.5rem', border: 'none', background: '#fff7ed', color: '#ea580c', borderRadius: '8px', cursor: 'pointer' }} title="Рекламация / возврат">
+                                                <AlertCircle size={16} />
                                             </button>
                                             <button onClick={() => handleDeleteClick(sale.id)} style={{ padding: '0.5rem', border: 'none', background: '#fee2e2', color: '#ef4444', borderRadius: '8px', cursor: 'pointer' }} title="Удалить">
                                                 <Trash2 size={16} />
@@ -2769,6 +2788,11 @@ export default function Sales() {
                     </div>
                 </div>
             </Modal >
+            <ClaimModal
+                isOpen={Boolean(claimSale)}
+                sale={claimSale}
+                onClose={() => setClaimSale(null)}
+            />
         </div >
     )
 }

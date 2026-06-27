@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Users, Search, Phone, Mail, Star, Ban, User, TrendingUp, Calendar, Package, ChevronRight, Edit2, Heart, Trash2, Plus } from 'lucide-react'
+import { Users, Search, Phone, Mail, Star, Ban, User, TrendingUp, Calendar, Package, ChevronRight, Edit2, Heart, Trash2, Plus, RotateCcw } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 const STATUS_OPTIONS = [
@@ -11,7 +11,7 @@ const STATUS_OPTIONS = [
 ]
 
 export default function Customers() {
-    const { customers, updateCustomer, deleteCustomer, getCustomerOrders, getCustomerImportantDates, saveImportantDate, deleteImportantDate, refreshCustomersAndDates } = useStore()
+    const { customers, updateCustomer, deleteCustomer, getCustomerOrders, getCustomerClaims, getCustomerImportantDates, saveImportantDate, deleteImportantDate, refreshCustomersAndDates } = useStore()
     const location = useLocation()
     const navigate = useNavigate()
     const [search, setSearch] = useState('')
@@ -307,7 +307,7 @@ export default function Customers() {
 
             {/* Карточка клиента */}
             <Modal isOpen={isViewOpen} onClose={() => setIsViewOpen(false)} title="Карточка клиента" maxWidth="900px">
-                {selectedCustomer && <CustomerCard customer={selectedCustomer} onUpdate={handleUpdateStatus} onUpdatePreferences={handleUpdatePreferences} onDelete={handleDeleteCustomer} getCustomerOrders={getCustomerOrders} getImportantDates={getCustomerImportantDates} onSaveDate={saveImportantDate} onDeleteDate={deleteImportantDate} />}
+                {selectedCustomer && <CustomerCard customer={selectedCustomer} onUpdate={handleUpdateStatus} onUpdatePreferences={handleUpdatePreferences} onDelete={handleDeleteCustomer} getCustomerOrders={getCustomerOrders} getCustomerClaims={getCustomerClaims} getImportantDates={getCustomerImportantDates} onSaveDate={saveImportantDate} onDeleteDate={deleteImportantDate} />}
             </Modal>
         </div>
     )
@@ -321,13 +321,14 @@ const DATE_TYPE_OPTIONS = [
 ]
 
 // Компонент карточки клиента
-function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCustomerOrders, getImportantDates, onSaveDate, onDeleteDate }) {
+function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCustomerOrders, getCustomerClaims, getImportantDates, onSaveDate, onDeleteDate }) {
     const [editPreferences, setEditPreferences] = useState(false)
     const [preferences, setPreferences] = useState(customer.preferences || '')
     const [isAddingDate, setIsAddingDate] = useState(false)
     const [newDateType, setNewDateType] = useState('birthday')
     const [newDateValue, setNewDateValue] = useState('')
     const orders = getCustomerOrders(customer.id)
+    const claims = getCustomerClaims ? getCustomerClaims(customer.id) : []
     const importantDates = getImportantDates(customer.id)
     const statusData = STATUS_OPTIONS.find(s => s.id === customer.status) || STATUS_OPTIONS[0]
     const StatusIcon = statusData.icon
@@ -539,6 +540,37 @@ function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCu
             </div>
 
             {/* История заказов */}
+            <div className="card" style={{ padding: '1.5rem', border: claims.length > 0 ? '1px solid #fecaca' : '1px solid var(--border)' }}>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <RotateCcw size={18} color="#ef4444" /> Рекламации и возвраты ({claims.length})
+                </h4>
+                {claims.length === 0 ? (
+                    <div style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>По клиенту рекламаций нет.</div>
+                ) : (
+                    <div style={{ display: 'grid', gap: '0.65rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            <div style={{ background: '#fef2f2', borderRadius: 12, padding: '0.85rem' }}>
+                                <div style={{ color: '#991b1b', fontWeight: 800, fontSize: '0.8rem' }}>Потери</div>
+                                <div style={{ color: '#dc2626', fontWeight: 900, fontSize: '1.3rem' }}>{claims.reduce((sum, c) => sum + Number(c.loss_amount || 0), 0).toLocaleString()} lei</div>
+                            </div>
+                            <div style={{ background: '#fff7ed', borderRadius: 12, padding: '0.85rem' }}>
+                                <div style={{ color: '#9a3412', fontWeight: 800, fontSize: '0.8rem' }}>Возвраты деньгами</div>
+                                <div style={{ color: '#ea580c', fontWeight: 900, fontSize: '1.3rem' }}>{claims.reduce((sum, c) => sum + Number(c.refund_amount || 0), 0).toLocaleString()} lei</div>
+                            </div>
+                        </div>
+                        {claims.map(claim => (
+                            <div key={claim.id} style={{ padding: '0.85rem', borderRadius: 12, background: '#f8fafc', display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                                <div>
+                                    <div style={{ fontWeight: 800 }}>{claim.reason || 'Рекламация'}</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 650 }}>{claim.created_at ? new Date(claim.created_at).toLocaleDateString('ru-RU') : '—'} · {claim.status || 'open'}</div>
+                                </div>
+                                <div style={{ color: '#dc2626', fontWeight: 900 }}>{Number(claim.loss_amount || 0).toLocaleString()} lei</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
             <div className="card" style={{ padding: '1.5rem' }}>
                 <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Package size={18} /> История заказов ({orders.length})

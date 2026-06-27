@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext'
 import { createPasswordRecord } from '../lib/passwordHash'
 
 const PermissionContext = createContext()
-const DEFAULT_ADMIN_PERMISSIONS = ["dashboard", "analytics", "sales", "showcase", "customers", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "employees", "couriers", "my_deliveries", "settings"]
+const DEFAULT_ADMIN_PERMISSIONS = ["dashboard", "analytics", "sales", "showcase", "customers", "claims", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "employees", "couriers", "my_deliveries", "settings"]
 const SYSTEM_OWNER_USER = {
     id: '00000000-0000-4000-8000-000000000001',
     name: 'Владелец FlowerBox',
@@ -91,7 +91,7 @@ export function PermissionProvider({ children }) {
 
             // 2. If not found, create it (Auto-registration of profile)
             if (error && error.code === 'PGRST116') {
-                const defaultPerms = ["dashboard", "sales", "showcase", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "settings"]
+                const defaultPerms = ["dashboard", "sales", "showcase", "customers", "claims", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "settings"]
                 const { data: newData, error: createError } = await supabase
                     .from('user_profiles')
                     .insert([{

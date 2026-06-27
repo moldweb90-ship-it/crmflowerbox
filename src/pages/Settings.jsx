@@ -116,6 +116,7 @@ export default function Settings() {
         { key: 'analytics', label: 'Аналитика' },
         { key: 'sales', label: 'Заказы' },
         { key: 'showcase', label: 'Витрина' },
+        { key: 'claims', label: 'Рекламации' },
         { key: 'products', label: 'Букеты' },
         { key: 'flowers', label: 'Цветы' },
         { key: 'goods', label: 'Доп. товары' },

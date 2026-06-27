@@ -45,6 +45,7 @@ export function StoreProvider({ children }) {
     const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
     const [stockLots, setStockLots] = usePersistedState('store_stock_lots', [])
     const [showcaseBouquets, setShowcaseBouquets] = usePersistedState('store_showcase_bouquets', [])
+    const [claims, setClaims] = usePersistedState('store_claims', [])
     const [customers, setCustomers] = usePersistedState('store_customers', [])
     const [customerImportantDates, setCustomerImportantDates] = usePersistedState('store_customer_dates', [])
     const [tasks, setTasks] = usePersistedState('store_tasks', [])
@@ -80,10 +81,11 @@ export function StoreProvider({ children }) {
                 supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(100),
                 supabase.from('stock_lots').select('*, suppliers(name)').order('created_at', { ascending: true }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('showcase_bouquets').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
+                supabase.from('claims').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('customers').select('*').order('created_at', { ascending: false })
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, cust] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, claimRows, cust] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -114,6 +116,7 @@ export function StoreProvider({ children }) {
             if (stkTrans.data) setStockTransactions(stkTrans.data)
             if (lots.data) setStockLots(lots.data)
             if (showcase.data) setShowcaseBouquets(showcase.data)
+            if (claimRows.data) setClaims(claimRows.data)
             if (cust.data) setCustomers(cust.data)
         } catch (error) {
             console.error('Error fetching data:', error)
@@ -952,6 +955,80 @@ export function StoreProvider({ children }) {
         const { error } = await supabase.from('sales').delete().eq('id', id)
         if (!error) {
             setSales(sales.filter(s => s.id !== id))
+            return { success: true }
+        }
+        return { success: false, error }
+    }
+
+    // Claims / returns / complaints
+    const getSaleClaims = (saleId) => claims.filter(claim => claim.sale_id === saleId)
+    const getCustomerClaims = (customerId) => claims.filter(claim => claim.customer_id === customerId)
+
+    const addClaim = async (claim) => {
+        try {
+            const sale = sales.find(s => s.id === claim.sale_id)
+            const compensationComposition = claim.compensation_composition || []
+            const compensationCost = compensationComposition.reduce((sum, item) => {
+                return sum + Number(item.cost || 0) * Number(item.quantity || 0)
+            }, 0)
+            const refundAmount = Number(claim.refund_amount || 0)
+            const manualLoss = Number(claim.loss_amount || 0)
+
+            const payload = {
+                sale_id: claim.sale_id || null,
+                customer_id: claim.customer_id || sale?.customer_id || null,
+                type: claim.type || 'complaint',
+                reason: claim.reason || 'other',
+                fault_side: claim.fault_side || 'unclear',
+                resolution: claim.resolution || 'compensation_bouquet',
+                status: claim.status || 'open',
+                refund_amount: refundAmount,
+                compensation_cost: compensationCost,
+                loss_amount: manualLoss || refundAmount + compensationCost,
+                compensation_composition: compensationComposition,
+                comment: claim.comment || '',
+                created_at: new Date().toISOString()
+            }
+
+            const { data, error } = await supabase.from('claims').insert([payload]).select()
+            if (error) throw error
+            const created = data?.[0] || { ...payload, id: crypto.randomUUID?.() || String(Date.now()) }
+
+            for (const item of compensationComposition) {
+                await removeFromStock(
+                    item.type,
+                    item.item_id || item.id,
+                    Number(item.quantity || item.qty || 1),
+                    'claim_compensation',
+                    created.id,
+                    `Компенсация по рекламации${sale?.order_number ? ` #${sale.order_number}` : ''}`,
+                    claim.reason || 'claim'
+                )
+            }
+
+            setClaims(prev => [created, ...prev])
+            return { success: true, data: created }
+        } catch (error) {
+            console.error('Error adding claim:', error)
+            return { success: false, error }
+        }
+    }
+
+    const updateClaim = async (id, updates) => {
+        const payload = { ...updates, updated_at: new Date().toISOString() }
+        const { data, error } = await supabase.from('claims').update(payload).eq('id', id).select()
+        if (!error) {
+            const updated = data?.[0] || { ...claims.find(c => c.id === id), ...payload }
+            setClaims(prev => prev.map(c => c.id === id ? updated : c))
+            return { success: true, data: updated }
+        }
+        return { success: false, error }
+    }
+
+    const deleteClaim = async (id) => {
+        const { error } = await supabase.from('claims').delete().eq('id', id)
+        if (!error) {
+            setClaims(prev => prev.filter(c => c.id !== id))
             return { success: true }
         }
         return { success: false, error }
@@ -2077,6 +2154,7 @@ export function StoreProvider({ children }) {
             suppliers, supplies, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,
             expenses, addExpense, updateExpense, deleteExpense,
             sales, addSale, updateSale, deleteSale,
+            claims, addClaim, updateClaim, deleteClaim, getSaleClaims, getCustomerClaims,
             tasks, addTask, toggleTask, deleteTask, toggleTaskImportance, clearCompletedTasks,
             couriers: couriersList, addCourier,
             florists: floristsList, addFlorist,

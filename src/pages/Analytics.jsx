@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 
 export default function Analytics() {
-    const { sales, expenses, stockTransactions, flowers, goods } = useStore()
+    const { sales, expenses, stockTransactions, flowers, goods, claims } = useStore()
 
     // Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -68,9 +68,10 @@ export default function Analytics() {
             tx.transaction_type === 'waste' &&
             isWithinRange(tx.created_at)
         )
+        const filteredClaims = (claims || []).filter(claim => isWithinRange(claim.created_at))
 
-        return { filteredSales, filteredExpenses, filteredWaste }
-    }, [sales, expenses, stockTransactions, dateFilter, customRange])
+        return { filteredSales, filteredExpenses, filteredWaste, filteredClaims }
+    }, [sales, expenses, stockTransactions, claims, dateFilter, customRange])
 
     const pnlStats = useMemo(() => {
         const { filteredSales, filteredExpenses, filteredWaste } = filteredData
@@ -95,6 +96,7 @@ export default function Analytics() {
     // Final P&L with Waste Cost
     const finalPnl = useMemo(() => {
         const { revenue, cogs, grossProfit, opex, wasteTransactions } = pnlStats
+        const { filteredClaims } = filteredData
 
         const wasteCost = wasteTransactions.reduce((sum, tx) => {
             // Try to find item to get cost
@@ -111,18 +113,25 @@ export default function Analytics() {
             return sum + (Math.abs(tx.quantity) * cost)
         }, 0)
 
-        const netProfit = grossProfit - wasteCost - opex
+        const claimLoss = filteredClaims.reduce((sum, claim) => sum + Number(claim.loss_amount || 0), 0)
+        const refundLoss = filteredClaims.reduce((sum, claim) => sum + Number(claim.refund_amount || 0), 0)
+        const compensationLoss = filteredClaims.reduce((sum, claim) => sum + Number(claim.compensation_cost || 0), 0)
+        const netProfit = grossProfit - wasteCost - opex - claimLoss
 
         return {
             revenue,
             cogs,
             grossProfit,
             wasteCost,
+            claimLoss,
+            refundLoss,
+            compensationLoss,
+            claimsCount: filteredClaims.length,
             opex,
             netProfit,
             marginPercent: revenue > 0 ? ((netProfit / revenue) * 100).toFixed(1) : 0
         }
-    }, [pnlStats, flowers, goods])
+    }, [pnlStats, filteredData, flowers, goods])
 
 
     // ABC Analysis
@@ -284,12 +293,21 @@ export default function Analytics() {
                         <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
                             {filteredData.filteredSales.length ? formatMoney(finalPnl.revenue / filteredData.filteredSales.length) : '0 lei'}
                         </div>
-                    </div>
                     <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
                         <div style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '0.5rem' }}>Заказов</div>
                         <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
                             {filteredData.filteredSales.length}
                         </div>
+                    </div>
+                    <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', border: '1px solid #fecaca' }}>
+                        <div style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '0.5rem' }}>Рекламаций</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#dc2626' }}>
+                            {finalPnl.claimsCount}
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 650 }}>
+                            Потери: {formatMoney(finalPnl.claimLoss)}
+                        </div>
+                    </div>
                     </div>
                     <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
                         <div style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '0.5rem' }}>Позиций списано</div>
