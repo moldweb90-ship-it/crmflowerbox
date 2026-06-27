@@ -12,7 +12,7 @@ export default function RequirePermission({ permission, children }) {
     if (!permission) return children
 
     if (!checkAccess(permission)) {
-        return <Navigate to="/dashboard" replace />
+        return <Navigate to={checkAccess('my_deliveries') ? '/my-deliveries' : '/dashboard'} replace />
     }
 
     return children

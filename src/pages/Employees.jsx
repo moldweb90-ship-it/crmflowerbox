@@ -38,7 +38,7 @@ export default function Employees() {
     const [paymentsListModal, setPaymentsListModal] = useState(null)
     const [editPaymentModal, setEditPaymentModal] = useState(null)
     const [editPaymentForm, setEditPaymentForm] = useState({ amount: '', note: '' })
-    const [formData, setFormData] = useState({ name: '', phone: '', role: 'florist', rate_per_shift: '', commission_percent: '', rate_per_order: '', photo_url: '' })
+    const [formData, setFormData] = useState({ name: '', phone: '', email: '', role: 'florist', rate_per_shift: '', commission_percent: '', rate_per_order: '', photo_url: '' })
     const [photoUploading, setPhotoUploading] = useState(false)
     const [loading, setLoading] = useState(false)
     const [searchFilter, setSearchFilter] = useState('')
@@ -130,7 +130,7 @@ export default function Employees() {
 
     const openAdd = () => {
         setEditingEmployee(null)
-        setFormData({ name: '', phone: '', role: 'florist', rate_per_shift: '', commission_percent: '', rate_per_order: '', photo_url: '' })
+        setFormData({ name: '', phone: '', email: '', role: 'florist', rate_per_shift: '', commission_percent: '', rate_per_order: '', photo_url: '' })
         setIsModalOpen(true)
     }
 
@@ -139,6 +139,7 @@ export default function Employees() {
         setFormData({
             name: emp.name || '',
             phone: emp.phone || '',
+            email: emp.email || '',
             role: emp.role || 'florist',
             rate_per_shift: emp.rate_per_shift ?? '',
             commission_percent: emp.commission_percent ?? '',
@@ -177,6 +178,7 @@ export default function Employees() {
             const payload = {
                 name: formData.name.trim(),
                 phone: formData.phone?.trim() || null,
+                email: formData.email?.trim().toLowerCase() || null,
                 role: formData.role,
                 rate_per_shift: Number(formData.rate_per_shift) || 0,
                 commission_percent: Number(formData.commission_percent) || 0,
@@ -378,7 +380,10 @@ export default function Employees() {
                                                 <span style={{ color: level.color, fontWeight: 700 }}>{level.icon}</span>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
-                                                {emp.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}><Phone size={14} /> {emp.phone}</div>}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 }}>
+                                                    {emp.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}><Phone size={14} /> {emp.phone}</div>}
+                                                    {emp.email && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.email}</div>}
+                                                </div>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); setHistoryModal(emp) }}
                                                     style={{
@@ -781,6 +786,16 @@ export default function Employees() {
                     <div>
                         <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>Имя</label>
                         <input className="input" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Иван Иванов" style={{ width: '100%' }} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>Телефон</label>
+                            <input className="input" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} placeholder="+373..." style={{ width: '100%' }} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>Email для входа</label>
+                            <input className="input" type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="courier@flowerbox.local" style={{ width: '100%' }} />
+                        </div>
                     </div>
                     <div>
                         <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.25rem' }}>Фото</label>

@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext'
 import { createPasswordRecord } from '../lib/passwordHash'
 
 const PermissionContext = createContext()
-const DEFAULT_ADMIN_PERMISSIONS = ["dashboard", "analytics", "sales", "showcase", "customers", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "employees", "settings"]
+const DEFAULT_ADMIN_PERMISSIONS = ["dashboard", "analytics", "sales", "showcase", "customers", "products", "goods", "flowers", "categories", "supplies", "stock", "expenses", "employees", "couriers", "my_deliveries", "settings"]
 const SYSTEM_OWNER_USER = {
     id: '00000000-0000-4000-8000-000000000001',
     name: 'Владелец FlowerBox',

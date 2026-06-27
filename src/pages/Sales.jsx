@@ -21,6 +21,7 @@ const PAYMENT_STATUSES = [
 
 const DELIVERY_STATUSES = [
     { id: 'not_delivered', label: 'Не доставлен', color: '#6b7280' },
+    { id: 'delivering', label: 'В пути', color: '#2563eb' },
     { id: 'delivered', label: 'Доставлен', color: '#10b981' },
     { id: 'cancelled', label: 'Отменён', color: '#ef4444' },
     { id: 'postponed', label: 'Перенесён', color: '#f59e0b' },

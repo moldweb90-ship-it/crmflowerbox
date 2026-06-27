@@ -124,6 +124,8 @@ export default function Settings() {
         { key: 'stock', label: 'Склад' },
         { key: 'expenses', label: 'Расходы' },
         { key: 'employees', label: 'Сотрудники' },
+        { key: 'couriers', label: 'Курьеры' },
+        { key: 'my_deliveries', label: 'Мои доставки' },
         { key: 'settings', label: 'Настройки' },
     ]
 
@@ -189,6 +191,16 @@ export default function Settings() {
             permissions: prev.permissions.includes(permKey)
                 ? prev.permissions.filter(p => p !== permKey)
                 : [...prev.permissions, permKey]
+        }))
+    }
+
+    const handleRoleChange = (newRole) => {
+        setUserForm(prev => ({
+            ...prev,
+            role: newRole,
+            permissions: newRole === 'courier'
+                ? ['my_deliveries']
+                : prev.permissions
         }))
     }
 
@@ -560,8 +572,9 @@ export default function Settings() {
                                     </div>
                                     <div>
                                         <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 700 }}>Роль</label>
-                                        <select className="input" value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
+                                        <select className="input" value={userForm.role} onChange={e => handleRoleChange(e.target.value)}>
                                             <option value="user">Сотрудник</option>
+                                            <option value="courier">Курьер</option>
                                             <option value="admin">Администратор</option>
                                         </select>
                                     </div>

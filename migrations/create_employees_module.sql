@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS employees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     phone TEXT,
+    email TEXT,
     role TEXT NOT NULL CHECK (role IN ('florist', 'courier', 'manager')),
     photo_url TEXT,
     rate_per_shift DECIMAL(12,2) DEFAULT 0,

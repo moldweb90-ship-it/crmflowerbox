@@ -947,6 +947,7 @@ export function StoreProvider({ children }) {
         const { data, error } = await supabase.from('employees').insert([{
             name: payload.name,
             phone: payload.phone || null,
+            email: payload.email || null,
             role: payload.role || 'florist',
             rate_per_shift: payload.rate_per_shift ?? 0,
             commission_percent: payload.commission_percent ?? 0,

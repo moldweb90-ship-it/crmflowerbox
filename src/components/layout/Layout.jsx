@@ -21,6 +21,8 @@ const pageTitles = {
     '/stock': 'Склад',
     '/expenses': 'Расходы',
     '/employees': 'Сотрудники',
+    '/couriers': 'Курьеры',
+    '/my-deliveries': 'Мои доставки',
     '/settings': 'Настройки'
 }
 
@@ -55,6 +57,7 @@ export default function Layout() {
             items: [
                 { label: 'Дашборд', path: '/dashboard', icon: LayoutDashboard },
                 { label: 'Аналитика', path: '/analytics', icon: PieChart },
+                { label: 'Мои доставки', path: '/my-deliveries', icon: Truck, permission: 'my_deliveries', primary: true },
             ]
         },
         {
@@ -85,6 +88,7 @@ export default function Layout() {
             items: [
                 { label: 'Расходы', path: '/expenses', icon: Receipt },
                 { label: 'Сотрудники', path: '/employees', icon: UserCheck },
+                { label: 'Курьеры', path: '/couriers', icon: Truck, permission: 'couriers' },
             ]
         },
     ]
@@ -100,6 +104,7 @@ export default function Layout() {
         })
     })).filter(group => group.items.length > 0)
 
+    const homePath = checkAccess('dashboard') ? '/dashboard' : '/my-deliveries'
     const settingsItem = { label: 'Настройки', path: '/settings', icon: Settings }
     const showSettings = checkAccess('settings')
 
@@ -170,7 +175,7 @@ export default function Layout() {
                     zIndex: 40,
                     boxShadow: 'var(--shadow-sm)'
                 }}>
-                    <Link to="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--secondary)', fontWeight: 800, fontSize: '1.25rem', textDecoration: 'none' }}>
+                    <Link to={homePath} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--secondary)', fontWeight: 800, fontSize: '1.25rem', textDecoration: 'none' }}>
                         <div style={{ background: 'var(--secondary)', color: 'white', padding: '6px', borderRadius: '12px' }}>
                             <Flower2 size={24} />
                         </div>
@@ -212,7 +217,7 @@ export default function Layout() {
                     // Actually, let's make it fixed left attached but styled internally.
                 }}>
                     {!isMobile && (
-                        <Link to="/dashboard" style={{ padding: '1rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none', color: 'inherit' }}>
+                        <Link to={homePath} style={{ padding: '1rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none', color: 'inherit' }}>
                             <div style={{ background: 'var(--secondary)', color: 'white', padding: '6px', borderRadius: '10px', display: 'flex' }}>
                                 <Flower2 size={20} />
                             </div>
@@ -446,7 +451,7 @@ export default function Layout() {
                 <Outlet />
             </main>
 
-            {isMobile && !isSidebarOpen && (
+            {isMobile && !isSidebarOpen && checkAccess('sales') && location.pathname !== '/my-deliveries' && (
                 <>
                     {isQuickSaleOpen && (
                         <div

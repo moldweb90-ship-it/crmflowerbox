@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   phone text,
+  email text,
   role text DEFAULT 'florist',
   photo_url text,
   rate_per_shift numeric DEFAULT 0,
