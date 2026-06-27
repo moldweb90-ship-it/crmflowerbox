@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
-import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2 } from 'lucide-react'
+import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import { supabase } from '../supabase'
 
@@ -9,7 +9,7 @@ export default function Stock() {
     const {
         stock, stockTransactions, flowers, goods, suppliers, showcaseBouquets,
         addToStock, removeFromStock, recordWaste, updateMinQuantity,
-        getStockQty, getLowStockItems, getItemName, deleteShowcaseBouquet
+        getStockQty, getLowStockItems, getItemName, deleteShowcaseBouquet, getStockSupplierBreakdown
     } = useStore()
 
     const { user } = useAuth()
@@ -18,6 +18,7 @@ export default function Stock() {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [isWasteModalOpen, setIsWasteModalOpen] = useState(false)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+    const [supplierBreakdownItem, setSupplierBreakdownItem] = useState(null)
     const [activeTab, setActiveTab] = useState('inventory') // 'inventory' | 'waste'
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [selectedItem, setSelectedItem] = useState(null)
@@ -112,6 +113,8 @@ export default function Stock() {
     }, [stockTransactions, currentPage])
 
     const totalPages = Math.ceil(stockTransactions.length / ITEMS_PER_PAGE)
+
+    const getItemSupplierRows = (item) => getStockSupplierBreakdown(item.type, item.id)
 
     // Waste history
     const wasteHistory = useMemo(() => {
@@ -557,13 +560,38 @@ export default function Stock() {
                                         </div>
                                     </div>
 
-                                    <div style={{
-                                        textAlign: 'center',
-                                        fontWeight: 700,
-                                        fontSize: '1.1rem',
-                                        color: item.quantity === 0 ? '#ef4444' : item.is_low ? '#f59e0b' : 'var(--text-main)'
-                                    }}>
-                                        {item.quantity}
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{
+                                            fontWeight: 800,
+                                            fontSize: '1.1rem',
+                                            color: item.quantity === 0 ? '#ef4444' : item.is_low ? '#f59e0b' : 'var(--text-main)'
+                                        }}>
+                                            {item.quantity}
+                                        </div>
+                                        {item.type === 'flower' && item.quantity > 0 && (
+                                            <button
+                                                onClick={() => setSupplierBreakdownItem(item)}
+                                                style={{
+                                                    marginTop: '0.25rem',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.25rem',
+                                                    border: '1px solid #dbeafe',
+                                                    background: '#eff6ff',
+                                                    color: '#2563eb',
+                                                    borderRadius: '999px',
+                                                    padding: '0.18rem 0.45rem',
+                                                    fontSize: '0.68rem',
+                                                    fontWeight: 800,
+                                                    cursor: 'pointer',
+                                                    whiteSpace: 'nowrap'
+                                                }}
+                                                title="Показать остаток по поставщикам"
+                                            >
+                                                <Truck size={11} />
+                                                {!isMobile && 'Поставщики'}
+                                            </button>
+                                        )}
                                     </div>
 
                                     {!isMobile && (
@@ -938,6 +966,89 @@ export default function Stock() {
                     </div>
                 </div>
             )}
+
+            <Modal
+                isOpen={!!supplierBreakdownItem}
+                onClose={() => setSupplierBreakdownItem(null)}
+                title={supplierBreakdownItem ? `Поставщики: ${supplierBreakdownItem.name}` : 'Поставщики'}
+                maxWidth="620px"
+            >
+                {supplierBreakdownItem && (() => {
+                    const rows = getItemSupplierRows(supplierBreakdownItem)
+                    const total = rows.reduce((sum, row) => sum + row.quantity, 0)
+
+                    return (
+                        <div style={{ display: 'grid', gap: '1rem' }}>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '14px',
+                                padding: '0.9rem 1rem'
+                            }}>
+                                <div>
+                                    <div style={{ color: '#64748b', fontSize: '0.78rem', fontWeight: 800 }}>Общий остаток</div>
+                                    <div style={{ fontSize: '1.35rem', fontWeight: 900 }}>{supplierBreakdownItem.quantity} шт.</div>
+                                </div>
+                                <div style={{ textAlign: 'right', color: '#64748b', fontSize: '0.8rem', fontWeight: 700 }}>
+                                    Списания идут FIFO<br />сначала старые партии
+                                </div>
+                            </div>
+
+                            {rows.length === 0 ? (
+                                <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                                    По поставщикам пока нет данных
+                                </div>
+                            ) : (
+                                <div style={{ display: 'grid', gap: '0.65rem' }}>
+                                    {rows.map((row, index) => (
+                                        <div key={row.supplier_id || `unknown-${index}`} style={{
+                                            border: '1px solid #e5e7eb',
+                                            borderRadius: '14px',
+                                            padding: '0.85rem',
+                                            background: 'white'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 900 }}>{row.supplier_name}</div>
+                                                    <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginTop: '0.15rem' }}>
+                                                        {row.latest_date ? `Последняя партия: ${new Date(row.latest_date).toLocaleDateString('ru-RU')}` : 'Остаток до учета партий'}
+                                                    </div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#2563eb' }}>{row.quantity} шт.</div>
+                                                    {row.avg_cost > 0 && (
+                                                        <div style={{ color: '#64748b', fontSize: '0.78rem', fontWeight: 700 }}>
+                                                            ~{Math.round(row.avg_cost).toLocaleString()} lei/шт
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div style={{
+                                                height: '7px',
+                                                borderRadius: '999px',
+                                                background: '#eef2ff',
+                                                overflow: 'hidden',
+                                                marginTop: '0.75rem'
+                                            }}>
+                                                <div style={{
+                                                    height: '100%',
+                                                    width: `${total > 0 ? Math.max(4, (row.quantity / total) * 100) : 0}%`,
+                                                    background: row.supplier_id ? '#2563eb' : '#94a3b8',
+                                                    borderRadius: '999px'
+                                                }} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )
+                })()}
+            </Modal>
 
             {/* Add Stock Modal */}
             <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Пополнить склад" maxWidth="500px">

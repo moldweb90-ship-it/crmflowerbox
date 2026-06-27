@@ -43,6 +43,7 @@ export function StoreProvider({ children }) {
     const [settings, setSettings] = usePersistedState('store_settings', { markup_percentage: 30, delivery_cost: 500 })
     const [stock, setStock] = usePersistedState('store_stock', [])
     const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
+    const [stockLots, setStockLots] = usePersistedState('store_stock_lots', [])
     const [showcaseBouquets, setShowcaseBouquets] = usePersistedState('store_showcase_bouquets', [])
     const [customers, setCustomers] = usePersistedState('store_customers', [])
     const [customerImportantDates, setCustomerImportantDates] = usePersistedState('store_customer_dates', [])
@@ -77,11 +78,12 @@ export function StoreProvider({ children }) {
                 supabase.from('settings').select('*').single(),
                 supabase.from('stock').select('*'),
                 supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(100),
+                supabase.from('stock_lots').select('*, suppliers(name)').order('created_at', { ascending: true }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('showcase_bouquets').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('customers').select('*').order('created_at', { ascending: false })
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, showcase, cust] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, cust] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -110,6 +112,7 @@ export function StoreProvider({ children }) {
             }
             if (stk.data) setStock(stk.data)
             if (stkTrans.data) setStockTransactions(stkTrans.data)
+            if (lots.data) setStockLots(lots.data)
             if (showcase.data) setShowcaseBouquets(showcase.data)
             if (cust.data) setCustomers(cust.data)
         } catch (error) {
@@ -324,6 +327,7 @@ export function StoreProvider({ children }) {
             await supabase.from('supply_items').insert(supplyItemsPayload)
 
             // 3.5. Update Stock - auto add to inventory from supply
+            const createdLots = []
             for (const item of items) {
                 const existing = stock.find(s => s.item_type === item.type && s.item_id === item.id)
                 if (existing) {
@@ -341,9 +345,23 @@ export function StoreProvider({ children }) {
                     quantity: item.quantity,
                     transaction_type: 'supply',
                     reference_id: newSupply.id,
-                    cost_price: item.unitCost
+                    cost_price: item.unitCost,
+                    supplier_id: supplierId
                 }])
+
+                const { data: lotData } = await supabase.from('stock_lots').insert([{
+                    item_type: item.type,
+                    item_id: item.id,
+                    supplier_id: supplierId,
+                    supply_id: newSupply.id,
+                    quantity: item.quantity,
+                    remaining_quantity: item.quantity,
+                    unit_cost: item.unitCost
+                }]).select('*, suppliers(name)')
+
+                if (lotData?.[0]) createdLots.push(lotData[0])
             }
+            if (createdLots.length > 0) setStockLots(prev => [...prev, ...createdLots])
 
             // 4. Update Costs & Prices
             const updatedFlowers = [...flowers]
@@ -888,19 +906,7 @@ export function StoreProvider({ children }) {
                         const itemType = comp.type
                         const itemId = comp.id
                         const qty = comp.qty || 1
-                        const existing = stock.find(s => s.item_type === itemType && s.item_id === itemId)
-                        if (existing) {
-                            const newQty = Math.max(0, existing.quantity - qty)
-                            await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
-                            setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
-                            await supabase.from('stock_transactions').insert([{
-                                item_type: itemType,
-                                item_id: itemId,
-                                quantity: -qty,
-                                transaction_type: 'sale',
-                                reference_id: saleData.id
-                            }])
-                        }
+                        await removeFromStock(itemType, itemId, qty, 'sale', saleData.id)
                     }
                 }
             }
@@ -1316,6 +1322,113 @@ export function StoreProvider({ children }) {
         return item?.quantity || 0
     }
 
+    const getStockSupplierBreakdown = (itemType, itemId) => {
+        const itemStock = stock.find(s => s.item_type === itemType && s.item_id === itemId)
+        const totalQty = Number(itemStock?.quantity || 0)
+        const lots = stockLots
+            .filter(lot => lot.item_type === itemType && lot.item_id === itemId && Number(lot.remaining_quantity || 0) > 0)
+            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+
+        const grouped = lots.reduce((acc, lot) => {
+            const supplierId = lot.supplier_id || 'unknown'
+            if (!acc[supplierId]) {
+                acc[supplierId] = {
+                    supplier_id: lot.supplier_id,
+                    supplier_name: lot.suppliers?.name || suppliers.find(s => s.id === lot.supplier_id)?.name || 'Без поставщика',
+                    quantity: 0,
+                    value: 0,
+                    lots: []
+                }
+            }
+            const qty = Number(lot.remaining_quantity || 0)
+            const cost = Number(lot.unit_cost || 0)
+            acc[supplierId].quantity += qty
+            acc[supplierId].value += qty * cost
+            acc[supplierId].lots.push(lot)
+            return acc
+        }, {})
+
+        const rows = Object.values(grouped).map(row => ({
+            ...row,
+            avg_cost: row.quantity > 0 ? row.value / row.quantity : 0,
+            latest_date: row.lots.reduce((latest, lot) => !latest || new Date(lot.created_at) > new Date(latest) ? lot.created_at : latest, null)
+        })).sort((a, b) => b.quantity - a.quantity)
+
+        const lotsQty = rows.reduce((sum, row) => sum + row.quantity, 0)
+        const unknownQty = totalQty - lotsQty
+        if (unknownQty > 0) {
+            rows.push({
+                supplier_id: null,
+                supplier_name: 'Старый остаток',
+                quantity: unknownQty,
+                value: 0,
+                avg_cost: 0,
+                latest_date: null,
+                lots: []
+            })
+        }
+
+        return rows
+    }
+
+    const consumeStockLots = async (itemType, itemId, qty, preferredSupplierId = null) => {
+        let remaining = Number(qty || 0)
+        if (remaining <= 0) return []
+
+        const candidateLots = stockLots
+            .filter(lot => lot.item_type === itemType && lot.item_id === itemId && Number(lot.remaining_quantity || 0) > 0)
+            .sort((a, b) => {
+                if (preferredSupplierId) {
+                    const aPreferred = a.supplier_id === preferredSupplierId ? 0 : 1
+                    const bPreferred = b.supplier_id === preferredSupplierId ? 0 : 1
+                    if (aPreferred !== bPreferred) return aPreferred - bPreferred
+                }
+                return new Date(a.created_at) - new Date(b.created_at)
+            })
+
+        const consumed = []
+        const updatedLots = []
+
+        for (const lot of candidateLots) {
+            if (remaining <= 0) break
+            const available = Number(lot.remaining_quantity || 0)
+            const take = Math.min(available, remaining)
+            if (take <= 0) continue
+
+            const nextRemaining = available - take
+            const updatedLot = { ...lot, remaining_quantity: nextRemaining, updated_at: new Date().toISOString() }
+            const { error } = await supabase
+                .from('stock_lots')
+                .update({ remaining_quantity: nextRemaining, updated_at: updatedLot.updated_at })
+                .eq('id', lot.id)
+            if (error) throw error
+
+            updatedLots.push(updatedLot)
+            consumed.push({
+                quantity: take,
+                supplier_id: lot.supplier_id,
+                cost_price: lot.unit_cost,
+                lot_id: lot.id
+            })
+            remaining -= take
+        }
+
+        if (updatedLots.length > 0) {
+            setStockLots(prev => prev.map(lot => updatedLots.find(updated => updated.id === lot.id) || lot))
+        }
+
+        if (remaining > 0) {
+            consumed.push({
+                quantity: remaining,
+                supplier_id: preferredSupplierId || null,
+                cost_price: null,
+                lot_id: null
+            })
+        }
+
+        return consumed
+    }
+
     // Add to stock (from supply or manual)
     const addToStock = async (itemType, itemId, qty, transactionType = 'manual', referenceId = null, costPrice = null, notes = null) => {
         try {
@@ -1378,10 +1491,21 @@ export function StoreProvider({ children }) {
             if (error) throw error
             setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
 
-            // Add transaction (negative quantity)
-            const { data: txData, error: txError } = await supabase
-                .from('stock_transactions')
-                .insert([{
+            const consumedLots = await consumeStockLots(itemType, itemId, qty, supplierId)
+            const transactionRows = consumedLots.length > 0
+                ? consumedLots.map(lot => ({
+                    item_type: itemType,
+                    item_id: itemId,
+                    quantity: -lot.quantity,
+                    transaction_type: transactionType,
+                    reference_id: referenceId,
+                    notes,
+                    reason: reason,
+                    created_by: userId,
+                    supplier_id: lot.supplier_id,
+                    cost_price: lot.cost_price
+                }))
+                : [{
                     item_type: itemType,
                     item_id: itemId,
                     quantity: -qty,
@@ -1391,10 +1515,15 @@ export function StoreProvider({ children }) {
                     reason: reason,
                     created_by: userId,
                     supplier_id: supplierId
-                }])
+                }]
+
+            // Add transaction (negative quantity)
+            const { data: txData, error: txError } = await supabase
+                .from('stock_transactions')
+                .insert(transactionRows)
                 .select()
             if (txError) throw txError
-            if (txData) setStockTransactions(prev => [txData[0], ...prev])
+            if (txData) setStockTransactions(prev => [...txData, ...prev])
 
             return { success: true }
         } catch (error) {
@@ -1839,6 +1968,13 @@ export function StoreProvider({ children }) {
             }
 
             let nextStock = [...stock]
+            const linkedTxTypes = ['showcase_build', 'waste']
+            const { data: linkedTransactions = [], error: linkedTxError } = await supabase
+                .from('stock_transactions')
+                .select('*')
+                .eq('reference_id', id)
+                .in('transaction_type', linkedTxTypes)
+            if (linkedTxError) throw linkedTxError
 
             if (restoreStock) {
                 const groupedItems = (bouquet.composition || []).reduce((acc, item) => {
@@ -1872,9 +2008,29 @@ export function StoreProvider({ children }) {
                         if (data?.[0]) nextStock = [...nextStock, data[0]]
                     }
                 }
+
+                const restoredLotRows = linkedTransactions
+                    .filter(tx => tx.transaction_type === 'showcase_build' && Number(tx.quantity || 0) < 0)
+                    .map(tx => ({
+                        item_type: tx.item_type,
+                        item_id: tx.item_id,
+                        supplier_id: tx.supplier_id || null,
+                        supply_id: null,
+                        quantity: Math.abs(Number(tx.quantity || 0)),
+                        remaining_quantity: Math.abs(Number(tx.quantity || 0)),
+                        unit_cost: Number(tx.cost_price || 0)
+                    }))
+
+                if (restoredLotRows.length > 0) {
+                    const { data: restoredLots, error: lotsError } = await supabase
+                        .from('stock_lots')
+                        .insert(restoredLotRows)
+                        .select('*, suppliers(name)')
+                    if (lotsError) throw lotsError
+                    if (restoredLots?.length) setStockLots(prev => [...prev, ...restoredLots])
+                }
             }
 
-            const linkedTxTypes = ['showcase_build', 'waste']
             const { error: txError } = await supabase
                 .from('stock_transactions')
                 .delete()
@@ -1914,7 +2070,7 @@ export function StoreProvider({ children }) {
             uploadEmployeePhoto, getFloristAutoLevel,
             settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,
-            stock, stockTransactions, getStockQty, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
+            stock, stockTransactions, stockLots, getStockQty, getStockSupplierBreakdown, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
             showcaseBouquets, addShowcaseBouquet, markShowcaseBouquetSold, writeOffShowcaseBouquet, deleteShowcaseBouquet, getShowcaseItemStockIssues,
             customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, deleteCustomer, getCustomerOrders,
             customerImportantDates, saveImportantDate, deleteImportantDate, getCustomerImportantDates, getUpcomingReminders,

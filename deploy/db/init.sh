@@ -152,6 +152,19 @@ CREATE TABLE IF NOT EXISTS public.stock (
   UNIQUE (item_type, item_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.stock_lots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  item_type text NOT NULL,
+  item_id uuid NOT NULL,
+  supplier_id uuid REFERENCES public.suppliers(id) ON DELETE SET NULL,
+  supply_id uuid REFERENCES public.supplies(id) ON DELETE SET NULL,
+  quantity integer DEFAULT 0,
+  remaining_quantity integer DEFAULT 0,
+  unit_cost numeric DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS public.sales (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_number text,
@@ -288,6 +301,8 @@ CREATE INDEX IF NOT EXISTS idx_sales_customer ON public.sales(customer_id);
 CREATE INDEX IF NOT EXISTS idx_stock_item ON public.stock(item_type, item_id);
 CREATE INDEX IF NOT EXISTS idx_stock_transactions_item ON public.stock_transactions(item_type, item_id);
 CREATE INDEX IF NOT EXISTS idx_stock_transactions_created ON public.stock_transactions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_lots_item ON public.stock_lots(item_type, item_id);
+CREATE INDEX IF NOT EXISTS idx_stock_lots_supplier ON public.stock_lots(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_showcase_bouquets_status ON public.showcase_bouquets(status);
 CREATE INDEX IF NOT EXISTS idx_showcase_bouquets_created ON public.showcase_bouquets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_customers_phone ON public.customers(phone);
