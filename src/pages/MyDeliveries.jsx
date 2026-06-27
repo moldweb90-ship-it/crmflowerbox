@@ -26,7 +26,12 @@ const STATUS_META = {
     returned: { label: 'Возврат', color: '#7c3aed', bg: '#ede9fe' }
 }
 
-const DONE_STATUSES = ['delivered', 'cancelled', 'returned']
+const DONE_STATUSES = ['delivered', 'cancelled', 'returned', 'postponed']
+const COURIER_STATUS_ACTIONS = [
+    ['postponed', 'Перенесен'],
+    ['returned', 'Возврат'],
+    ['cancelled', 'Отменен']
+]
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase()
 
@@ -131,20 +136,23 @@ export default function MyDeliveries() {
 
     const stats = useMemo(() => ({
         active: mySales.filter(isActiveDelivery).length,
-        today: mySales.filter(sale => toDateKey(deliveryDate(sale)) === todayKey).length,
-        tomorrow: mySales.filter(sale => toDateKey(deliveryDate(sale)) === tomorrowKey).length,
-        done: mySales.filter(sale => sale.delivery_status === 'delivered').length
+        today: mySales.filter(sale => toDateKey(deliveryDate(sale)) === todayKey && isActiveDelivery(sale)).length,
+        tomorrow: mySales.filter(sale => toDateKey(deliveryDate(sale)) === tomorrowKey && isActiveDelivery(sale)).length,
+        done: mySales.filter(sale => !isActiveDelivery(sale)).length
     }), [mySales, todayKey, tomorrowKey])
 
     const visibleSales = useMemo(() => {
         const filtered = mySales.filter(sale => {
             const key = toDateKey(deliveryDate(sale))
-            if (filter === 'today') return key === todayKey
-            if (filter === 'tomorrow') return key === tomorrowKey
+            if (filter === 'today') return key === todayKey && isActiveDelivery(sale)
+            if (filter === 'tomorrow') return key === tomorrowKey && isActiveDelivery(sale)
             if (filter === 'active') return isActiveDelivery(sale)
-            if (filter === 'done') return sale.delivery_status === 'delivered'
+            if (filter === 'done') return !isActiveDelivery(sale)
             return true
         })
+        if (filter === 'done') {
+            return [...filtered].sort((a, b) => new Date(deliveryDate(b) || 0) - new Date(deliveryDate(a) || 0))
+        }
         return [...filtered].sort(sortByRoutePriority)
     }, [filter, mySales, todayKey, tomorrowKey])
 
@@ -263,8 +271,16 @@ export default function MyDeliveries() {
                         const isSaving = savingId === sale.id
                         const composition = getCompositionPreview(sale)
                         const paymentText = sale.payment_status === 'paid' ? 'оплачен' : 'проверить оплату'
+                        const isDone = !isActiveDelivery(sale)
                         return (
-                            <article key={sale.id} style={{ background: 'white', borderRadius: 26, padding: '1rem', border: '1px solid #e5e7eb', boxShadow: '0 18px 44px rgba(15,23,42,0.08)' }}>
+                            <article key={sale.id} style={{
+                                background: isDone ? '#f8fafc' : 'white',
+                                borderRadius: 26,
+                                padding: '1rem',
+                                border: isDone ? '1px solid #dbe3ea' : '1px solid #e5e7eb',
+                                boxShadow: isDone ? '0 8px 22px rgba(15,23,42,0.04)' : '0 18px 44px rgba(15,23,42,0.08)',
+                                opacity: isDone ? 0.78 : 1
+                            }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.85rem' }}>
                                     <div>
                                         <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 800 }}>#{sale.order_number || sale.id?.slice(0, 8)}</div>
@@ -319,16 +335,32 @@ export default function MyDeliveries() {
                                     </button>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: sale.delivery_status === 'delivered' ? '1fr' : '1fr 1.45fr', gap: '0.55rem' }}>
-                                    {sale.delivery_status !== 'delivered' && (
+                                {isDone ? (
+                                    <div style={{ minHeight: 52, borderRadius: 18, background: status.bg, color: status.color, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 950 }}>
+                                        <CheckCircle2 size={19} /> {status.label}
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.35fr', gap: '0.55rem' }}>
                                         <button disabled={isSaving} onClick={() => setDeliveryStatus(sale, 'delivering')} style={{ minHeight: 56, borderRadius: 18, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontWeight: 900, cursor: 'pointer' }}>
                                             {isSaving ? <RefreshCw size={18} className="spin" /> : 'В пути'}
                                         </button>
-                                    )}
-                                    <button disabled={isSaving} onClick={() => setDeliveryStatus(sale, 'delivered')} style={{ minHeight: 56, borderRadius: 18, border: 0, background: '#16a34a', color: 'white', fontWeight: 950, fontSize: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 14px 28px rgba(22,163,74,0.22)' }}>
-                                        {isSaving ? <RefreshCw size={18} className="spin" /> : <CheckCircle2 size={20} />} Доставлен
-                                    </button>
-                                </div>
+                                        <button disabled={isSaving} onClick={() => setDeliveryStatus(sale, 'delivered')} style={{ minHeight: 56, borderRadius: 18, border: 0, background: '#16a34a', color: 'white', fontWeight: 950, fontSize: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 14px 28px rgba(22,163,74,0.22)' }}>
+                                            {isSaving ? <RefreshCw size={18} className="spin" /> : <CheckCircle2 size={20} />} Доставлен
+                                        </button>
+                                        <select
+                                            className="input"
+                                            value=""
+                                            disabled={isSaving}
+                                            onChange={(e) => {
+                                                if (e.target.value) setDeliveryStatus(sale, e.target.value)
+                                            }}
+                                            style={{ gridColumn: '1 / -1', minHeight: 48, borderRadius: 16, fontWeight: 850, color: '#475569', background: '#f8fafc' }}
+                                        >
+                                            <option value="">Другой статус...</option>
+                                            {COURIER_STATUS_ACTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                                        </select>
+                                    </div>
+                                )}
                             </article>
                         )
                     })}
