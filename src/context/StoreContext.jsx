@@ -952,6 +952,11 @@ export function StoreProvider({ children }) {
         return { success: false, error }
     }
     const deleteSale = async (id) => {
+        const linkedClaims = claims.filter(claim => claim.sale_id === id)
+        for (const claim of linkedClaims) {
+            const result = await deleteClaim(claim.id)
+            if (!result.success) return result
+        }
         const { error } = await supabase.from('sales').delete().eq('id', id)
         if (!error) {
             setSales(sales.filter(s => s.id !== id))
@@ -1043,13 +1048,87 @@ export function StoreProvider({ children }) {
         return { success: false, error }
     }
 
-    const deleteClaim = async (id) => {
-        const { error } = await supabase.from('claims').delete().eq('id', id)
-        if (!error) {
+    const deleteClaim = async (id, { restoreStock = true } = {}) => {
+        try {
+            const { data: linkedTransactions = [], error: txReadError } = await supabase
+                .from('stock_transactions')
+                .select('*')
+                .eq('reference_id', id)
+                .eq('transaction_type', 'claim_compensation')
+            if (txReadError) throw txReadError
+
+            if (restoreStock && linkedTransactions.length > 0) {
+                let nextStock = [...stock]
+                const groupedItems = linkedTransactions.reduce((acc, tx) => {
+                    const qty = Math.abs(Number(tx.quantity || 0))
+                    if (!tx.item_type || !tx.item_id || qty <= 0) return acc
+                    const key = `${tx.item_type}:${tx.item_id}`
+                    acc[key] = acc[key] || { item_type: tx.item_type, item_id: tx.item_id, quantity: 0 }
+                    acc[key].quantity += qty
+                    return acc
+                }, {})
+
+                for (const item of Object.values(groupedItems)) {
+                    const existing = nextStock.find(s => s.item_type === item.item_type && s.item_id === item.item_id)
+                    if (existing) {
+                        const newQty = Number(existing.quantity || 0) + item.quantity
+                        const { error } = await supabase
+                            .from('stock')
+                            .update({ quantity: newQty, updated_at: new Date().toISOString() })
+                            .eq('id', existing.id)
+                        if (error) throw error
+                        nextStock = nextStock.map(s => s.id === existing.id ? { ...s, quantity: newQty, updated_at: new Date().toISOString() } : s)
+                    } else {
+                        const { data, error } = await supabase
+                            .from('stock')
+                            .insert([{ item_type: item.item_type, item_id: item.item_id, quantity: item.quantity }])
+                            .select()
+                        if (error) throw error
+                        if (data?.[0]) nextStock = [...nextStock, data[0]]
+                    }
+                }
+
+                const restoredLotRows = linkedTransactions
+                    .filter(tx => Number(tx.quantity || 0) < 0)
+                    .map(tx => ({
+                        item_type: tx.item_type,
+                        item_id: tx.item_id,
+                        supplier_id: tx.supplier_id || null,
+                        supply_id: null,
+                        quantity: Math.abs(Number(tx.quantity || 0)),
+                        remaining_quantity: Math.abs(Number(tx.quantity || 0)),
+                        unit_cost: Number(tx.cost_price || 0)
+                    }))
+
+                if (restoredLotRows.length > 0) {
+                    const { data: restoredLots, error: lotsError } = await supabase
+                        .from('stock_lots')
+                        .insert(restoredLotRows)
+                        .select('*, suppliers(name)')
+                    if (lotsError) throw lotsError
+                    if (restoredLots?.length) setStockLots(prev => [...restoredLots, ...prev])
+                }
+
+                setStock(nextStock)
+            }
+
+            const { error: txDeleteError } = await supabase
+                .from('stock_transactions')
+                .delete()
+                .eq('reference_id', id)
+                .eq('transaction_type', 'claim_compensation')
+            if (txDeleteError) throw txDeleteError
+
+            const { error } = await supabase.from('claims').delete().eq('id', id)
+            if (error) throw error
+
+            setStockTransactions(prev => prev.filter(tx => !(tx.reference_id === id && tx.transaction_type === 'claim_compensation')))
             setClaims(prev => prev.filter(c => c.id !== id))
             return { success: true }
+        } catch (error) {
+            console.error('Error deleting claim:', error)
+            return { success: false, error }
         }
-        return { success: false, error }
     }
 
     // Employees (florists, couriers, managers)

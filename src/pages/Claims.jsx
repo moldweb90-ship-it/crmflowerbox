@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { AlertTriangle, Plus, Search, RotateCcw, BadgeCheck, Banknote, PackageX } from 'lucide-react'
+import { AlertTriangle, Plus, Search, RotateCcw, BadgeCheck, Banknote, PackageX, Trash2 } from 'lucide-react'
 import { useStore } from '../context/StoreContext'
 import ClaimModal, { CLAIM_FAULT_SIDES, CLAIM_REASONS, CLAIM_RESOLUTIONS, CLAIM_STATUSES } from '../components/claims/ClaimModal'
 
@@ -8,7 +8,7 @@ const statusOf = (id) => CLAIM_STATUSES.find(x => x.id === id) || CLAIM_STATUSES
 const money = (value) => `${Number(value || 0).toLocaleString()} lei`
 
 export default function Claims() {
-    const { claims, sales, customers, updateClaim } = useStore()
+    const { claims, sales, customers, updateClaim, deleteClaim } = useStore()
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [statusFilter, setStatusFilter] = useState('all')
@@ -52,6 +52,15 @@ export default function Claims() {
         const compensation = claims.reduce((sum, c) => sum + Number(c.compensation_cost || 0), 0)
         return { total: claims.length, open, totalLoss, refunds, compensation }
     }, [claims])
+
+    const handleDeleteClaim = async (claim) => {
+        const ok = window.confirm('Удалить рекламацию?\n\nОна исчезнет из статистики и аналитики. Если по ней был компенсационный букет, списанные позиции вернутся на склад.')
+        if (!ok) return
+        const result = await deleteClaim(claim.id)
+        if (!result.success) {
+            alert(result.error?.message || result.error || 'Не удалось удалить рекламацию')
+        }
+    }
 
     return (
         <div style={{ padding: isMobile ? '1rem' : '2rem', maxWidth: 1500, margin: '0 auto', paddingBottom: isMobile ? '7rem' : '2rem' }}>
@@ -107,7 +116,7 @@ export default function Claims() {
                     const status = statusOf(claim.status)
                     return (
                         <div key={claim.id} className="card" style={{ padding: '1rem', border: `1px solid ${status.color}25` }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1fr 1fr auto', gap: '1rem', alignItems: 'center' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1fr 1fr auto auto', gap: '1rem', alignItems: 'center' }}>
                                 <div>
                                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                         <span style={{ fontWeight: 950, fontSize: '1.05rem' }}>#{claim.sale?.order_number || 'б/н'} · {claim.sale?.custom_name || claim.sale?.products?.name || 'Заказ'}</span>
@@ -130,6 +139,23 @@ export default function Claims() {
                                 <select className="input" value={claim.status || 'open'} onChange={e => updateClaim(claim.id, { status: e.target.value })}>
                                     {CLAIM_STATUSES.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
                                 </select>
+                                <button
+                                    onClick={() => handleDeleteClaim(claim)}
+                                    title="Удалить рекламацию"
+                                    style={{
+                                        width: 44,
+                                        height: 44,
+                                        border: 0,
+                                        borderRadius: 12,
+                                        background: '#fee2e2',
+                                        color: '#dc2626',
+                                        display: 'grid',
+                                        placeItems: 'center',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <Trash2 size={18} />
+                                </button>
                             </div>
                             {claim.comment && <div style={{ marginTop: '0.8rem', padding: '0.75rem', background: '#f8fafc', borderRadius: 12, color: '#475569', fontWeight: 700 }}>{claim.comment}</div>}
                         </div>
