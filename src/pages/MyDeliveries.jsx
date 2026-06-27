@@ -5,12 +5,16 @@ import {
     CheckCircle2,
     Clock3,
     Copy,
+    HeartHandshake,
     MapPin,
     Navigation,
     PackageCheck,
     Phone,
     RefreshCw,
     Route,
+    ShieldCheck,
+    Shirt,
+    Sparkles,
     Truck,
     UserRound,
     WalletCards
@@ -602,6 +606,119 @@ export default function MyDeliveries() {
                     })}
                 </div>
             )}
+
+            <section style={{
+                marginTop: '1.15rem',
+                borderRadius: 30,
+                padding: '1px',
+                background: 'linear-gradient(135deg, rgba(37,99,235,0.22), rgba(22,163,74,0.18), rgba(255,255,255,0.78))',
+                boxShadow: '0 24px 70px rgba(15,23,42,0.08)'
+            }}>
+                <div style={{
+                    borderRadius: 29,
+                    padding: '1rem',
+                    background: 'rgba(255,255,255,0.82)',
+                    backdropFilter: 'blur(18px)',
+                    border: '1px solid rgba(255,255,255,0.82)'
+                }}>
+                    <div style={{ display: 'flex', gap: '0.78rem', alignItems: 'flex-start', marginBottom: '0.9rem' }}>
+                        <div style={{
+                            width: 50,
+                            height: 50,
+                            borderRadius: 18,
+                            background: 'linear-gradient(135deg, #111827, #2563eb)',
+                            color: 'white',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flexShrink: 0,
+                            boxShadow: '0 16px 34px rgba(37,99,235,0.24)'
+                        }}>
+                            <Sparkles size={24} />
+                        </div>
+                        <div>
+                            <div style={{ color: '#64748b', fontSize: '0.72rem', fontWeight: 950, textTransform: 'uppercase' }}>Код смены FlowerBox</div>
+                            <h2 style={{ margin: '0.16rem 0 0.25rem', fontSize: '1.18rem', lineHeight: 1.08 }}>Доставляем не пакет. Доставляем момент.</h2>
+                            <p style={{ margin: 0, color: '#64748b', fontWeight: 760, lineHeight: 1.38, fontSize: '0.88rem' }}>
+                                Последние 30 секунд у двери часто решают, вернется ли клиент снова.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '0.65rem' }}>
+                        {[
+                            {
+                                title: 'Перед выездом',
+                                text: 'Проверь адрес, время, открытку и доп. товары. Букет должен доехать так, будто его только что собрали.',
+                                icon: ShieldCheck,
+                                color: '#2563eb',
+                                bg: '#eff6ff'
+                            },
+                            {
+                                title: 'Внешний вид',
+                                text: 'Чисто, аккуратно, спокойно. Клиент видит FlowerBox не в офисе, а в момент вручения.',
+                                icon: Shirt,
+                                color: '#7c3aed',
+                                bg: '#f3e8ff'
+                            },
+                            {
+                                title: 'У клиента',
+                                text: 'Поздоровайся, передай букет красиво, не раскрывай сюрприз и сразу отметь статус в приложении.',
+                                icon: HeartHandshake,
+                                color: '#16a34a',
+                                bg: '#dcfce7'
+                            }
+                        ].map(item => {
+                            const Icon = item.icon
+                            return (
+                                <div key={item.title} style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '42px 1fr',
+                                    gap: '0.72rem',
+                                    alignItems: 'start',
+                                    borderRadius: 22,
+                                    padding: '0.78rem',
+                                    background: 'rgba(255,255,255,0.76)',
+                                    border: '1px solid rgba(226,232,240,0.95)',
+                                    boxShadow: '0 12px 30px rgba(15,23,42,0.045)'
+                                }}>
+                                    <div style={{
+                                        width: 42,
+                                        height: 42,
+                                        borderRadius: 15,
+                                        background: item.bg,
+                                        color: item.color,
+                                        display: 'grid',
+                                        placeItems: 'center'
+                                    }}>
+                                        <Icon size={21} />
+                                    </div>
+                                    <div>
+                                        <div style={{ color: '#0f172a', fontWeight: 950, lineHeight: 1.1, marginBottom: '0.25rem' }}>{item.title}</div>
+                                        <div style={{ color: '#64748b', fontWeight: 740, lineHeight: 1.34, fontSize: '0.84rem' }}>{item.text}</div>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+
+                    <div style={{
+                        marginTop: '0.75rem',
+                        borderRadius: 20,
+                        padding: '0.78rem 0.85rem',
+                        background: '#0f172a',
+                        color: 'white',
+                        display: 'flex',
+                        gap: '0.58rem',
+                        alignItems: 'center',
+                        boxShadow: '0 16px 36px rgba(15,23,42,0.16)'
+                    }}>
+                        <Truck size={19} style={{ flexShrink: 0 }} />
+                        <div style={{ fontWeight: 860, lineHeight: 1.32, fontSize: '0.86rem' }}>
+                            Если что-то идет не по плану, лучше предупредить раньше. Спокойствие курьера экономит нервы всей команды.
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             {calendarOpen && (
                 <div style={{ position: 'fixed', inset: 0, zIndex: 115, background: 'rgba(15,23,42,0.36)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '0.75rem' }}>
