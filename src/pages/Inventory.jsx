@@ -17,6 +17,11 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [formData, setFormData] = useState({ name: '', price: '', category: '', cost: '', markup: 2 })
     const [searchQuery, setSearchQuery] = useState('')
     const [sortMode, setSortMode] = useState('name_asc')
+    const costValue = parseFloat(formData.cost) || 0
+    const priceValue = parseFloat(formData.price) || 0
+    const profitValue = priceValue - costValue
+    const marginPercent = costValue > 0 ? (profitValue / costValue) * 100 : 0
+    const effectiveMarkup = costValue > 0 && priceValue > 0 ? priceValue / costValue : 0
 
     const visibleItems = useMemo(() => {
         const query = searchQuery.trim().toLowerCase()
@@ -334,10 +339,39 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             type="number"
                             className="input"
                             value={formData.price}
-                            onChange={e => setFormData({ ...formData, price: e.target.value })}
+                            onChange={e => {
+                                const newPrice = e.target.value
+                                const priceVal = parseFloat(newPrice) || 0
+                                const costVal = parseFloat(formData.cost) || 0
+                                const nextMarkup = costVal > 0 && priceVal > 0 ? (priceVal / costVal).toFixed(2) : formData.markup
+                                setFormData({ ...formData, price: newPrice, markup: nextMarkup })
+                            }}
                             required
                             min="0"
                         />
+                    </div>
+
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: '0.65rem',
+                        padding: '0.85rem',
+                        borderRadius: 16,
+                        background: 'linear-gradient(135deg, #f8fafc, #ffffff)',
+                        border: '1px solid var(--border)'
+                    }}>
+                        <div>
+                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>Факт. коэф.</div>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 950, color: '#1d4ed8' }}>x{effectiveMarkup ? effectiveMarkup.toFixed(2) : '0.00'}</div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>Маржа</div>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 950, color: profitValue >= 0 ? '#16a34a' : '#dc2626' }}>{profitValue.toFixed(0)} lei</div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>Маржа %</div>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 950, color: marginPercent >= 0 ? '#16a34a' : '#dc2626' }}>{marginPercent.toFixed(0)}%</div>
+                        </div>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
