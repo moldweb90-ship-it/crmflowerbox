@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useStore } from '../context/StoreContext'
 import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw, X, Package, Flower, UploadCloud } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
@@ -34,6 +34,17 @@ export default function Products() {
         return () => window.removeEventListener('resize', handleResize)
     }, [])
 
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (compDropdownRef.current && !compDropdownRef.current.contains(event.target)) {
+                setCompDropdownOpen(false)
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
+
     // Editor State
     const [editorMode, setEditorMode] = useState('create') // 'create' | 'edit'
     const [editId, setEditId] = useState(null)
@@ -50,6 +61,8 @@ export default function Products() {
     const [compId, setCompId] = useState('')
     const [compQty, setCompQty] = useState(1)
     const [compSearch, setCompSearch] = useState('')
+    const [compDropdownOpen, setCompDropdownOpen] = useState(false)
+    const compDropdownRef = useRef(null)
 
     // Computed Price
     const [calculatedCost, setCalculatedCost] = useState(0)
@@ -314,6 +327,7 @@ export default function Products() {
         if (!term) return true
         return String(item.name || '').toLowerCase().includes(term)
     })
+    const selectedCompItem = compCatalogItems.find(item => String(item.id) === String(compId))
 
     if (view === 'editor') {
         return (
@@ -378,31 +392,82 @@ export default function Products() {
                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '130px minmax(220px, 1fr) 100px 140px', gap: '0.5rem', marginBottom: '1rem', alignItems: 'end' }}>
                                 <div>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Тип</label>
-                                    <select className="input" value={compType} onChange={e => { setCompType(e.target.value); setCompId(''); setCompSearch('') }}>
+                                    <select className="input" value={compType} onChange={e => { setCompType(e.target.value); setCompId(''); setCompSearch(''); setCompDropdownOpen(false) }}>
                                         <option value="flower">Цветок</option>
                                         <option value="good">Доп. товар</option>
                                     </select>
                                 </div>
-                                <div>
+                                <div ref={compDropdownRef} style={{ position: 'relative' }}>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Товар</label>
-                                    <input
+                                    <button
+                                        type="button"
                                         className="input"
-                                        value={compSearch}
-                                        onChange={e => {
-                                            setCompSearch(e.target.value)
-                                            setCompId('')
+                                        onClick={() => {
+                                            setCompDropdownOpen(!compDropdownOpen)
+                                            setCompSearch('')
                                         }}
-                                        placeholder="Поиск по названию..."
-                                        style={{ marginBottom: '0.4rem' }}
-                                    />
-                                    <select className="input" value={compId} onChange={e => setCompId(e.target.value)}>
-                                        <option value="">Выберите...</option>
-                                        {filteredCompItems.map(item => (
-                                            <option key={item.id} value={item.id}>{item.name} ({item.price} lei)</option>
-                                        ))}
-                                    </select>
-                                    {compSearch && filteredCompItems.length === 0 && (
-                                        <div style={{ marginTop: '0.35rem', color: '#ef4444', fontSize: '0.78rem', fontWeight: 700 }}>Ничего не найдено</div>
+                                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left' }}
+                                    >
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {selectedCompItem ? `${selectedCompItem.name} (${selectedCompItem.price} lei)` : 'Выберите...'}
+                                        </span>
+                                        <span style={{ color: 'var(--text-muted)', transform: compDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>⌄</span>
+                                    </button>
+                                    {compDropdownOpen && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            zIndex: 50,
+                                            top: 'calc(100% + 0.35rem)',
+                                            left: 0,
+                                            right: 0,
+                                            background: '#fff',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '14px',
+                                            boxShadow: '0 18px 45px rgba(15, 23, 42, 0.18)',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{ padding: '0.55rem', borderBottom: '1px solid var(--border)' }}>
+                                                <input
+                                                    className="input"
+                                                    value={compSearch}
+                                                    onChange={e => setCompSearch(e.target.value)}
+                                                    placeholder="Быстрый поиск..."
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div style={{ maxHeight: 280, overflowY: 'auto', padding: '0.35rem' }}>
+                                                {filteredCompItems.length === 0 && (
+                                                    <div style={{ padding: '0.85rem', color: '#ef4444', fontWeight: 700 }}>Ничего не найдено</div>
+                                                )}
+                                                {filteredCompItems.map(item => (
+                                                    <button
+                                                        key={item.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setCompId(item.id)
+                                                            setCompSearch('')
+                                                            setCompDropdownOpen(false)
+                                                        }}
+                                                        style={{
+                                                            width: '100%',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            gap: '0.75rem',
+                                                            padding: '0.65rem 0.75rem',
+                                                            borderRadius: '10px',
+                                                            background: String(item.id) === String(compId) ? 'var(--primary-light)' : 'transparent',
+                                                            color: String(item.id) === String(compId) ? 'var(--primary)' : 'var(--text-main)',
+                                                            fontWeight: String(item.id) === String(compId) ? 800 : 600,
+                                                            textAlign: 'left'
+                                                        }}
+                                                    >
+                                                        <span>{item.name}</span>
+                                                        <span style={{ color: String(item.id) === String(compId) ? 'var(--primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>{item.price} lei</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                                 <div>
