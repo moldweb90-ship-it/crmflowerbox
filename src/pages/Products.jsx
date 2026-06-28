@@ -49,6 +49,7 @@ export default function Products() {
     const [compType, setCompType] = useState('flower') // 'flower' | 'good'
     const [compId, setCompId] = useState('')
     const [compQty, setCompQty] = useState(1)
+    const [compSearch, setCompSearch] = useState('')
 
     // Computed Price
     const [calculatedCost, setCalculatedCost] = useState(0)
@@ -208,6 +209,8 @@ export default function Products() {
                 composition: [...formData.composition, { type: compType, id: correctId, qty: parseFloat(compQty) }]
             })
         }
+        setCompId('')
+        setCompSearch('')
     }
 
     const removeItemFromComposition = (index) => {
@@ -217,11 +220,22 @@ export default function Products() {
         })
     }
 
+    const updateCompositionQty = (index, value) => {
+        const nextQty = value === '' ? '' : Math.max(0, parseFloat(value) || 0)
+        setFormData({
+            ...formData,
+            composition: formData.composition.map((item, i) => i === index ? { ...item, qty: nextQty } : item)
+        })
+    }
+
     const handleSave = () => {
         // Clean composition: remove items that no longer exist in flowers/goods
-        const cleanedComposition = formData.composition.filter(c => {
+        const cleanedComposition = formData.composition.map(c => ({
+            ...c,
+            qty: Number(c.qty) || 0
+        })).filter(c => {
             const list = c.type === 'flower' ? flowers : goods
-            return list.some(x => String(x.id) === String(c.id))
+            return c.qty > 0 && list.some(x => String(x.id) === String(c.id))
         })
 
         const productData = {
@@ -294,6 +308,13 @@ export default function Products() {
         updateProduct(p.id, { is_published: !p.is_published })
     }
 
+    const compCatalogItems = compType === 'flower' ? flowers : goods
+    const filteredCompItems = compCatalogItems.filter(item => {
+        const term = compSearch.trim().toLowerCase()
+        if (!term) return true
+        return String(item.name || '').toLowerCase().includes(term)
+    })
+
     if (view === 'editor') {
         return (
             <div>
@@ -304,7 +325,7 @@ export default function Products() {
                     <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{editorMode === 'create' ? 'Новый Букет/Товар' : 'Редактировать Товар'}</h1>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(360px, 1fr) minmax(360px, 1fr)', gap: '2rem', alignItems: 'start' }}>
                     {/* LEFT COLUMN: Main Info & Composition */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
@@ -347,29 +368,44 @@ export default function Products() {
                                 </div>
                             </div>
                         </div>
+                    </div>
 
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                         <div className="card">
                             <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Состав</h3>
 
                             {/* Add Item Control */}
-                            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'end' }}>
-                                <div style={{ flex: 1 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '130px minmax(220px, 1fr) 100px 140px', gap: '0.5rem', marginBottom: '1rem', alignItems: 'end' }}>
+                                <div>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Тип</label>
-                                    <select className="input" value={compType} onChange={e => { setCompType(e.target.value); setCompId('') }}>
+                                    <select className="input" value={compType} onChange={e => { setCompType(e.target.value); setCompId(''); setCompSearch('') }}>
                                         <option value="flower">Цветок</option>
                                         <option value="good">Доп. товар</option>
                                     </select>
                                 </div>
-                                <div style={{ flex: 3 }}>
+                                <div>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Товар</label>
+                                    <input
+                                        className="input"
+                                        value={compSearch}
+                                        onChange={e => {
+                                            setCompSearch(e.target.value)
+                                            setCompId('')
+                                        }}
+                                        placeholder="Поиск по названию..."
+                                        style={{ marginBottom: '0.4rem' }}
+                                    />
                                     <select className="input" value={compId} onChange={e => setCompId(e.target.value)}>
                                         <option value="">Выберите...</option>
-                                        {(compType === 'flower' ? flowers : goods).map(item => (
+                                        {filteredCompItems.map(item => (
                                             <option key={item.id} value={item.id}>{item.name} ({item.price} lei)</option>
                                         ))}
                                     </select>
+                                    {compSearch && filteredCompItems.length === 0 && (
+                                        <div style={{ marginTop: '0.35rem', color: '#ef4444', fontSize: '0.78rem', fontWeight: 700 }}>Ничего не найдено</div>
+                                    )}
                                 </div>
-                                <div style={{ flex: 1 }}>
+                                <div>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Кол-во</label>
                                     <input
                                         type="number"
@@ -380,7 +416,7 @@ export default function Products() {
                                         onChange={e => setCompQty(e.target.value)}
                                     />
                                 </div>
-                                <button className="btn btn-primary" onClick={addItemToComposition} style={{ minWidth: '120px' }}>
+                                <button className="btn btn-primary" onClick={addItemToComposition} style={{ minWidth: '120px', minHeight: 46 }}>
                                     <Plus size={18} style={{ marginRight: '0.5rem' }} />
                                     Добавить
                                 </button>
@@ -394,22 +430,25 @@ export default function Products() {
                                     const item = list.find(x => String(x.id) === String(comp.id))
                                     if (!item) return null
                                     return (
-                                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
-                                            <span>{item.name} <span style={{ color: 'var(--text-muted)' }}>x{comp.qty}</span></span>
-                                            <div style={{ display: 'flex', gap: '1rem' }}>
-                                                <span>{item.price * comp.qty} lei</span>
-                                                <button onClick={() => removeItemFromComposition(idx)} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
-                                            </div>
+                                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 92px 90px 28px', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 0.5rem', borderBottom: '1px solid var(--border)' }}>
+                                            <span style={{ fontWeight: 700 }}>{item.name}</span>
+                                            <input
+                                                type="number"
+                                                className="input"
+                                                min="0"
+                                                step="any"
+                                                value={comp.qty}
+                                                onChange={e => updateCompositionQty(idx, e.target.value)}
+                                                style={{ height: 38, textAlign: 'center', fontWeight: 800 }}
+                                            />
+                                            <span style={{ fontWeight: 900, textAlign: isMobile ? 'left' : 'right' }}>{(item.price * (Number(comp.qty) || 0)).toFixed(0)} lei</span>
+                                            <button onClick={() => removeItemFromComposition(idx)} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
                                         </div>
                                     )
                                 })}
                             </div>
                         </div>
 
-                    </div>
-
-                    {/* RIGHT COLUMN: Summary & Actions */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                         <div className="card" style={{ position: 'sticky', top: '1rem' }}>
                             <h3 style={{ marginBottom: '1rem' }}>Стоимость</h3>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
