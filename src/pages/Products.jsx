@@ -73,11 +73,18 @@ export default function Products() {
 
     const handleSitePriceSync = async () => {
         const endpoint = import.meta.env.VITE_VM_SYNC_ENDPOINT
-        const token = import.meta.env.VITE_VM_SYNC_TOKEN
-        if (!endpoint || !token) {
+        if (!endpoint) {
             setSiteSyncMsg('\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u0441\u0430\u0439\u0442\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430 \u043d\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435')
             setTimeout(() => setSiteSyncMsg(''), 5000)
             return
+        }
+
+        let token = localStorage.getItem('vm_sync_token') || ''
+        if (!token) {
+            token = window.prompt('\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043b\u044e\u0447 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438 flowerbox.md') || ''
+            token = token.trim()
+            if (!token) return
+            localStorage.setItem('vm_sync_token', token)
         }
 
         const syncProducts = products
@@ -116,6 +123,9 @@ export default function Products() {
             const errorText = result.errors?.length ? ` \u041e\u0448\u0438\u0431\u043a\u0438: ${result.errors.length}` : ''
             setSiteSyncMsg(`\u0421\u0430\u0439\u0442 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d: ${result.updated || 0}. \u0412\u0441\u0435\u0433\u043e \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e: ${syncProducts.length}.${missingText}${errorText}`)
         } catch (error) {
+            if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+                localStorage.removeItem('vm_sync_token')
+            }
             setSiteSyncMsg(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438: ${error.message}`)
         } finally {
             setSiteSyncLoading(false)
