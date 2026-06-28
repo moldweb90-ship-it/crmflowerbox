@@ -502,7 +502,7 @@ export default function Products() {
                     <button className="btn" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={handleRecalculate} title="Пересчитать цены">
                         <RefreshCw size={20} />
                     </button>
-                    <button className="btn" style={{ border: '1px solid var(--border)', color: '#2563eb', background: '#eff6ff' }} onClick={handleSitePriceSync} disabled={siteSyncLoading} title="\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0446\u0435\u043d\u044b \u043d\u0430 flowerbox.md">
+                    <button className="btn" style={{ border: '1px solid var(--border)', color: '#2563eb', background: '#eff6ff' }} onClick={handleSitePriceSync} disabled={siteSyncLoading} title={'\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0446\u0435\u043d\u044b \u043d\u0430 flowerbox.md'}>
                         <UploadCloud size={20} style={{ marginRight: isMobile ? 0 : '0.5rem' }} />
                         {!isMobile && (siteSyncLoading ? '\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430...' : '\u0426\u0435\u043d\u044b \u043d\u0430 \u0441\u0430\u0439\u0442')}
                     </button>
