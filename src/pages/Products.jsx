@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw, X, Package, Flower } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw, X, Package, Flower, UploadCloud } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import Modal from '../components/ui/Modal'
@@ -56,6 +56,8 @@ export default function Products() {
 
     // Recalculate State
     const [recalcMsg, setRecalcMsg] = useState('')
+    const [siteSyncMsg, setSiteSyncMsg] = useState('')
+    const [siteSyncLoading, setSiteSyncLoading] = useState(false)
 
     // View Product State
     const [viewingProduct, setViewingProduct] = useState(null)
@@ -66,6 +68,59 @@ export default function Products() {
         const count = await recalculateAllProducts()
         setRecalcMsg(`Обновлено: ${count}`)
         setTimeout(() => setRecalcMsg(''), 3000)
+    }
+
+
+    const handleSitePriceSync = async () => {
+        const endpoint = import.meta.env.VITE_VM_SYNC_ENDPOINT
+        const token = import.meta.env.VITE_VM_SYNC_TOKEN
+        if (!endpoint || !token) {
+            setSiteSyncMsg('\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u0441\u0430\u0439\u0442\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430 \u043d\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435')
+            setTimeout(() => setSiteSyncMsg(''), 5000)
+            return
+        }
+
+        const syncProducts = products
+            .filter(p => p.sku && Number.isFinite(Number(p.price)))
+            .map(p => ({
+                sku: String(p.sku).trim(),
+                name: p.name,
+                price: Number(p.price)
+            }))
+
+        if (!syncProducts.length) {
+            setSiteSyncMsg('\u041d\u0435\u0442 \u0431\u0443\u043a\u0435\u0442\u043e\u0432 \u0441 \u0430\u0440\u0442\u0438\u043a\u0443\u043b\u0430\u043c\u0438 \u0434\u043b\u044f \u0432\u044b\u0433\u0440\u0443\u0437\u043a\u0438')
+            setTimeout(() => setSiteSyncMsg(''), 5000)
+            return
+        }
+
+        if (!window.confirm(`\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0446\u0435\u043d\u044b ${syncProducts.length} \u0431\u0443\u043a\u0435\u0442\u043e\u0432 \u043d\u0430 \u0441\u0430\u0439\u0442 flowerbox.md?`)) return
+
+        setSiteSyncLoading(true)
+        setSiteSyncMsg('\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u044e \u0446\u0435\u043d\u044b \u043d\u0430 \u0441\u0430\u0439\u0442...')
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CRM-Sync-Token': token
+                },
+                body: JSON.stringify({ products: syncProducts })
+            })
+            const result = await response.json().catch(() => null)
+            if (!response.ok || !result?.ok) {
+                throw new Error(result?.message || `\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0430\u0439\u0442\u0430: ${response.status}`)
+            }
+
+            const missingText = result.missing?.length ? ` \u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b: ${result.missing.slice(0, 5).join(', ')}${result.missing.length > 5 ? '...' : ''}` : ''
+            const errorText = result.errors?.length ? ` \u041e\u0448\u0438\u0431\u043a\u0438: ${result.errors.length}` : ''
+            setSiteSyncMsg(`\u0421\u0430\u0439\u0442 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d: ${result.updated || 0}. \u0412\u0441\u0435\u0433\u043e \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e: ${syncProducts.length}.${missingText}${errorText}`)
+        } catch (error) {
+            setSiteSyncMsg(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438: ${error.message}`)
+        } finally {
+            setSiteSyncLoading(false)
+            setTimeout(() => setSiteSyncMsg(''), 9000)
+        }
     }
 
     // Initialization for Edit
@@ -431,10 +486,15 @@ export default function Products() {
                 <div>
                     <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Товары / Букеты</h1>
                     {recalcMsg && <p style={{ color: '#16a34a', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.25rem' }}>{recalcMsg}</p>}
+                    {siteSyncMsg && <p style={{ color: siteSyncMsg.startsWith('\u041e\u0448\u0438\u0431\u043a\u0430') ? '#ef4444' : '#2563eb', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.25rem' }}>{siteSyncMsg}</p>}
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                     <button className="btn" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={handleRecalculate} title="Пересчитать цены">
                         <RefreshCw size={20} />
+                    </button>
+                    <button className="btn" style={{ border: '1px solid var(--border)', color: '#2563eb', background: '#eff6ff' }} onClick={handleSitePriceSync} disabled={siteSyncLoading} title="\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0446\u0435\u043d\u044b \u043d\u0430 flowerbox.md">
+                        <UploadCloud size={20} style={{ marginRight: isMobile ? 0 : '0.5rem' }} />
+                        {!isMobile && (siteSyncLoading ? '\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430...' : '\u0426\u0435\u043d\u044b \u043d\u0430 \u0441\u0430\u0439\u0442')}
                     </button>
                     {!isMobile && <button className="btn" style={{ border: '1px solid var(--border)' }} onClick={handleExport}>Экспорт CSV</button>}
                     <button className="btn btn-primary" onClick={handleCreate}>
