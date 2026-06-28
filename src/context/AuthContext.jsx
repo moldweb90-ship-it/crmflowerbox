@@ -64,11 +64,24 @@ export function AuthProvider({ children }) {
     const login = async (email, password) => {
         const normalizedEmail = email.trim().toLowerCase()
 
-        if (LOCAL_ADMIN_PASSWORD && normalizedEmail === DEV_ADMIN_EMAIL && password === LOCAL_ADMIN_PASSWORD) {
-            setUser(LOCAL_ADMIN_USER)
-            localStorage.setItem('app_user', JSON.stringify(LOCAL_ADMIN_USER))
-            localStorage.setItem('app_local_user', JSON.stringify(LOCAL_ADMIN_USER))
-            return { user: LOCAL_ADMIN_USER, session: null }
+        if (normalizedEmail === DEV_ADMIN_EMAIL) {
+            const { data: ownerSettings } = await supabase
+                .from('settings')
+                .select('local_admin_password_hash, local_admin_password_salt')
+                .eq('id', 1)
+                .maybeSingle()
+
+            const hasOwnerPassword = ownerSettings?.local_admin_password_hash && ownerSettings?.local_admin_password_salt
+            const ownerPasswordOk = hasOwnerPassword
+                ? await verifyPassword(password, ownerSettings.local_admin_password_salt, ownerSettings.local_admin_password_hash)
+                : Boolean(LOCAL_ADMIN_PASSWORD && password === LOCAL_ADMIN_PASSWORD)
+
+            if (ownerPasswordOk) {
+                setUser(LOCAL_ADMIN_USER)
+                localStorage.setItem('app_user', JSON.stringify(LOCAL_ADMIN_USER))
+                localStorage.setItem('app_local_user', JSON.stringify(LOCAL_ADMIN_USER))
+                return { user: LOCAL_ADMIN_USER, session: null }
+            }
         }
 
         const { data: appUser, error: appUserError } = await supabase
@@ -126,7 +139,24 @@ export function AuthProvider({ children }) {
 
     const updatePassword = async (newPassword) => {
         if (user?.app_metadata?.provider === 'local-admin') {
-            throw new Error('Пароль владельца задается в переменной VITE_LOCAL_ADMIN_PASSWORD на сервере')
+            const passwordRecord = await createPasswordRecord(newPassword)
+            const { data: currentSettings } = await supabase
+                .from('settings')
+                .select('markup_percentage, delivery_cost')
+                .eq('id', 1)
+                .maybeSingle()
+
+            const { error } = await supabase
+                .from('settings')
+                .upsert({
+                    id: 1,
+                    markup_percentage: currentSettings?.markup_percentage ?? 30,
+                    delivery_cost: currentSettings?.delivery_cost ?? 500,
+                    local_admin_password_hash: passwordRecord.password_hash,
+                    local_admin_password_salt: passwordRecord.password_salt
+                }, { onConflict: 'id' })
+            if (error) throw error
+            return
         }
 
         if (user?.app_metadata?.provider === 'app-user') {
