@@ -2155,6 +2155,108 @@ export function StoreProvider({ children }) {
         }
     }
 
+    const updateShowcaseBouquetComposition = async (id, updates) => {
+        try {
+            const bouquet = showcaseBouquets.find(b => b.id === id)
+            if (!bouquet) return { success: false, error: { message: 'Букет не найден' } }
+            if (bouquet.status !== 'active') {
+                return { success: false, error: { message: 'Пересобрать можно только букет на витрине' } }
+            }
+
+            const oldComposition = Array.isArray(bouquet.composition) ? bouquet.composition : []
+            const newComposition = Array.isArray(updates.composition) ? updates.composition : []
+            const keyOf = (item) => `${item.type}:${item.item_id || item.id}`
+            const oldByKey = oldComposition.reduce((acc, item) => {
+                const key = keyOf(item)
+                acc[key] = { ...item, quantity: Number(item.quantity || item.qty || 0) }
+                return acc
+            }, {})
+            const newByKey = newComposition.reduce((acc, item) => {
+                const key = keyOf(item)
+                acc[key] = { ...item, quantity: Number(item.quantity || item.qty || 0) }
+                return acc
+            }, {})
+
+            const addedItems = []
+            const removedItems = []
+
+            for (const item of newComposition) {
+                const key = keyOf(item)
+                const qty = Number(item.quantity || item.qty || 0)
+                const oldQty = Number(oldByKey[key]?.quantity || 0)
+                const diff = qty - oldQty
+                if (diff > 0) {
+                    addedItems.push({ ...item, quantity: diff })
+                }
+            }
+
+            for (const item of oldComposition) {
+                const key = keyOf(item)
+                const oldQty = Number(item.quantity || item.qty || 0)
+                const newQty = Number(newByKey[key]?.quantity || 0)
+                const diff = oldQty - newQty
+                if (diff > 0) {
+                    removedItems.push({ ...item, quantity: diff })
+                }
+            }
+
+            const stockIssues = getShowcaseItemStockIssues(addedItems)
+            if (stockIssues.length > 0) {
+                return { success: false, error: { message: 'Недостаточно остатков на складе для пересборки витрины' }, stockIssues }
+            }
+
+            for (const item of addedItems) {
+                const result = await removeFromStock(
+                    item.type,
+                    item.item_id || item.id,
+                    Number(item.quantity || item.qty || 1),
+                    'showcase_rebuild',
+                    id,
+                    `Пересборка витрины: ${updates.name || bouquet.name}`
+                )
+                if (!result.success) return result
+            }
+
+            const wasteRows = removedItems.map(item => ({
+                item_type: item.type,
+                item_id: item.item_id || item.id,
+                quantity: -Number(item.quantity || item.qty || 1),
+                transaction_type: 'waste',
+                reference_id: id,
+                cost_price: Number(item.cost || 0),
+                notes: `Пересборка витрины: ${updates.name || bouquet.name}`,
+                reason: updates.rebuild_reason || 'Пересборка витринного букета'
+            }))
+            if (wasteRows.length > 0) {
+                const { data: txData, error: txError } = await supabase.from('stock_transactions').insert(wasteRows).select()
+                if (txError) throw txError
+                if (txData) setStockTransactions(prev => [...txData, ...prev])
+            }
+
+            const payload = {
+                name: updates.name || bouquet.name,
+                composition: newComposition,
+                cost_price: Number(updates.cost_price || 0),
+                sale_price: Number(updates.sale_price || 0),
+                notes: updates.notes || ''
+            }
+
+            const { data, error } = await supabase
+                .from('showcase_bouquets')
+                .update(payload)
+                .eq('id', id)
+                .select()
+            if (error) throw error
+
+            const updated = data?.[0] || { ...bouquet, ...payload }
+            setShowcaseBouquets(prev => prev.map(b => b.id === id ? updated : b))
+            return { success: true, data: updated }
+        } catch (error) {
+            console.error('Error rebuilding showcase bouquet:', error)
+            return { success: false, error }
+        }
+    }
+
     const deleteShowcaseBouquet = async (id, { restoreStock = true } = {}) => {
         try {
             const bouquet = showcaseBouquets.find(b => b.id === id)
@@ -2164,7 +2266,7 @@ export function StoreProvider({ children }) {
             }
 
             let nextStock = [...stock]
-            const linkedTxTypes = ['showcase_build', 'waste']
+            const linkedTxTypes = ['showcase_build', 'showcase_rebuild', 'waste']
             const { data: linkedTransactions = [], error: linkedTxError } = await supabase
                 .from('stock_transactions')
                 .select('*')
@@ -2206,7 +2308,7 @@ export function StoreProvider({ children }) {
                 }
 
                 const restoredLotRows = linkedTransactions
-                    .filter(tx => tx.transaction_type === 'showcase_build' && Number(tx.quantity || 0) < 0)
+                    .filter(tx => (tx.transaction_type === 'showcase_build' || tx.transaction_type === 'showcase_rebuild') && Number(tx.quantity || 0) < 0)
                     .map(tx => ({
                         item_type: tx.item_type,
                         item_id: tx.item_id,
@@ -2268,7 +2370,7 @@ export function StoreProvider({ children }) {
             settings, updateSettings, resetSystemData,
             calculatePrice, calculateCostPrice,
             stock, stockTransactions, stockLots, getStockQty, getStockSupplierBreakdown, addToStock, removeFromStock, recordWaste, updateMinQuantity, getLowStockItems, getItemName,
-            showcaseBouquets, addShowcaseBouquet, markShowcaseBouquetSold, writeOffShowcaseBouquet, deleteShowcaseBouquet, getShowcaseItemStockIssues,
+            showcaseBouquets, addShowcaseBouquet, markShowcaseBouquetSold, writeOffShowcaseBouquet, updateShowcaseBouquetComposition, deleteShowcaseBouquet, getShowcaseItemStockIssues,
             customers, findOrCreateCustomer, updateCustomerStats, updateCustomer, deleteCustomer, getCustomerOrders,
             customerImportantDates, saveImportantDate, deleteImportantDate, getCustomerImportantDates, getUpcomingReminders,
             refreshCustomersAndDates, refreshDeliveryData, loading

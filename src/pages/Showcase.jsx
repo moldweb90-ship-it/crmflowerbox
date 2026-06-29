@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { Plus, Search, Store, Trash2, BadgeCheck, Sparkles, PackageCheck, RotateCcw, AlarmClock, Flame } from 'lucide-react'
+import { Plus, Search, Store, Trash2, BadgeCheck, Sparkles, PackageCheck, RotateCcw, AlarmClock, Flame, Edit2 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import { useStore } from '../context/StoreContext'
 
@@ -55,7 +55,7 @@ const getShowcaseAgeMeta = (bouquet) => {
 
 export default function Showcase() {
     const {
-        showcaseBouquets, addShowcaseBouquet, writeOffShowcaseBouquet, deleteShowcaseBouquet,
+        showcaseBouquets, addShowcaseBouquet, writeOffShowcaseBouquet, updateShowcaseBouquetComposition, deleteShowcaseBouquet,
         flowers, goods, settings, getShowcaseItemStockIssues
     } = useStore()
 
@@ -66,6 +66,7 @@ export default function Showcase() {
     const [showDropdown, setShowDropdown] = useState(false)
     const [statusFilter, setStatusFilter] = useState('active')
     const [loading, setLoading] = useState(false)
+    const [editingBouquet, setEditingBouquet] = useState(null)
 
     React.useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -110,12 +111,46 @@ export default function Showcase() {
     const finalPrice = Number(formData.sale_price || 0) || suggestedPrice
     const formProfit = finalPrice - formCost
     const formMargin = formCost > 0 ? Math.round((formProfit / formCost) * 100) : 0
-    const stockIssues = getShowcaseItemStockIssues(formData.composition)
+    const getAddedComposition = () => {
+        if (!editingBouquet) return formData.composition
+        const oldByKey = (editingBouquet.composition || []).reduce((acc, item) => {
+            acc[`${item.type}:${item.item_id || item.id}`] = Number(item.quantity || item.qty || 0)
+            return acc
+        }, {})
+        return formData.composition
+            .map(item => {
+                const key = `${item.type}:${item.item_id || item.id}`
+                const qty = Number(item.quantity || item.qty || 0)
+                const diff = qty - Number(oldByKey[key] || 0)
+                return diff > 0 ? { ...item, quantity: diff } : null
+            })
+            .filter(Boolean)
+    }
+    const stockIssues = getShowcaseItemStockIssues(getAddedComposition())
 
     const resetForm = () => {
         setFormData(emptyForm)
         setItemSearch('')
         setShowDropdown(false)
+        setEditingBouquet(null)
+    }
+
+    const openCreateModal = () => {
+        resetForm()
+        setIsModalOpen(true)
+    }
+
+    const openRebuildModal = (bouquet) => {
+        setEditingBouquet(bouquet)
+        setFormData({
+            name: bouquet.name || '',
+            composition: Array.isArray(bouquet.composition) ? bouquet.composition.map(item => ({ ...item })) : [],
+            sale_price: String(bouquet.sale_price || ''),
+            notes: bouquet.notes || ''
+        })
+        setItemSearch('')
+        setShowDropdown(false)
+        setIsModalOpen(true)
     }
 
     const addItem = (item, type) => {
@@ -155,20 +190,27 @@ export default function Showcase() {
         }
 
         setLoading(true)
-        const result = await addShowcaseBouquet({
+        const payload = {
             name: formData.name.trim(),
             composition: formData.composition,
             cost_price: formCost,
             sale_price: finalPrice,
             notes: formData.notes
-        })
+        }
+
+        const result = editingBouquet
+            ? await updateShowcaseBouquetComposition(editingBouquet.id, {
+                ...payload,
+                rebuild_reason: 'Пересборка витринного букета'
+            })
+            : await addShowcaseBouquet(payload)
         setLoading(false)
 
         if (result.success) {
             setIsModalOpen(false)
             resetForm()
         } else {
-            alert(result.error?.message || 'Не удалось добавить букет на витрину')
+            alert(result.error?.message || (editingBouquet ? 'Не удалось пересобрать букет' : 'Не удалось добавить букет на витрину'))
         }
     }
 
@@ -214,7 +256,7 @@ export default function Showcase() {
                 </div>
                 <button
                     className="btn btn-primary"
-                    onClick={() => { resetForm(); setIsModalOpen(true) }}
+                    onClick={openCreateModal}
                     style={{ gap: '0.5rem', justifyContent: 'center' }}
                 >
                     <Plus size={20} /> Собрать на витрину
@@ -373,13 +415,23 @@ export default function Showcase() {
                             {bouquet.status !== 'sold' && (
                                 <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: bouquet.status === 'active' ? '1fr 1fr' : '1fr', gap: '0.55rem' }}>
                                     {bouquet.status === 'active' && (
-                                        <button
-                                            className="btn"
-                                            onClick={() => writeOff(bouquet)}
-                                            style={{ width: '100%', justifyContent: 'center', background: '#fee2e2', color: '#991b1b' }}
-                                        >
-                                            <Trash2 size={16} style={{ marginRight: '0.4rem' }} /> Списать
-                                        </button>
+                                        <>
+                                            <button
+                                                className="btn"
+                                                onClick={() => openRebuildModal(bouquet)}
+                                                style={{ width: '100%', justifyContent: 'center', background: '#eef2ff', color: '#3730a3', gridColumn: '1 / -1' }}
+                                                title="Изменить состав: убранные позиции попадут в списание, добавленные снимутся со склада"
+                                            >
+                                                <Edit2 size={16} style={{ marginRight: '0.4rem' }} /> Пересобрать
+                                            </button>
+                                            <button
+                                                className="btn"
+                                                onClick={() => writeOff(bouquet)}
+                                                style={{ width: '100%', justifyContent: 'center', background: '#fee2e2', color: '#991b1b' }}
+                                            >
+                                                <Trash2 size={16} style={{ marginRight: '0.4rem' }} /> Списать
+                                            </button>
+                                        </>
                                     )}
                                     <button
                                         className="btn"
@@ -404,7 +456,7 @@ export default function Showcase() {
                 </div>
             )}
 
-            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm() }} title="Собрать букет на витрину" maxWidth="760px" closeOnOverlayClick={false}>
+            <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm() }} title={editingBouquet ? 'Пересобрать букет на витрине' : 'Собрать букет на витрину'} maxWidth="760px" closeOnOverlayClick={false}>
                 <div style={{ display: 'grid', gap: '1rem' }}>
                     <div style={{ background: '#f9fafb', borderRadius: '16px', padding: '1rem' }}>
                         <label style={{ fontWeight: 800, color: '#374151', display: 'block', marginBottom: '0.4rem' }}>Название</label>
@@ -415,6 +467,12 @@ export default function Showcase() {
                         <h4 style={{ color: '#7c3aed', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                             <Sparkles size={18} /> Состав
                         </h4>
+
+                        {editingBouquet && (
+                            <div style={{ marginBottom: '0.85rem', padding: '0.75rem 0.85rem', borderRadius: 14, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', fontWeight: 750, lineHeight: 1.35 }}>
+                                Уменьшили количество или удалили позицию — CRM запишет это в списание. Добавили новый цветок — CRM снимет его со склада.
+                            </div>
+                        )}
 
                         {formData.composition.length > 0 && (
                             <div style={{ display: 'grid', gap: '0.55rem', marginBottom: '0.8rem' }}>
@@ -493,7 +551,7 @@ export default function Showcase() {
                         <button className="btn" onClick={() => { setIsModalOpen(false); resetForm() }}>Отмена</button>
                         <button className="btn btn-primary" disabled={loading || stockIssues.length > 0} onClick={saveBouquet} style={{ minWidth: '190px' }}>
                             <BadgeCheck size={18} style={{ marginRight: '0.45rem' }} />
-                            {loading ? 'Сохраняю...' : 'Поставить на витрину'}
+                            {loading ? 'Сохраняю...' : editingBouquet ? 'Сохранить пересборку' : 'Поставить на витрину'}
                         </button>
                     </div>
                 </div>
