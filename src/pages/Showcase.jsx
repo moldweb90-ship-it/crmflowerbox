@@ -67,6 +67,7 @@ export default function Showcase() {
     const [statusFilter, setStatusFilter] = useState('active')
     const [loading, setLoading] = useState(false)
     const [editingBouquet, setEditingBouquet] = useState(null)
+    const [writeOffQtyByKey, setWriteOffQtyByKey] = useState({})
 
     React.useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -128,11 +129,19 @@ export default function Showcase() {
     }
     const stockIssues = getShowcaseItemStockIssues(getAddedComposition())
 
+    const applyComposition = (composition) => {
+        const nextSuggested = composition.reduce((sum, c) => sum + (Number(c.price || 0) * Number(c.quantity || 0)), 0)
+        setFormData(prev => ({ ...prev, composition, sale_price: String(nextSuggested) }))
+    }
+
+    const compositionKey = (item) => `${item.type}:${item.item_id || item.id}`
+
     const resetForm = () => {
         setFormData(emptyForm)
         setItemSearch('')
         setShowDropdown(false)
         setEditingBouquet(null)
+        setWriteOffQtyByKey({})
     }
 
     const openCreateModal = () => {
@@ -150,6 +159,7 @@ export default function Showcase() {
         })
         setItemSearch('')
         setShowDropdown(false)
+        setWriteOffQtyByKey({})
         setIsModalOpen(true)
     }
 
@@ -169,10 +179,26 @@ export default function Showcase() {
                 }
             ]
 
-        const nextSuggested = nextComposition.reduce((sum, c) => sum + (Number(c.price || 0) * Number(c.quantity || 0)), 0)
-        setFormData({ ...formData, composition: nextComposition, sale_price: String(nextSuggested) })
+        applyComposition(nextComposition)
         setItemSearch('')
         setShowDropdown(false)
+    }
+
+    const writeOffCompositionItem = (item, idx) => {
+        const key = compositionKey(item)
+        const currentQty = Number(item.quantity || 0)
+        const qtyToWriteOff = Math.min(currentQty, Math.max(0, Number(writeOffQtyByKey[key] || 0)))
+        if (qtyToWriteOff <= 0) {
+            alert('Укажите количество для списания')
+            return
+        }
+
+        const nextComposition = currentQty - qtyToWriteOff <= 0
+            ? formData.composition.filter((_, i) => i !== idx)
+            : formData.composition.map((c, i) => i === idx ? { ...c, quantity: currentQty - qtyToWriteOff } : c)
+
+        applyComposition(nextComposition)
+        setWriteOffQtyByKey(prev => ({ ...prev, [key]: '' }))
     }
 
     const saveBouquet = async () => {
@@ -478,11 +504,13 @@ export default function Showcase() {
                             <div style={{ display: 'grid', gap: '0.55rem', marginBottom: '0.8rem' }}>
                                 {formData.composition.map((item, idx) => {
                                     const issue = stockIssues.find(x => x.item_id === item.item_id && x.type === item.type)
+                                    const key = compositionKey(item)
                                     return (
-                                        <div key={`${item.type}-${item.item_id}`} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 82px 92px 28px', gap: '0.5rem', alignItems: 'center', background: 'white', borderRadius: '12px', padding: '0.65rem', border: issue ? '1px solid #fca5a5' : '1px solid #e5e7eb' }}>
+                                        <div key={`${item.type}-${item.item_id}`} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : editingBouquet ? 'minmax(160px, 1fr) 82px 170px 92px 34px' : '1fr 82px 92px 28px', gap: '0.5rem', alignItems: 'center', background: 'white', borderRadius: '12px', padding: '0.65rem', border: issue ? '1px solid #fca5a5' : '1px solid #e5e7eb' }}>
                                             <div>
                                                 <b>{item.type === 'flower' ? '🌸' : '📦'} {item.name}</b>
                                                 {issue && <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '0.15rem' }}>Не хватает: {issue.missing}</div>}
+                                                {editingBouquet && <div style={{ color: '#94a3b8', fontSize: '0.72rem', fontWeight: 750, marginTop: '0.15rem' }}>Осталось в букете</div>}
                                             </div>
                                             <input
                                                 type="number"
@@ -492,13 +520,45 @@ export default function Showcase() {
                                                 onChange={e => {
                                                     const qty = Math.max(1, Number(e.target.value || 1))
                                                     const comp = formData.composition.map((c, i) => i === idx ? { ...c, quantity: qty } : c)
-                                                    const nextSuggested = comp.reduce((sum, c) => sum + (Number(c.price || 0) * Number(c.quantity || 0)), 0)
-                                                    setFormData({ ...formData, composition: comp, sale_price: String(nextSuggested) })
+                                                    applyComposition(comp)
                                                 }}
                                                 style={{ textAlign: 'center', fontWeight: 800 }}
                                             />
+                                            {editingBouquet && (
+                                                <div style={{ display: 'grid', gridTemplateColumns: '74px 1fr', gap: '0.35rem', alignItems: 'center' }}>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max={item.quantity}
+                                                        className="input"
+                                                        value={writeOffQtyByKey[key] || ''}
+                                                        onChange={e => {
+                                                            const qty = Math.min(Number(item.quantity || 0), Math.max(0, Number(e.target.value || 0)))
+                                                            setWriteOffQtyByKey(prev => ({ ...prev, [key]: qty || '' }))
+                                                        }}
+                                                        placeholder="шт"
+                                                        style={{ textAlign: 'center', fontWeight: 800 }}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        className="btn"
+                                                        onClick={() => writeOffCompositionItem(item, idx)}
+                                                        style={{ justifyContent: 'center', background: '#fee2e2', color: '#991b1b', padding: '0.55rem 0.65rem', fontWeight: 900 }}
+                                                        title="Списать часть позиции из букета"
+                                                    >
+                                                        Списать
+                                                    </button>
+                                                </div>
+                                            )}
                                             <div style={{ textAlign: isMobile ? 'left' : 'right', fontWeight: 900, color: '#7c3aed' }}>{(Number(item.price || 0) * Number(item.quantity || 0)).toLocaleString()} lei</div>
-                                            <button onClick={() => setFormData({ ...formData, composition: formData.composition.filter((_, i) => i !== idx) })} style={{ color: '#dc2626' }}>×</button>
+                                            <button
+                                                type="button"
+                                                onClick={() => applyComposition(formData.composition.filter((_, i) => i !== idx))}
+                                                style={{ color: '#dc2626', fontWeight: 900 }}
+                                                title="Убрать всю позицию"
+                                            >
+                                                ×
+                                            </button>
                                         </div>
                                     )
                                 })}
