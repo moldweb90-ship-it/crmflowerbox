@@ -174,8 +174,9 @@ export default function Sales() {
         delivery_date: '',
         delivery_address: '',
         delivery_status: 'not_delivered',
-        courier_id: ''
-        ,
+        courier_id: '',
+        extra_delivery_cost: null,
+        extra_delivery_reason: '',
         sale_price_override: ''
     }
     const [salonFormData, setSalonFormData] = useState(emptySalonForm)
@@ -208,7 +209,9 @@ export default function Sales() {
         payment_status: 'unpaid',
         delivery_status: 'not_delivered',
         sales_channel: 'website',
-        occasion: ''
+        occasion: '',
+        extra_delivery_cost: null,
+        extra_delivery_reason: null
     }
     const [formData, setFormData] = useState(savedState?.formData || emptyForm)
     const [productSearch, setProductSearch] = useState('')
@@ -491,6 +494,8 @@ export default function Sales() {
                 delivery_address: sale.delivery_address || '',
                 delivery_status: sale.delivery_status || 'not_delivered',
                 courier_id: sale.courier_id || '',
+                extra_delivery_cost: sale.extra_delivery_cost ?? null,
+                extra_delivery_reason: sale.extra_delivery_reason || '',
                 sale_price_override: sale.sale_price || ''
             })
             setSelectedShowcaseId('')
@@ -613,6 +618,7 @@ export default function Sales() {
 
         setLoading(true)
         const salePrice = Number(formData.sale_price) || calculatedSalePrice
+        const hasExtraDelivery = formData.delivery_method === 'delivery' && formData.extra_delivery_cost != null
         const payload = {
             ...formData,
             product_id: isCustomSiteSale ? '' : formData.product_id,
@@ -623,7 +629,9 @@ export default function Sales() {
             sale_price: salePrice,
             cost_price: costPrice,
             profit: salePrice - costPrice,
-            custom_composition: siteComposition.length > 0 ? siteComposition : undefined
+            custom_composition: siteComposition.length > 0 ? siteComposition : undefined,
+            extra_delivery_cost: hasExtraDelivery ? Number(formData.extra_delivery_cost || 0) : null,
+            extra_delivery_reason: hasExtraDelivery ? (formData.extra_delivery_reason || null) : null
         }
 
         // Clean up delivery data if pickup
@@ -1637,7 +1645,7 @@ export default function Sales() {
                                                 <input
                                                     type="checkbox"
                                                     style={{ opacity: 0, width: 0, height: 0 }}
-                                                    checked={formData.extra_delivery_cost !== null}
+                                                    checked={formData.extra_delivery_cost != null}
                                                     onChange={(e) => {
                                                         if (e.target.checked) {
                                                             setFormData({ ...formData, extra_delivery_cost: '' })
@@ -1652,13 +1660,13 @@ export default function Sales() {
                                                 />
                                                 <span style={{
                                                     position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
-                                                    backgroundColor: formData.extra_delivery_cost !== null ? '#3b82f6' : '#e5e7eb',
+                                                    backgroundColor: formData.extra_delivery_cost != null ? '#3b82f6' : '#e5e7eb',
                                                     transition: '.3s', borderRadius: '34px'
                                                 }}></span>
                                                 <span style={{
                                                     position: 'absolute', content: '""', height: '16px', width: '16px', left: '2px', bottom: '2px',
                                                     backgroundColor: 'white', transition: '.3s', borderRadius: '50%',
-                                                    transform: formData.extra_delivery_cost !== null ? 'translateX(16px)' : 'translateX(0)',
+                                                    transform: formData.extra_delivery_cost != null ? 'translateX(16px)' : 'translateX(0)',
                                                     boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
                                                 }}></span>
                                             </label>
@@ -1668,7 +1676,7 @@ export default function Sales() {
                             </div>
 
                             {/* Extra Delivery Inputs (Row below) */}
-                            {formData.delivery_method === 'delivery' && formData.extra_delivery_cost !== null && (
+                            {formData.delivery_method === 'delivery' && formData.extra_delivery_cost != null && (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(100px, 1fr) 2fr', gap: '0.5rem', marginTop: '0.5rem', animation: 'fadeIn 0.2s ease-out' }}>
                                     <div>
                                         <input
@@ -2698,7 +2706,12 @@ export default function Sales() {
                             <input
                                 type="checkbox"
                                 checked={salonFormData.needs_delivery}
-                                onChange={(e) => setSalonFormData({ ...salonFormData, needs_delivery: e.target.checked })}
+                                onChange={(e) => setSalonFormData({
+                                    ...salonFormData,
+                                    needs_delivery: e.target.checked,
+                                    extra_delivery_cost: e.target.checked ? salonFormData.extra_delivery_cost : null,
+                                    extra_delivery_reason: e.target.checked ? salonFormData.extra_delivery_reason : ''
+                                })}
                                 style={{ width: '20px', height: '20px', accentColor: '#f59e0b' }}
                             />
                             <span style={{ fontWeight: 600, color: '#92400e' }}>🚚 Нужна доставка</span>
@@ -2750,6 +2763,72 @@ export default function Sales() {
                                         {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                                     </select>
                                 </div>
+                                <div style={{
+                                    gridColumn: isMobile ? '1' : '1 / -1',
+                                    display: 'grid',
+                                    gridTemplateColumns: isMobile ? '1fr' : 'minmax(220px, 0.8fr) minmax(120px, 0.6fr) minmax(240px, 1fr)',
+                                    gap: '0.75rem',
+                                    alignItems: 'end',
+                                    padding: '0.75rem',
+                                    borderRadius: '14px',
+                                    background: '#fff',
+                                    border: '1px solid #fde68a'
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSalonFormData({
+                                            ...salonFormData,
+                                            extra_delivery_cost: salonFormData.extra_delivery_cost === null ? '' : null,
+                                            extra_delivery_reason: salonFormData.extra_delivery_cost === null ? salonFormData.extra_delivery_reason : ''
+                                        })}
+                                        style={{
+                                            height: '44px',
+                                            padding: '0.55rem 0.75rem',
+                                            borderRadius: '12px',
+                                            border: salonFormData.extra_delivery_cost !== null ? '1px solid #f59e0b' : '1px solid #e5e7eb',
+                                            background: salonFormData.extra_delivery_cost !== null ? '#fffbeb' : '#f9fafb',
+                                            color: salonFormData.extra_delivery_cost !== null ? '#92400e' : '#4b5563',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: '0.75rem',
+                                            cursor: 'pointer',
+                                            fontWeight: 800
+                                        }}
+                                    >
+                                        <span>Доп. доставка?</span>
+                                        <span style={{
+                                            width: 38,
+                                            height: 22,
+                                            borderRadius: 999,
+                                            padding: 3,
+                                            background: salonFormData.extra_delivery_cost !== null ? '#f59e0b' : '#d1d5db',
+                                            display: 'flex',
+                                            justifyContent: salonFormData.extra_delivery_cost !== null ? 'flex-end' : 'flex-start'
+                                        }}>
+                                            <span style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 4px rgba(15,23,42,0.25)' }} />
+                                        </span>
+                                    </button>
+
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        placeholder="Сумма"
+                                        disabled={salonFormData.extra_delivery_cost === null}
+                                        value={salonFormData.extra_delivery_cost ?? ''}
+                                        onChange={(e) => setSalonFormData({ ...salonFormData, extra_delivery_cost: e.target.value })}
+                                        style={{ height: '44px', opacity: salonFormData.extra_delivery_cost === null ? 0.55 : 1 }}
+                                    />
+
+                                    <input
+                                        className="input"
+                                        placeholder="Причина (за город, срочно...)"
+                                        disabled={salonFormData.extra_delivery_cost === null}
+                                        value={salonFormData.extra_delivery_reason || ''}
+                                        onChange={(e) => setSalonFormData({ ...salonFormData, extra_delivery_reason: e.target.value })}
+                                        style={{ height: '44px', opacity: salonFormData.extra_delivery_cost === null ? 0.55 : 1 }}
+                                    />
+                                </div>
                             </div>
                         )}
                     </div>
@@ -2778,9 +2857,12 @@ export default function Sales() {
                             onClick={async () => {
                                 setLoading(true)
                                 try {
-                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0)
+                                    const extraDeliveryCost = salonFormData.needs_delivery && salonFormData.extra_delivery_cost !== null
+                                        ? Number(salonFormData.extra_delivery_cost || 0)
+                                        : 0
+                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0) + extraDeliveryCost
                                     const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
-                                    const salePrice = selectedShowcaseId ? Number(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice
+                                    const salePrice = (selectedShowcaseId ? Number(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + extraDeliveryCost
 
                                     // Create/Update sale record
                                     const saleData = {
@@ -2798,6 +2880,8 @@ export default function Sales() {
                                         delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
                                         delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
+                                        extra_delivery_cost: salonFormData.needs_delivery && salonFormData.extra_delivery_cost !== null ? extraDeliveryCost : null,
+                                        extra_delivery_reason: salonFormData.needs_delivery && salonFormData.extra_delivery_cost !== null ? (salonFormData.extra_delivery_reason || null) : null,
                                         sales_channel: 'store',
                                         profit: salePrice - costPrice,
                                         skip_stock_deduction: Boolean(selectedShowcaseId)
