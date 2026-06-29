@@ -616,26 +616,45 @@ export default function Products() {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <div>
-                    <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>Товары / Букеты</h1>
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: isMobile ? 'flex-start' : 'center',
+                gap: '0.75rem',
+                marginBottom: isMobile ? '1rem' : '1.5rem'
+            }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                    <h1 style={{
+                        fontSize: isMobile ? '1.65rem' : '1.875rem',
+                        fontWeight: 'bold',
+                        lineHeight: 1.05,
+                        whiteSpace: isMobile ? 'nowrap' : 'normal'
+                    }}>
+                        {isMobile ? 'Букеты' : 'Товары / Букеты'}
+                    </h1>
                     {recalcMsg && <p style={{ color: '#16a34a', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.25rem' }}>{recalcMsg}</p>}
                     {siteSyncMsg && <p style={{ color: siteSyncMsg.startsWith('\u041e\u0448\u0438\u0431\u043a\u0430') ? '#ef4444' : '#2563eb', fontWeight: 600, fontSize: '0.875rem', marginTop: '0.25rem' }}>{siteSyncMsg}</p>}
                 </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button className="btn" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }} onClick={handleRecalculate} title="Пересчитать цены">
+                <div style={{
+                    display: 'flex',
+                    gap: isMobile ? '0.45rem' : '1rem',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    flexShrink: 0
+                }}>
+                    <button className="btn" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)', width: isMobile ? 42 : 'auto', height: isMobile ? 42 : 'auto', padding: isMobile ? 0 : undefined, justifyContent: 'center' }} onClick={handleRecalculate} title="Пересчитать цены">
                         <RefreshCw size={20} />
                     </button>
-                    <button className="btn" style={{ border: '1px solid var(--border)', color: '#2563eb', background: '#eff6ff' }} onClick={handleSitePriceSync} disabled={siteSyncLoading} title={'\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0446\u0435\u043d\u044b \u043d\u0430 flowerbox.md'}>
+                    <button className="btn" style={{ border: '1px solid var(--border)', color: '#2563eb', background: '#eff6ff', width: isMobile ? 42 : 'auto', height: isMobile ? 42 : 'auto', padding: isMobile ? 0 : undefined, justifyContent: 'center' }} onClick={handleSitePriceSync} disabled={siteSyncLoading} title={'\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0446\u0435\u043d\u044b \u043d\u0430 flowerbox.md'}>
                         <UploadCloud size={20} style={{ marginRight: isMobile ? 0 : '0.5rem' }} />
                         {!isMobile && (siteSyncLoading ? '\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430...' : '\u0426\u0435\u043d\u044b \u043d\u0430 \u0441\u0430\u0439\u0442')}
                     </button>
                     {!isMobile && <button className="btn" style={{ border: '1px solid var(--border)' }} onClick={handleExport}>Экспорт CSV</button>}
-                    <button className="btn btn-primary" onClick={handleCreate}>
+                    <button className="btn btn-primary" onClick={handleCreate} style={{ width: isMobile ? 52 : 'auto', height: isMobile ? 42 : 'auto', padding: isMobile ? 0 : undefined, justifyContent: 'center' }}>
                         <Plus size={20} style={{ marginRight: isMobile ? 0 : '0.5rem' }} />
                         {!isMobile && 'Новый Товар'}
                     </button>
-                    {isMobile && <button className="btn" style={{ border: '1px solid var(--border)' }} onClick={handleExport}>XLSX</button>}
+                    {isMobile && <button className="btn" style={{ border: '1px solid var(--border)', height: 42, padding: '0 0.55rem', fontSize: '0.72rem', fontWeight: 900 }} onClick={handleExport}>XLSX</button>}
                 </div>
             </div>
 
