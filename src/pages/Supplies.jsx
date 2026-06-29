@@ -32,6 +32,7 @@ export default function Supplies() {
     // Form State
     const [supplierName, setSupplierName] = useState('')
     const [supplyItems, setSupplyItems] = useState([])
+    const [updateCatalogPrices, setUpdateCatalogPrices] = useState(true)
 
     const handleViewClick = async (supply) => {
         try {
@@ -156,10 +157,11 @@ export default function Supplies() {
 
         setLoading(true)
         let result
+        const saveOptions = { updateCatalogPrices }
         if (modalMode === 'edit' && editingSupplyId) {
-            result = await updateSupply(editingSupplyId, supplierName, finalItems)
+            result = await updateSupply(editingSupplyId, supplierName, finalItems, saveOptions)
         } else {
-            result = await saveSupply(supplierName, finalItems)
+            result = await saveSupply(supplierName, finalItems, saveOptions)
         }
         setLoading(false)
 
@@ -167,6 +169,7 @@ export default function Supplies() {
             setIsModalOpen(false)
             setSupplierName('')
             setSupplyItems([])
+            setUpdateCatalogPrices(true)
             setCurrentItem({ id: '', quantity: '', unitCost: '' })
             setEditingSupplyId(null)
         } else {
@@ -179,6 +182,7 @@ export default function Supplies() {
         setModalMode('edit')
         setEditingSupplyId(supply.id)
         setSupplierName(supply.suppliers?.name || '')
+        setUpdateCatalogPrices(true)
         setLoading(true)
 
         // Fetch items
@@ -215,6 +219,7 @@ export default function Supplies() {
         setEditingSupplyId(null)
         setSupplierName('')
         setSupplyItems([])
+        setUpdateCatalogPrices(true)
         setCurrentItem({ id: '', quantity: '', unitCost: '' })
         setIsModalOpen(true)
     }
@@ -656,6 +661,66 @@ export default function Supplies() {
                             </button>
                         </div>
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setUpdateCatalogPrices(prev => !prev)}
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                            alignItems: 'center',
+                            gap: '0.85rem',
+                            padding: '0.9rem',
+                            borderRadius: '18px',
+                            border: updateCatalogPrices ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(245, 158, 11, 0.35)',
+                            background: updateCatalogPrices ? 'linear-gradient(135deg, #ecfdf5 0%, #ffffff 70%)' : 'linear-gradient(135deg, #fffbeb 0%, #ffffff 70%)',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)'
+                        }}
+                    >
+                        <span style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 14,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: updateCatalogPrices ? '#10b981' : '#f59e0b',
+                            color: '#fff',
+                            flexShrink: 0
+                        }}>
+                            {updateCatalogPrices ? <Check size={20} /> : <DollarSign size={20} />}
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                            <span style={{ display: 'block', fontWeight: 800, color: 'var(--text-main)', marginBottom: 4 }}>
+                                {updateCatalogPrices ? 'Обновить цены в номенклатуре' : 'Только партия на склад'}
+                            </span>
+                            <span style={{ display: 'block', fontSize: '0.82rem', lineHeight: 1.35, color: 'var(--text-muted)' }}>
+                                {updateCatalogPrices
+                                    ? 'Закупочная цена обновит карточку цветка/товара, а букеты пересчитаются.'
+                                    : 'Количество и партия сохранятся по этой цене, но Цветы, Доп. товары и букеты не изменятся.'}
+                            </span>
+                        </span>
+                        <span style={{
+                            width: 54,
+                            height: 30,
+                            borderRadius: 999,
+                            padding: 3,
+                            background: updateCatalogPrices ? '#10b981' : '#d1d5db',
+                            display: 'flex',
+                            justifyContent: updateCatalogPrices ? 'flex-end' : 'flex-start',
+                            transition: 'all 0.2s ease'
+                        }}>
+                            <span style={{
+                                width: 24,
+                                height: 24,
+                                borderRadius: '50%',
+                                background: '#fff',
+                                boxShadow: '0 4px 10px rgba(15, 23, 42, 0.18)'
+                            }} />
+                        </span>
+                    </button>
 
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
                         <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Позиции</h3>

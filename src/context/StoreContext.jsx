@@ -301,8 +301,10 @@ export function StoreProvider({ children }) {
     }
 
     // Supplies
-    const saveSupply = async (supplierName, items) => {
+    const saveSupply = async (supplierName, items, options = {}) => {
         try {
+            const shouldUpdateCatalogPrices = options.updateCatalogPrices !== false
+
             // 1. Get or Create Supplier
             let supplierId
             const existingSupplier = suppliers.find(s => s.name.toLowerCase() === supplierName.toLowerCase())
@@ -381,47 +383,46 @@ export function StoreProvider({ children }) {
             }
             if (createdLots.length > 0) setStockLots(prev => [...prev, ...createdLots])
 
-            // 4. Update Costs & Prices
-            const updatedFlowers = [...flowers]
-            const updatedGoods = [...goods]
+            // 4. Update Costs & Prices only when this delivery should affect the catalog.
+            // Stock lots still keep the real batch price above, so FIFO profit stays honest.
+            if (shouldUpdateCatalogPrices) {
+                const updatedFlowers = [...flowers]
+                const updatedGoods = [...goods]
 
-            for (const item of items) {
-                const newCost = item.unitCost
+                for (const item of items) {
+                    const newCost = item.unitCost
 
-                if (item.type === 'flower') {
-                    const flower = flowers.find(f => f.id === item.id)
-                    if (flower) {
-                        const markup = flower.markup_factor || 2
-                        const newPrice = newCost * markup
+                    if (item.type === 'flower') {
+                        const flower = flowers.find(f => f.id === item.id)
+                        if (flower) {
+                            const markup = flower.markup_factor || 2
+                            const newPrice = newCost * markup
 
-                        await supabase.from('flowers').update({ cost: newCost, price: newPrice }).eq('id', item.id)
+                            await supabase.from('flowers').update({ cost: newCost, price: newPrice }).eq('id', item.id)
 
-                        const idx = updatedFlowers.findIndex(f => f.id === item.id)
-                        if (idx !== -1) updatedFlowers[idx] = { ...updatedFlowers[idx], cost: newCost, price: newPrice }
-                    }
-                } else if (item.type === 'good') {
-                    const good = goods.find(g => g.id === item.id)
-                    if (good) {
-                        const markup = good.markup_factor || 1.5
-                        const newPrice = newCost * markup
+                            const idx = updatedFlowers.findIndex(f => f.id === item.id)
+                            if (idx !== -1) updatedFlowers[idx] = { ...updatedFlowers[idx], cost: newCost, price: newPrice }
+                        }
+                    } else if (item.type === 'good') {
+                        const good = goods.find(g => g.id === item.id)
+                        if (good) {
+                            const markup = good.markup_factor || 1.5
+                            const newPrice = newCost * markup
 
-                        await supabase.from('goods').update({ cost: newCost, price: newPrice }).eq('id', item.id)
+                            await supabase.from('goods').update({ cost: newCost, price: newPrice }).eq('id', item.id)
 
-                        const idx = updatedGoods.findIndex(g => g.id === item.id)
-                        if (idx !== -1) updatedGoods[idx] = { ...updatedGoods[idx], cost: newCost, price: newPrice }
+                            const idx = updatedGoods.findIndex(g => g.id === item.id)
+                            if (idx !== -1) updatedGoods[idx] = { ...updatedGoods[idx], cost: newCost, price: newPrice }
+                        }
                     }
                 }
-            }
-            setFlowers(updatedFlowers)
-            setGoods(updatedGoods)
+                setFlowers(updatedFlowers)
+                setGoods(updatedGoods)
 
-            // 5. Trigger Recalculate Logic to update Bouquets
-            // We can call recalculateAllProducts but we need latest flower prices (which we just updated in DB and State)
-            // Since recalculateAllProducts reads from 'products' and uses 'calculatePrice' which uses 'flowers' state...
-            // We must ensure 'flowers' state is fresh. We did setFlowers above.
-            setTimeout(() => {
-                recalculateAllProducts() // Async background update
-            }, 500)
+                setTimeout(() => {
+                    recalculateAllProducts()
+                }, 500)
+            }
 
             return { success: true }
         } catch (error) {
@@ -430,8 +431,10 @@ export function StoreProvider({ children }) {
         }
     }
 
-    const updateSupply = async (supplyId, supplierName, items) => {
+    const updateSupply = async (supplyId, supplierName, items, options = {}) => {
         try {
+            const shouldUpdateCatalogPrices = options.updateCatalogPrices !== false
+
             // 1. Get/Create Supplier (Reuse fetch logic or just ID if passed, but name is safer for edits)
             let supplierId
             const existingSupplier = suppliers.find(s => s.name.toLowerCase() === supplierName.toLowerCase())
@@ -471,41 +474,43 @@ export function StoreProvider({ children }) {
 
             await supabase.from('supply_items').insert(supplyItemsPayload)
 
-            // 5. Re-run Cost Logic (Same as Save)
-            const updatedFlowers = [...flowers]
-            const updatedGoods = [...goods]
+            // 5. Re-run Cost Logic only when this edit should refresh catalog prices.
+            if (shouldUpdateCatalogPrices) {
+                const updatedFlowers = [...flowers]
+                const updatedGoods = [...goods]
 
-            for (const item of items) {
-                const newCost = item.unitCost
+                for (const item of items) {
+                    const newCost = item.unitCost
 
-                if (item.type === 'flower') {
-                    const flower = flowers.find(f => f.id === item.id)
-                    if (flower) {
-                        const markup = flower.markup_factor || 2
-                        const newPrice = newCost * markup
-                        await supabase.from('flowers').update({ cost: newCost, price: newPrice }).eq('id', item.id)
-                        const idx = updatedFlowers.findIndex(f => f.id === item.id)
-                        if (idx !== -1) updatedFlowers[idx] = { ...updatedFlowers[idx], cost: newCost, price: newPrice }
-                    }
-                } else if (item.type === 'good') {
-                    const good = goods.find(g => g.id === item.id)
-                    if (good) {
-                        const markup = good.markup_factor || 1.5
-                        const newPrice = newCost * markup
-                        await supabase.from('goods').update({ cost: newCost, price: newPrice }).eq('id', item.id)
-                        const idx = updatedGoods.findIndex(g => g.id === item.id)
-                        if (idx !== -1) updatedGoods[idx] = { ...updatedGoods[idx], cost: newCost, price: newPrice }
+                    if (item.type === 'flower') {
+                        const flower = flowers.find(f => f.id === item.id)
+                        if (flower) {
+                            const markup = flower.markup_factor || 2
+                            const newPrice = newCost * markup
+                            await supabase.from('flowers').update({ cost: newCost, price: newPrice }).eq('id', item.id)
+                            const idx = updatedFlowers.findIndex(f => f.id === item.id)
+                            if (idx !== -1) updatedFlowers[idx] = { ...updatedFlowers[idx], cost: newCost, price: newPrice }
+                        }
+                    } else if (item.type === 'good') {
+                        const good = goods.find(g => g.id === item.id)
+                        if (good) {
+                            const markup = good.markup_factor || 1.5
+                            const newPrice = newCost * markup
+                            await supabase.from('goods').update({ cost: newCost, price: newPrice }).eq('id', item.id)
+                            const idx = updatedGoods.findIndex(g => g.id === item.id)
+                            if (idx !== -1) updatedGoods[idx] = { ...updatedGoods[idx], cost: newCost, price: newPrice }
+                        }
                     }
                 }
+                setFlowers(updatedFlowers)
+                setGoods(updatedGoods)
             }
-            setFlowers(updatedFlowers)
-            setGoods(updatedGoods)
 
             // Refresh Supplies List
             const { data: refreshedSupply } = await supabase.from('supplies').select('*, suppliers(name)').eq('id', supplyId).single()
             setSupplies(supplies.map(s => s.id === supplyId ? refreshedSupply : s))
 
-            setTimeout(() => recalculateAllProducts(), 500)
+            if (shouldUpdateCatalogPrices) setTimeout(() => recalculateAllProducts(), 500)
 
             return { success: true }
 
