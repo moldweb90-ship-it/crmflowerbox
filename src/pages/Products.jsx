@@ -563,6 +563,26 @@ export default function Products() {
         return matchesSearch && matchesCat
     })
 
+    const getProductCost = (product) => {
+        if (!Array.isArray(product.composition)) return 0
+        return product.composition.reduce((sum, comp) => {
+            const list = comp.type === 'flower' ? flowers : goods
+            const item = list.find(x => String(x.id) === String(comp.id))
+            return sum + (Number(item?.cost || 0) * Number(comp.qty || 0))
+        }, 0)
+    }
+
+    const productStats = filteredProducts.reduce((acc, product) => {
+        const salePrice = Number(product.price || 0)
+        const costPrice = getProductCost(product)
+        acc.count += 1
+        acc.sales += salePrice
+        acc.cost += costPrice
+        return acc
+    }, { count: 0, sales: 0, cost: 0 })
+    productStats.profit = productStats.sales - productStats.cost
+    productStats.margin = productStats.cost > 0 ? Math.round((productStats.profit / productStats.cost) * 100) : 0
+
     // Sorting logic
     const sortedProducts = [...filteredProducts].sort((a, b) => {
         const direction = sortConfig.direction === 'asc' ? 1 : -1
@@ -617,6 +637,68 @@ export default function Products() {
                     </button>
                     {isMobile && <button className="btn" style={{ border: '1px solid var(--border)' }} onClick={handleExport}>XLSX</button>}
                 </div>
+            </div>
+
+            <div
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr 1fr' : '1.1fr 1.4fr 1.4fr 1.5fr',
+                    gap: '0.75rem',
+                    marginBottom: '1rem'
+                }}
+            >
+                {[
+                    {
+                        label: 'Букетов',
+                        value: productStats.count,
+                        note: filterCat === 'all' && !searchTerm ? 'в каталоге' : 'в списке',
+                        color: '#111827',
+                        bg: '#ffffff'
+                    },
+                    {
+                        label: 'Сумма продажи',
+                        value: `${productStats.sales.toLocaleString()} lei`,
+                        note: 'по ценам CRM',
+                        color: '#2563eb',
+                        bg: '#eff6ff'
+                    },
+                    {
+                        label: 'Себестоимость',
+                        value: `${productStats.cost.toLocaleString()} lei`,
+                        note: 'закупка состава',
+                        color: '#0f766e',
+                        bg: '#ecfdf5'
+                    },
+                    {
+                        label: 'Маржинальность',
+                        value: `${productStats.profit.toLocaleString()} lei`,
+                        note: `${productStats.margin}% средняя маржа`,
+                        color: productStats.profit >= 0 ? '#16a34a' : '#dc2626',
+                        bg: productStats.profit >= 0 ? '#f0fdf4' : '#fef2f2'
+                    }
+                ].map(card => (
+                    <div
+                        key={card.label}
+                        className="card"
+                        style={{
+                            padding: isMobile ? '0.85rem' : '1rem 1.1rem',
+                            borderRadius: 18,
+                            background: card.bg,
+                            border: '1px solid rgba(148, 163, 184, 0.18)',
+                            boxShadow: '0 14px 34px rgba(15,23,42,0.05)'
+                        }}
+                    >
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: 0 }}>
+                            {card.label}
+                        </div>
+                        <div style={{ color: card.color, fontSize: isMobile ? '1.15rem' : '1.35rem', fontWeight: 950, marginTop: '0.25rem', whiteSpace: 'nowrap' }}>
+                            {card.value}
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 750, marginTop: '0.15rem' }}>
+                            {card.note}
+                        </div>
+                    </div>
+                ))}
             </div>
 
             <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexDirection: isMobile ? 'column' : 'row' }}>
