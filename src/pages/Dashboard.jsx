@@ -27,6 +27,40 @@ function isSameLocalDay(value, dateKey) {
 const TERMINAL_SALE_STATUSES = ['cancelled', 'canceled', 'returned']
 const TERMINAL_DELIVERY_STATUSES = ['delivered', 'cancelled', 'canceled', 'returned']
 
+const iconBubbleStyle = (background, size = 40, color = 'white') => ({
+    width: `${size}px`,
+    height: `${size}px`,
+    minWidth: `${size}px`,
+    minHeight: `${size}px`,
+    maxWidth: `${size}px`,
+    maxHeight: `${size}px`,
+    aspectRatio: '1 / 1',
+    flex: `0 0 ${size}px`,
+    borderRadius: '9999px',
+    clipPath: 'circle(50% at 50% 50%)',
+    background,
+    color,
+    display: 'grid',
+    placeItems: 'center',
+    padding: 0,
+    margin: 0,
+    lineHeight: 0,
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+    transform: 'translateZ(0)'
+})
+
+const bubbleIconProps = (size = 18) => ({
+    size,
+    strokeWidth: 2.35,
+    style: {
+        display: 'block',
+        width: `${size}px`,
+        height: `${size}px`,
+        flex: '0 0 auto'
+    }
+})
+
 function hasFullRefundClaim(saleId, claims = []) {
     return claims.some(claim => claim.sale_id === saleId && claim.resolution === 'full_refund')
 }
@@ -700,7 +734,7 @@ export default function Dashboard() {
                             cursor: 'pointer', color: 'white', boxShadow: '0 4px 14px rgba(16,185,129,0.4)',
                             transition: 'transform 0.2s'
                         }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
-                            <div style={{ background: 'rgba(255,255,255,0.2)', padding: '10px', borderRadius: '50%' }}><Play size={24} /></div>
+                            <div style={iconBubbleStyle('rgba(255,255,255,0.22)', 48)}><Play {...bubbleIconProps(24)} /></div>
                             <div>
                                 <div style={{ fontWeight: 700, fontSize: '1rem' }}>Начать смену</div>
                                 <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>9:00 — 21:00</div>
@@ -774,8 +808,8 @@ export default function Dashboard() {
                         onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '50%' }}>
-                                <Globe size={20} />
+                            <div style={iconBubbleStyle('rgba(255,255,255,0.22)', 44)}>
+                                <Globe {...bubbleIconProps(20)} />
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontSize: '1rem', fontWeight: 700, lineHeight: 1.2 }}>Сайт</span>
@@ -806,8 +840,8 @@ export default function Dashboard() {
                         onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '50%' }}>
-                                <Store size={20} />
+                            <div style={iconBubbleStyle('rgba(255,255,255,0.22)', 44)}>
+                                <Store {...bubbleIconProps(20)} />
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontSize: '1rem', fontWeight: 700, lineHeight: 1.2 }}>Салон</span>
@@ -870,7 +904,7 @@ export default function Dashboard() {
                                 <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e40af', marginBottom: '0.25rem' }}>ДЕНЬГИ СЕГОДНЯ</h3>
                                 <div style={{ fontSize: '0.75rem', color: '#3b82f6' }}>Сводка продаж</div>
                             </div>
-                            <div style={{ background: '#2563eb', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><DollarSign size={20} /></div>
+                            <div style={iconBubbleStyle('#2563eb', 42)}><DollarSign {...bubbleIconProps(20)} /></div>
                         </div>
 
                         <div style={{ marginBottom: '1rem' }}>
@@ -977,7 +1011,7 @@ export default function Dashboard() {
                                 <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#86198f', marginBottom: '0.25rem' }}>К ВЫДАЧЕ</h3>
                                 <div style={{ fontSize: '0.75rem', color: '#c026d3' }}>Завтра</div>
                             </div>
-                            <div style={{ background: '#c026d3', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><Calendar size={20} /></div>
+                            <div style={iconBubbleStyle('#c026d3', 42)}><Calendar {...bubbleIconProps(20)} /></div>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -1027,7 +1061,7 @@ export default function Dashboard() {
                                 <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#9a3412', marginBottom: '0.25rem' }}>ИСТОЧНИКИ</h3>
                                 <div style={{ fontSize: '0.75rem', color: '#f97316' }}>Откуда клиенты?</div>
                             </div>
-                            <div style={{ background: '#ea580c', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><Globe size={20} /></div>
+                            <div style={iconBubbleStyle('#ea580c', 42)}><Globe {...bubbleIconProps(20)} /></div>
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
@@ -1063,7 +1097,7 @@ export default function Dashboard() {
                                 <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#111827', marginBottom: '0.25rem' }}>ДИНАМИКА</h3>
                                 <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Рост продаж (YOY)</div>
                             </div>
-                            <div style={{ background: '#111827', padding: '0.5rem', borderRadius: '50%', color: 'white' }}><TrendingUp size={20} /></div>
+                            <div style={iconBubbleStyle('#111827', 42)}><TrendingUp {...bubbleIconProps(20)} /></div>
                         </div>
 
                         {/* Current & Growth */}
@@ -1141,8 +1175,8 @@ export default function Dashboard() {
                         minHeight: isMobile ? 0 : '140px'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '120px' }}>
-                            <div style={{ padding: '0.5rem', background: '#FCA5A5', borderRadius: '50%', color: 'white' }}>
-                                <DollarSign size={16} />
+                            <div style={iconBubbleStyle('#FCA5A5', 42)}>
+                                <DollarSign {...bubbleIconProps(17)} />
                             </div>
                             <div>
                                 <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#991B1B' }}>Потери</div>
@@ -1153,8 +1187,8 @@ export default function Dashboard() {
                             </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '120px' }}>
-                            <div style={{ padding: '0.5rem', background: '#FDBA74', borderRadius: '50%', color: 'white' }}>
-                                <TrendingDown size={16} />
+                            <div style={iconBubbleStyle('#FDBA74', 42)}>
+                                <TrendingDown {...bubbleIconProps(17)} />
                             </div>
                             <div>
                                 <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#9A3412' }}>% от выручки</div>
@@ -1195,8 +1229,8 @@ export default function Dashboard() {
                         gap: '1rem'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ padding: '0.5rem', background: '#0ea5e9', borderRadius: '50%', color: 'white' }}>
-                                <DollarSign size={16} />
+                            <div style={iconBubbleStyle('#0ea5e9', 42)}>
+                                <DollarSign {...bubbleIconProps(17)} />
                             </div>
                             <div>
                                 <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#0369a1' }}>В холодильнике</div>
@@ -1290,8 +1324,8 @@ export default function Dashboard() {
                     }}>
                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '100px' }}>
-                                <div style={{ padding: '0.5rem', background: '#8b5cf6', borderRadius: '50%', color: 'white' }}>
-                                    <UserPlus size={16} />
+                                <div style={iconBubbleStyle('#8b5cf6', 42)}>
+                                    <UserPlus {...bubbleIconProps(17)} />
                                 </div>
                                 <div>
                                     <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5b21b6' }}>Новые</div>
@@ -1299,8 +1333,8 @@ export default function Dashboard() {
                                 </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '100px' }}>
-                                <div style={{ padding: '0.5rem', background: '#a78bfa', borderRadius: '50%', color: 'white' }}>
-                                    <RotateCcw size={16} />
+                                <div style={iconBubbleStyle('#a78bfa', 42)}>
+                                    <RotateCcw {...bubbleIconProps(17)} />
                                 </div>
                                 <div>
                                     <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#5b21b6' }}>Повторные</div>
@@ -1411,14 +1445,8 @@ function StatCard({ title, value, icon: Icon, color, to, isMobile }) {
 
     const CardContent = (
         <div className="card" style={containerStyle}>
-            <div style={{
-                padding: '1rem',
-                borderRadius: '50%',
-                backgroundColor: theme.bg,
-                color: theme.text,
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
-                <Icon size={24} />
+            <div style={iconBubbleStyle(theme.bg, 52, theme.text)}>
+                <Icon {...bubbleIconProps(24)} />
             </div>
             <div>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{title}</p>

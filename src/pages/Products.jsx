@@ -27,6 +27,8 @@ export default function Products() {
     // State for Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [sortConfig, setSortConfig] = useState({ key: 'index', direction: 'asc' })
+    const [currentPage, setCurrentPage] = useState(1)
+    const pageSize = 50
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -44,6 +46,10 @@ export default function Products() {
         document.addEventListener('mousedown', handleClickOutside)
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [searchTerm, filterCat])
 
     // Editor State
     const [editorMode, setEditorMode] = useState('create') // 'create' | 'edit'
@@ -650,11 +656,99 @@ export default function Products() {
         return (indexA - indexB) * direction
     })
 
+    const totalPages = Math.max(1, Math.ceil(sortedProducts.length / pageSize))
+    const safeCurrentPage = Math.min(currentPage, totalPages)
+    const pageStartIndex = (safeCurrentPage - 1) * pageSize
+    const pageEndIndex = pageStartIndex + pageSize
+    const paginatedProducts = sortedProducts.slice(pageStartIndex, pageEndIndex)
+    const visibleFrom = sortedProducts.length ? pageStartIndex + 1 : 0
+    const visibleTo = Math.min(pageEndIndex, sortedProducts.length)
+
     const handleSort = (key) => {
         setSortConfig(current => ({
             key,
             direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
         }))
+    }
+
+    const renderPagination = () => {
+        if (sortedProducts.length <= pageSize) return null
+
+        const pages = []
+        const start = Math.max(1, safeCurrentPage - 2)
+        const end = Math.min(totalPages, safeCurrentPage + 2)
+        for (let page = start; page <= end; page += 1) {
+            pages.push(page)
+        }
+
+        return (
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.75rem',
+                marginTop: '1rem',
+                padding: isMobile ? '0.75rem' : '0.85rem 1rem',
+                background: '#fff',
+                borderRadius: 16,
+                boxShadow: '0 12px 30px rgba(15,23,42,0.06)',
+                flexWrap: isMobile ? 'wrap' : 'nowrap'
+            }}>
+                <div style={{ color: 'var(--text-muted)', fontWeight: 750, fontSize: isMobile ? '0.8rem' : '0.9rem' }}>
+                    {visibleFrom}-{visibleTo} из {sortedProducts.length}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: 'auto' }}>
+                    <button
+                        className="btn"
+                        disabled={safeCurrentPage === 1}
+                        onClick={() => setCurrentPage(page => Math.max(1, page - 1))}
+                        style={{ border: '1px solid var(--border)', padding: isMobile ? '0.45rem 0.65rem' : '0.5rem 0.8rem', opacity: safeCurrentPage === 1 ? 0.45 : 1 }}
+                    >
+                        Назад
+                    </button>
+                    {!isMobile && start > 1 && (
+                        <>
+                            <button className="btn" onClick={() => setCurrentPage(1)} style={{ border: '1px solid var(--border)', minWidth: 40 }}>1</button>
+                            {start > 2 && <span style={{ color: 'var(--text-muted)', padding: '0 0.2rem' }}>...</span>}
+                        </>
+                    )}
+                    {!isMobile && pages.map(page => (
+                        <button
+                            key={page}
+                            className="btn"
+                            onClick={() => setCurrentPage(page)}
+                            style={{
+                                border: page === safeCurrentPage ? '1px solid #111827' : '1px solid var(--border)',
+                                background: page === safeCurrentPage ? '#111827' : '#fff',
+                                color: page === safeCurrentPage ? '#fff' : 'var(--text-main)',
+                                minWidth: 40
+                            }}
+                        >
+                            {page}
+                        </button>
+                    ))}
+                    {isMobile && (
+                        <div style={{ minWidth: 72, textAlign: 'center', fontWeight: 900, color: '#111827' }}>
+                            {safeCurrentPage}/{totalPages}
+                        </div>
+                    )}
+                    {!isMobile && end < totalPages && (
+                        <>
+                            {end < totalPages - 1 && <span style={{ color: 'var(--text-muted)', padding: '0 0.2rem' }}>...</span>}
+                            <button className="btn" onClick={() => setCurrentPage(totalPages)} style={{ border: '1px solid var(--border)', minWidth: 40 }}>{totalPages}</button>
+                        </>
+                    )}
+                    <button
+                        className="btn"
+                        disabled={safeCurrentPage === totalPages}
+                        onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))}
+                        style={{ border: '1px solid var(--border)', padding: isMobile ? '0.45rem 0.65rem' : '0.5rem 0.8rem', opacity: safeCurrentPage === totalPages ? 0.45 : 1 }}
+                    >
+                        Дальше
+                    </button>
+                </div>
+            </div>
+        )
     }
 
     return (
@@ -788,7 +882,7 @@ export default function Products() {
             {isMobile ? (
                 // Mobile Cards View - Compact Design
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {filteredProducts.map(p => {
+                    {paginatedProducts.map(p => {
                         const isPublished = p.is_published !== false
                         return (
                             <div
@@ -892,7 +986,8 @@ export default function Products() {
                             </div>
                         )
                     })}
-                    {filteredProducts.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Нет товаров.</p>}
+                    {sortedProducts.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Нет товаров.</p>}
+                    {renderPagination()}
                 </div>
             ) : (
                 // Desktop Table View
@@ -930,7 +1025,7 @@ export default function Products() {
                             </tr>
                         </thead>
                         <tbody>
-                            {sortedProducts.map((p, idx) => {
+                            {paginatedProducts.map((p, idx) => {
                                 const isPublished = p.is_published !== false
                                 // Global Index (based on original products array)
                                 const globalIndex = products.findIndex(prod => prod.id === p.id) + 1
@@ -969,13 +1064,14 @@ export default function Products() {
                             })}
                             {sortedProducts.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                                         Товары не найдены.
                                     </td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
+                    {renderPagination()}
                 </div>
             )}
 
