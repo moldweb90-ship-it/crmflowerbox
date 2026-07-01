@@ -101,7 +101,14 @@ export default function Products() {
             localStorage.setItem('vm_sync_token', token)
         }
 
-        const syncProducts = products
+        const hasActiveListFilter = filterCat !== 'all' || Boolean(searchTerm.trim())
+        const productsForSync = hasActiveListFilter ? filteredProducts : products
+        const currentCategoryName = filterCat === 'all' ? '' : (categories.find(c => c.id === filterCat)?.name || 'выбранная категория')
+        const syncScopeLabel = hasActiveListFilter
+            ? `текущей выборки${currentCategoryName ? ` (${currentCategoryName})` : ''}`
+            : 'всего каталога'
+
+        const syncProducts = productsForSync
             .filter(p => p.sku && Number.isFinite(Number(p.price)))
             .map(p => ({
                 sku: String(p.sku).trim(),
@@ -115,7 +122,7 @@ export default function Products() {
             return
         }
 
-        if (!window.confirm(`\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0446\u0435\u043d\u044b ${syncProducts.length} \u0431\u0443\u043a\u0435\u0442\u043e\u0432 \u043d\u0430 \u0441\u0430\u0439\u0442 flowerbox.md?`)) return
+        if (!window.confirm(`\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0446\u0435\u043d\u044b ${syncProducts.length} \u0431\u0443\u043a\u0435\u0442\u043e\u0432 \u0438\u0437 ${syncScopeLabel} \u043d\u0430 \u0441\u0430\u0439\u0442 flowerbox.md?`)) return
 
         setSiteSyncLoading(true)
         setSiteSyncMsg('\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u044e \u0446\u0435\u043d\u044b \u043d\u0430 \u0441\u0430\u0439\u0442...')
@@ -135,7 +142,7 @@ export default function Products() {
 
             const missingText = result.missing?.length ? ` \u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b: ${result.missing.slice(0, 5).join(', ')}${result.missing.length > 5 ? '...' : ''}` : ''
             const errorText = result.errors?.length ? ` \u041e\u0448\u0438\u0431\u043a\u0438: ${result.errors.length}` : ''
-            setSiteSyncMsg(`\u0421\u0430\u0439\u0442 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d: ${result.updated || 0}. \u0412\u0441\u0435\u0433\u043e \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e: ${syncProducts.length}.${missingText}${errorText}`)
+            setSiteSyncMsg(`\u0421\u0430\u0439\u0442 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d: ${result.updated || 0}. \u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e \u0438\u0437 ${syncScopeLabel}: ${syncProducts.length}.${missingText}${errorText}`)
         } catch (error) {
             if (error.message.includes('401') || error.message.includes('Unauthorized')) {
                 localStorage.removeItem('vm_sync_token')
