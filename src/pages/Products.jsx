@@ -76,6 +76,11 @@ export default function Products() {
     // View Product State
     const [viewingProduct, setViewingProduct] = useState(null)
 
+    const setVmSyncCookie = (token) => {
+        const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+        document.cookie = `vm_sync_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=2592000${secure}`
+    }
+
     const handleRecalculate = async () => {
         if (!window.confirm('Пересчитать цены всех товаров на основе текущих цен цветов?')) return
         setRecalcMsg('Пересчет...')
@@ -102,9 +107,19 @@ export default function Products() {
             if (!token) return
             localStorage.setItem('vm_sync_token', token)
         }
+        setVmSyncCookie(token)
 
-        const hasActiveListFilter = filterCat !== 'all' || Boolean(searchTerm.trim())
-        const productsForSync = hasActiveListFilter ? filteredProducts : products
+        const normalizedSearchTerm = searchTerm.trim().toLowerCase()
+        const hasActiveListFilter = filterCat !== 'all' || Boolean(normalizedSearchTerm)
+        const productsForSync = hasActiveListFilter
+            ? products.filter(p => {
+                const name = String(p.name || '').toLowerCase()
+                const sku = String(p.sku || '').toLowerCase()
+                const matchesSearch = !normalizedSearchTerm || name.includes(normalizedSearchTerm) || sku.includes(normalizedSearchTerm)
+                const matchesCat = filterCat === 'all' || (Array.isArray(p.categoryIds) && p.categoryIds.includes(filterCat))
+                return matchesSearch && matchesCat
+            })
+            : products
         const currentCategoryName = filterCat === 'all' ? '' : (categories.find(c => c.id === filterCat)?.name || 'выбранная категория')
         const syncScopeLabel = hasActiveListFilter
             ? `текущей выборки${currentCategoryName ? ` (${currentCategoryName})` : ''}`
@@ -129,14 +144,30 @@ export default function Products() {
         setSiteSyncLoading(true)
         setSiteSyncMsg('\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u044e \u0446\u0435\u043d\u044b \u043d\u0430 \u0441\u0430\u0439\u0442...')
         try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CRM-Sync-Token': token
-                },
-                body: JSON.stringify({ products: syncProducts })
-            })
+            const requestBody = JSON.stringify({ products: syncProducts })
+            let response
+            try {
+                response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CRM-Sync-Token': token
+                    },
+                    body: requestBody
+                })
+            } catch (firstError) {
+                if (endpoint !== '/api/vm-sync' || !(firstError instanceof TypeError)) {
+                    throw firstError
+                }
+                response = await fetch('/api/vm-sync-cookie', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'text/plain;charset=UTF-8'
+                    },
+                    body: requestBody
+                })
+            }
             const result = await response.json().catch(() => null)
             if (!response.ok || !result?.ok) {
                 throw new Error(result?.message || `\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0430\u0439\u0442\u0430: ${response.status}`)
@@ -150,7 +181,7 @@ export default function Products() {
                 localStorage.removeItem('vm_sync_token')
             }
             const friendlyMessage = error instanceof TypeError
-                ? '\u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u0441\u043c\u043e\u0433 \u0434\u043e\u0441\u0442\u0443\u0447\u0430\u0442\u044c\u0441\u044f \u0434\u043e \u0441\u0430\u0439\u0442\u0430. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0435 \u0440\u0430\u0437, \u0430 \u0435\u0441\u043b\u0438 \u043d\u0435 \u043f\u043e\u043c\u043e\u0436\u0435\u0442 - \u043f\u0440\u043e\u0432\u0435\u0440\u044c \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442 \u043d\u0430 \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0435.'
+                ? `\u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u0441\u043c\u043e\u0433 \u0434\u043e\u0441\u0442\u0443\u0447\u0430\u0442\u044c\u0441\u044f \u0434\u043e \u0441\u0430\u0439\u0442\u0430 (${endpoint}). \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0435 \u0440\u0430\u0437, \u0430 \u0435\u0441\u043b\u0438 \u043d\u0435 \u043f\u043e\u043c\u043e\u0436\u0435\u0442 - \u043f\u0440\u043e\u0432\u0435\u0440\u044c \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442 \u043d\u0430 \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0435.`
                 : error.message
             setSiteSyncMsg(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438: ${friendlyMessage}`)
         } finally {
