@@ -86,7 +86,9 @@ export default function Products() {
 
 
     const handleSitePriceSync = async () => {
-        const endpoint = import.meta.env.VITE_VM_SYNC_ENDPOINT
+        const configuredEndpoint = import.meta.env.VITE_VM_SYNC_ENDPOINT
+        const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+        const endpoint = isLocalHost ? configuredEndpoint : '/api/vm-sync'
         if (!endpoint) {
             setSiteSyncMsg('\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u0441\u0430\u0439\u0442\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430 \u043d\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435')
             setTimeout(() => setSiteSyncMsg(''), 5000)
@@ -147,7 +149,10 @@ export default function Products() {
             if (error.message.includes('401') || error.message.includes('Unauthorized')) {
                 localStorage.removeItem('vm_sync_token')
             }
-            setSiteSyncMsg(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438: ${error.message}`)
+            const friendlyMessage = error instanceof TypeError
+                ? '\u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u0441\u043c\u043e\u0433 \u0434\u043e\u0441\u0442\u0443\u0447\u0430\u0442\u044c\u0441\u044f \u0434\u043e \u0441\u0430\u0439\u0442\u0430. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0435 \u0440\u0430\u0437, \u0430 \u0435\u0441\u043b\u0438 \u043d\u0435 \u043f\u043e\u043c\u043e\u0436\u0435\u0442 - \u043f\u0440\u043e\u0432\u0435\u0440\u044c \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442 \u043d\u0430 \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0435.'
+                : error.message
+            setSiteSyncMsg(`\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438: ${friendlyMessage}`)
         } finally {
             setSiteSyncLoading(false)
             setTimeout(() => setSiteSyncMsg(''), 9000)
