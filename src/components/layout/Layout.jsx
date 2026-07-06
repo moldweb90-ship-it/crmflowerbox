@@ -42,7 +42,38 @@ export default function Layout() {
     const audioContextRef = useRef(null)
     const pageTitle = pageTitles[location.pathname] || 'FlowerBox'
     const dailyFlowerNote = getDailyFlowerNote()
-    const { refreshDeliveryData } = useStore()
+    const { sales, refreshDeliveryData } = useStore()
+
+    const getSaleDisplayLabel = (sale, fallbackId = '') => {
+        if (sale?.order_number) return `#${sale.order_number}`
+        if (sale?.custom_name) return sale.custom_name
+        if (sale?.products?.name) return sale.products.name
+        if (fallbackId) return `#${String(fallbackId).slice(0, 8)}`
+        return 'заказ'
+    }
+
+    const getDeliveryStatusText = (status) => {
+        switch (status) {
+            case 'delivered': return 'доставлен'
+            case 'delivering': return 'в пути'
+            case 'postponed': return 'перенесен'
+            case 'returned': return 'возвращен'
+            case 'cancelled': return 'отменен'
+            case 'not_delivered': return 'ждет доставки'
+            default: return 'обновлен'
+        }
+    }
+
+    const getNotificationSale = (notification) => {
+        if (!notification?.sale_id) return null
+        return sales.find(sale => sale.id === notification.sale_id) || null
+    }
+
+    const getNotificationTitle = (notification) => {
+        const sale = getNotificationSale(notification)
+        const label = getSaleDisplayLabel(sale, notification?.order_number || notification?.sale_id)
+        return `${label} ${getDeliveryStatusText(notification?.new_status)}`
+    }
 
     // Handle Resize
     useEffect(() => {
@@ -92,19 +123,34 @@ export default function Layout() {
             if (ctx.state === 'suspended') ctx.resume()
 
             const now = ctx.currentTime
-            const gain = ctx.createGain()
-            gain.gain.setValueAtTime(0.0001, now)
-            gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02)
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55)
-            gain.connect(ctx.destination)
+            const masterGain = ctx.createGain()
+            masterGain.gain.setValueAtTime(0.0001, now)
+            masterGain.gain.exponentialRampToValueAtTime(0.16, now + 0.04)
+            masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 2.4)
+            masterGain.connect(ctx.destination)
 
-            ;[660, 880].forEach((frequency, index) => {
-                const osc = ctx.createOscillator()
-                osc.type = 'sine'
-                osc.frequency.setValueAtTime(frequency, now + index * 0.14)
-                osc.connect(gain)
-                osc.start(now + index * 0.14)
-                osc.stop(now + index * 0.14 + 0.28)
+            const melody = [
+                { at: 0, notes: [587.33, 783.99], duration: 0.45 },
+                { at: 0.62, notes: [659.25, 880], duration: 0.5 },
+                { at: 1.28, notes: [783.99, 1046.5], duration: 0.62 }
+            ]
+
+            melody.forEach(({ at, notes, duration }) => {
+                const noteGain = ctx.createGain()
+                const startAt = now + at
+                noteGain.gain.setValueAtTime(0.0001, startAt)
+                noteGain.gain.exponentialRampToValueAtTime(0.95, startAt + 0.035)
+                noteGain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration)
+                noteGain.connect(masterGain)
+
+                notes.forEach(frequency => {
+                    const osc = ctx.createOscillator()
+                    osc.type = 'sine'
+                    osc.frequency.setValueAtTime(frequency, startAt)
+                    osc.connect(noteGain)
+                    osc.start(startAt)
+                    osc.stop(startAt + duration + 0.04)
+                })
             })
         } catch (error) {
             // Browser may block sound until the first user gesture.
@@ -145,7 +191,8 @@ export default function Layout() {
 
     const openNotificationSale = (notification) => {
         setIsNotificationPanelOpen(false)
-        const query = notification?.order_number || notification?.sale_id || ''
+        const sale = getNotificationSale(notification)
+        const query = sale?.order_number || notification?.order_number || notification?.sale_id || ''
         navigate(query ? `/sales?order=${encodeURIComponent(query)}` : '/sales')
     }
 
@@ -701,7 +748,7 @@ export default function Layout() {
                                     <Bell size={19} />
                                 </div>
                                 <div style={{ minWidth: 0, flex: 1 }}>
-                                    <div style={{ fontWeight: 900, color: '#111827', marginBottom: '0.25rem' }}>{toast.title}</div>
+                                    <div style={{ fontWeight: 900, color: '#111827', marginBottom: '0.25rem' }}>{getNotificationTitle(toast)}</div>
                                     <div style={{ color: '#64748b', fontSize: '0.86rem', fontWeight: 650, lineHeight: 1.35 }}>{toast.body}</div>
                                     <button
                                         type="button"
@@ -814,7 +861,7 @@ export default function Layout() {
                                                 <Truck size={18} />
                                             </div>
                                             <div style={{ minWidth: 0, flex: 1 }}>
-                                                <div style={{ fontWeight: 900, color: '#111827', lineHeight: 1.25 }}>{item.title}</div>
+                                                <div style={{ fontWeight: 900, color: '#111827', lineHeight: 1.25 }}>{getNotificationTitle(item)}</div>
                                                 <div style={{ fontSize: '0.84rem', color: '#64748b', fontWeight: 650, marginTop: '0.25rem' }}>
                                                     {item.body || 'Адрес не указан'}
                                                 </div>

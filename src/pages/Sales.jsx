@@ -321,6 +321,24 @@ export default function Sales() {
         })
     }, [sales, dateFilter, deliveryDateFilter, orderSearch])
 
+    const orderSearchSale = useMemo(() => {
+        if (!orderSearch) return null
+        return sales.find(sale =>
+            sale.id?.toString() === orderSearch ||
+            sale.order_number?.toString() === orderSearch ||
+            sale.id?.toString().includes(orderSearch) ||
+            sale.order_number?.toString().includes(orderSearch)
+        ) || null
+    }, [sales, orderSearch])
+
+    const orderSearchLabel = useMemo(() => {
+        if (!orderSearchSale) return `#${orderSearch}`
+        if (orderSearchSale.order_number) return `#${orderSearchSale.order_number}`
+        if (orderSearchSale.custom_name) return orderSearchSale.custom_name
+        if (orderSearchSale.products?.name) return orderSearchSale.products.name
+        return `#${String(orderSearchSale.id || orderSearch).slice(0, 8)}`
+    }, [orderSearchSale, orderSearch])
+
     const groupedSales = useMemo(() => {
         const groups = {}
         filteredSales.forEach(sale => {
@@ -783,7 +801,7 @@ export default function Sales() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Search size={18} style={{ color: '#d97706' }} />
                         <span style={{ fontWeight: 600, color: '#92400e' }}>
-                            Поиск заказа: #{orderSearch}
+                            {orderSearchSale ? 'Заказ: ' : 'Поиск заказа: '}{orderSearchLabel}
                         </span>
                         <span style={{ color: '#b45309', fontSize: '0.875rem' }}>
                             ({filteredSales.length} найдено)
