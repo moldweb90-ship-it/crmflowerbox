@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS public.sales (
   payment_method text,
   payment_status text,
   delivery_status text,
+  project text DEFAULT 'flowerbox',
   sales_channel text,
   occasion text,
   items jsonb DEFAULT '[]'::jsonb,

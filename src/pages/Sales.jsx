@@ -38,6 +38,13 @@ const SALES_CHANNELS = [
     { id: 'aggregators', label: 'Flowwow/Агрегаторы', icon: '📦' }
 ]
 
+const SALES_PROJECTS = [
+    { id: 'flowerbox', label: 'FlowerBox', short: 'FB', color: '#2563eb', bg: '#dbeafe' },
+    { id: 'flowersmafia', label: 'FlowersMafia', short: 'FM', color: '#111827', bg: '#fee2e2' }
+]
+
+const getSaleProject = (sale) => SALES_PROJECTS.find(p => p.id === (sale?.project || 'flowerbox')) || SALES_PROJECTS[0]
+
 const OCCASIONS = [
     { id: 'birthday', label: 'День Рождения', icon: '🎂' },
     { id: 'anniversary', label: 'Юбилей', icon: '🎉' },
@@ -208,6 +215,7 @@ export default function Sales() {
         payment_method: 'cash',
         payment_status: 'unpaid',
         delivery_status: 'not_delivered',
+        project: 'flowerbox',
         sales_channel: 'website',
         occasion: '',
         extra_delivery_cost: null,
@@ -374,6 +382,19 @@ export default function Sales() {
     const siteTotal = siteSales.reduce((a, s) => a + Number(s.sale_price || 0), 0) - claimAdjustments.totals.onlineRefund
     const siteProfit = siteSales.reduce((a, s) => a + Number(s.profit || 0), 0) - claimAdjustments.totals.onlineLoss
 
+    const projectStats = SALES_PROJECTS.map(project => {
+        const projectSales = filteredSales.filter(s => (s.project || 'flowerbox') === project.id)
+        const total = projectSales.reduce((sum, sale) => {
+            const adjustment = claimAdjustments.bySale[sale.id] || { refund: 0, loss: 0 }
+            return sum + Number(sale.sale_price || 0) - adjustment.refund
+        }, 0)
+        const profit = projectSales.reduce((sum, sale) => {
+            const adjustment = claimAdjustments.bySale[sale.id] || { refund: 0, loss: 0 }
+            return sum + Number(sale.profit || 0) - adjustment.loss
+        }, 0)
+        return { ...project, count: projectSales.length, total, profit }
+    })
+
     // Cashbox Balance Calculation
     const cashBalance = useMemo(() => {
         // Cash Sales (all channels + cash payment + actually paid)
@@ -520,7 +541,8 @@ export default function Sales() {
                 payment_method: sale.payment_method || 'cash',
                 payment_status: sale.payment_status || 'unpaid',
                 delivery_status: sale.delivery_status || 'not_delivered',
-                sales_channel: sale.sales_channel || 'store',
+                project: sale.project || 'flowerbox',
+                sales_channel: sale.sales_channel || 'website',
                 delivery_method: sale.delivery_method || 'delivery',
                 occasion: sale.occasion || '',
                 extra_delivery_cost: sale.extra_delivery_cost || null,
@@ -932,6 +954,54 @@ export default function Sales() {
                 </div>
             </div>
 
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+                gap: '1rem',
+                margin: '-0.75rem 0 1.5rem 0'
+            }}>
+                {projectStats.map(project => (
+                    <div key={project.id} style={{
+                        background: 'rgba(255,255,255,0.9)',
+                        border: `1px solid ${project.bg}`,
+                        borderRadius: '18px',
+                        padding: '1rem 1.1rem',
+                        boxShadow: '0 12px 28px rgba(15,23,42,0.06)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                        alignItems: 'center'
+                    }}>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                                <span style={{
+                                    background: project.bg,
+                                    color: project.color,
+                                    borderRadius: '999px',
+                                    padding: '0.25rem 0.55rem',
+                                    fontWeight: 900,
+                                    fontSize: '0.75rem'
+                                }}>{project.short}</span>
+                                <span style={{ fontWeight: 900, color: '#111827' }}>{project.label}</span>
+                            </div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 700 }}>
+                                {project.count} заказов
+                            </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ color: project.color, fontWeight: 900, fontSize: '1.25rem' }}>
+                                {project.total.toLocaleString('ru-RU')} lei
+                            </div>
+                            {showProfit && (
+                                <div style={{ color: project.profit >= 0 ? '#16a34a' : '#dc2626', fontSize: '0.85rem', fontWeight: 800 }}>
+                                    прибыль {project.profit.toLocaleString('ru-RU')} lei
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+
             {/* Quick Expense Modal */}
             <Modal
                 isOpen={isExpenseModalOpen}
@@ -1084,6 +1154,22 @@ export default function Sales() {
                                                     #{sale.order_number}
                                                 </div>
                                             )}
+                                            {(() => {
+                                                const project = getSaleProject(sale)
+                                                return (
+                                                    <span style={{
+                                                        background: project.bg,
+                                                        color: project.color,
+                                                        padding: '0.22rem 0.58rem',
+                                                        borderRadius: '99px',
+                                                        fontWeight: 900,
+                                                        fontSize: '0.75rem',
+                                                        letterSpacing: '0.02em'
+                                                    }}>
+                                                        {project.short}
+                                                    </span>
+                                                )
+                                            })()}
                                             {sale.occasion && (() => {
                                                 const occ = OCCASIONS.find(o => o.id === sale.occasion)
                                                 return occ ? (
@@ -1557,7 +1643,7 @@ export default function Sales() {
                     {/* Section 4: Payment (One Row) */}
                     <div style={{ background: '#fefce8', padding: '1rem', borderRadius: '16px', border: '1px solid #fde047' }}>
                         <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, color: '#854d0e' }}>💳 Оплата</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '1rem' }}>
                             <div>
                                 <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Способ</label>
                                 <select className="input" value={formData.payment_method} onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}>
@@ -1573,7 +1659,13 @@ export default function Sales() {
                                 </select>
                             </div>
                             <div>
-                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Канал продаж</label>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Проект</label>
+                                <select className="input" value={formData.project || 'flowerbox'} onChange={(e) => setFormData({ ...formData, project: e.target.value })}>
+                                    {SALES_PROJECTS.map(project => <option key={project.id} value={project.id}>{project.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Канал обращения</label>
                                 <select className="input" value={formData.sales_channel} onChange={(e) => setFormData({ ...formData, sales_channel: e.target.value })}>
                                     {SALES_CHANNELS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                                 </select>
@@ -2011,7 +2103,7 @@ export default function Sales() {
                             <h4 style={{ fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <CreditCard size={18} /> Оплата
                             </h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '0.75rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '0.75rem' }}>
                                 <div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Способ</div>
                                     <div style={{ fontWeight: 600 }}>
@@ -2022,6 +2114,12 @@ export default function Sales() {
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Статус</div>
                                     <div style={{ fontWeight: 600, color: getStatusData(PAYMENT_STATUSES, viewingSale.payment_status).color }}>
                                         {getStatusData(PAYMENT_STATUSES, viewingSale.payment_status).label}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Проект</div>
+                                    <div style={{ fontWeight: 600 }}>
+                                        {getSaleProject(viewingSale).label}
                                     </div>
                                 </div>
                                 <div>
@@ -2047,6 +2145,7 @@ export default function Sales() {
                                     const paymentStatus = getStatusData(PAYMENT_STATUSES, sale.payment_status).label
                                     const deliveryStatus = getStatusData(DELIVERY_STATUSES, sale.delivery_status).label
                                     const salesChannel = SALES_CHANNELS.find(c => c.id === sale.sales_channel)?.label || sale.sales_channel
+                                    const salesProject = getSaleProject(sale).label
 
                                     const printWindow = window.open('', '_blank')
                                     printWindow.document.write(`
@@ -2228,7 +2327,11 @@ export default function Sales() {
                 </div>
             </div>
             <div class="field">
-                <div class="field-label">Канал продаж</div>
+                <div class="field-label">Проект</div>
+                <div class="field-value">${salesProject}</div>
+            </div>
+            <div class="field">
+                <div class="field-label">Канал обращения</div>
                 <div class="field-value">${salesChannel}</div>
             </div>
         </div>
@@ -2887,6 +2990,7 @@ export default function Sales() {
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
                                         extra_delivery_cost: salonFormData.needs_delivery && salonFormData.extra_delivery_cost !== null ? extraDeliveryCost : null,
                                         extra_delivery_reason: salonFormData.needs_delivery && salonFormData.extra_delivery_cost !== null ? (salonFormData.extra_delivery_reason || null) : null,
+                                        project: 'flowerbox',
                                         sales_channel: 'store',
                                         profit: salePrice - costPrice,
                                         skip_stock_deduction: Boolean(selectedShowcaseId)
