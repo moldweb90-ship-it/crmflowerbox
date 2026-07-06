@@ -93,7 +93,8 @@ export function StoreProvider({ children }) {
             if (p.data) {
                 const mappedProducts = p.data.map(prod => ({
                     ...prod,
-                    categoryIds: prod.category_ids || []
+                    categoryIds: prod.category_ids || [],
+                    manualPrice: prod.manual_price ?? ''
                 }))
                 setProducts(mappedProducts)
             }
@@ -219,6 +220,7 @@ export function StoreProvider({ children }) {
             name: product.name,
             sku: product.sku,
             price: product.price,
+            manual_price: product.manualPrice === '' || product.manualPrice == null ? null : Number(product.manualPrice),
             composition: product.composition,
             description: product.description,
             category_ids: product.categoryIds || [], // Map to snake_case
@@ -237,6 +239,7 @@ export function StoreProvider({ children }) {
         if (updates.name !== undefined) dbUpdates.name = updates.name
         if (updates.sku !== undefined) dbUpdates.sku = updates.sku
         if (updates.price !== undefined) dbUpdates.price = updates.price
+        if (updates.manualPrice !== undefined) dbUpdates.manual_price = updates.manualPrice === '' || updates.manualPrice == null ? null : Number(updates.manualPrice)
         if (updates.composition !== undefined) dbUpdates.composition = updates.composition
         if (updates.description !== undefined) dbUpdates.description = updates.description
         if (updates.categoryIds !== undefined) dbUpdates.category_ids = updates.categoryIds
@@ -1498,8 +1501,11 @@ export function StoreProvider({ children }) {
 
     const recalculateAllProducts = async () => {
         // This is potentially slow.
+        let recalculatedCount = 0
         const updates = products.map(p => {
+            if (p.manualPrice !== '' && p.manualPrice != null) return p
             const newPrice = calculatePrice(p.composition)
+            recalculatedCount += 1
             return { ...p, price: newPrice }
         })
 
@@ -1509,10 +1515,11 @@ export function StoreProvider({ children }) {
         // Bulk update or individual updates? Supabase doesn't have easy bulk update for different values.
         // We will loop.
         for (const p of updates) {
+            if (p.manualPrice !== '' && p.manualPrice != null) continue
             await supabase.from('products').update({ price: p.price }).eq('id', p.id)
         }
 
-        return updates.length
+        return recalculatedCount
     }
 
     // ================== STOCK MANAGEMENT ==================

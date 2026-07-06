@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import Modal from '../components/ui/Modal'
 
 export default function Products() {
-    const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice, recalculateAllProducts } = useStore()
+    const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice, calculateCostPrice, recalculateAllProducts } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
     const searchTerm = searchParams.get('q') || ''
@@ -72,6 +72,8 @@ export default function Products() {
 
     // Computed Price
     const [calculatedCost, setCalculatedCost] = useState(0)
+    const [actualCostPrice, setActualCostPrice] = useState(0)
+    const [autoPrice, setAutoPrice] = useState(0)
     const [finalPrice, setFinalPrice] = useState(0)
 
     // Recalculate State
@@ -205,7 +207,7 @@ export default function Products() {
             sku: product.sku || '',
             categoryIds: [...(product.categoryIds || [])],
             composition: product.composition ? product.composition.map(c => ({ ...c })) : [],
-            manualPrice: product.manualPrice || ''
+            manualPrice: product.manualPrice ?? product.manual_price ?? ''
         })
         setView('editor')
     }
@@ -218,7 +220,7 @@ export default function Products() {
             sku: product.sku || '',
             categoryIds: [...(product.categoryIds || [])],
             composition: product.composition ? product.composition.map(c => ({ ...c })) : [],
-            manualPrice: product.manualPrice || ''
+            manualPrice: product.manualPrice ?? product.manual_price ?? ''
         })
         setView('editor')
     }
@@ -232,8 +234,12 @@ export default function Products() {
 
     // Price Update Effect
     useEffect(() => {
-        const price = calculatePrice(formData.composition)
+        const recommendedPrice = calculatePrice(formData.composition)
+        const manual = formData.manualPrice === '' || formData.manualPrice == null ? null : Number(formData.manualPrice)
+        const price = manual !== null && Number.isFinite(manual) && manual >= 0 ? manual : recommendedPrice
+        setAutoPrice(recommendedPrice)
         setFinalPrice(price)
+        setActualCostPrice(calculateCostPrice(formData.composition))
 
         // Calculate raw cost for display
         let cost = 0
@@ -244,7 +250,7 @@ export default function Products() {
         })
         setCalculatedCost(cost)
 
-    }, [formData.composition, settings, flowers, goods])
+    }, [formData.composition, formData.manualPrice, settings, flowers, goods])
 
 
     const addItemToComposition = () => {
@@ -303,6 +309,7 @@ export default function Products() {
         const productData = {
             ...formData,
             composition: cleanedComposition,
+            manualPrice: formData.manualPrice === '' || formData.manualPrice == null ? '' : Number(formData.manualPrice),
             price: finalPrice // Save the calculated price
         }
 
@@ -566,6 +573,10 @@ export default function Products() {
                         <div className="card" style={{ position: 'sticky', top: '1rem' }}>
                             <h3 style={{ marginBottom: '1rem' }}>Стоимость</h3>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Автоцена</span>
+                                <span>{autoPrice} lei</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                 <span style={{ color: 'var(--text-muted)' }}>Себестоимость</span>
                                 <span>{calculatedCost} lei</span>
                             </div>
@@ -582,10 +593,47 @@ export default function Products() {
                                 <span>+{Math.round((calculatedCost + settings.deliveryCost) * (settings.markupPercentage / 100))} lei</span>
                             </div>
 
+                            <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 14, padding: '0.85rem', marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', color: 'var(--text-muted)', fontWeight: 800, marginBottom: '0.45rem' }}>
+                                    Ручная цена продажи
+                                </label>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        min="0"
+                                        step="1"
+                                        placeholder={`${autoPrice}`}
+                                        value={formData.manualPrice}
+                                        onChange={e => setFormData({ ...formData, manualPrice: e.target.value })}
+                                        style={{ flex: 1, fontWeight: 900 }}
+                                    />
+                                    {formData.manualPrice !== '' && (
+                                        <button
+                                            type="button"
+                                            className="btn"
+                                            onClick={() => setFormData({ ...formData, manualPrice: '' })}
+                                            style={{ border: '1px solid var(--border)', whiteSpace: 'nowrap' }}
+                                        >
+                                            Авто
+                                        </button>
+                                    )}
+                                </div>
+                                <div style={{ marginTop: '0.45rem', color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: 1.35 }}>
+                                    Пусто - CRM считает автоматически. Заполнено - цена фиксируется и пойдет на сайт.
+                                </div>
+                            </div>
+
                             <div style={{ borderTop: '2px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.25rem', fontWeight: 'bold' }}>
                                     <span>Итого</span>
                                     <span style={{ color: 'var(--primary)' }}>{finalPrice} lei</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', fontSize: '0.9rem', fontWeight: 850 }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>Реальная маржа</span>
+                                    <span style={{ color: finalPrice - actualCostPrice >= 0 ? '#16a34a' : '#dc2626' }}>
+                                        {(finalPrice - actualCostPrice).toLocaleString()} lei ({actualCostPrice > 0 ? Math.round(((finalPrice - actualCostPrice) / actualCostPrice) * 100) : 0}%)
+                                    </span>
                                 </div>
                             </div>
                         </div>

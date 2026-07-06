@@ -439,10 +439,10 @@ export default function Sales() {
         const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
         return withMarkup + Number(formData.extra_delivery_cost || 0)
     }
-    const costPrice = siteComposition.length > 0
+    const costPrice = siteSaleMode === 'custom' && siteComposition.length > 0
         ? siteComposition.reduce((s, i) => s + (Number(i.cost || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0) + Number(formData.extra_delivery_cost || 0)
         : (selectedProduct ? calculateCostPrice(selectedProduct.composition, formData.extra_delivery_cost) : Number(formData.extra_delivery_cost || 0))
-    const calculatedSalePrice = siteComposition.length > 0
+    const calculatedSalePrice = siteSaleMode === 'custom' && siteComposition.length > 0
         ? calculateSiteCompositionPrice(siteComposition)
         : ((selectedProduct?.price || 0) + Number(formData.extra_delivery_cost || 0))
     const salePrice = Number(formData.sale_price) || calculatedSalePrice
@@ -566,16 +566,11 @@ export default function Sales() {
     const handleSelectProduct = (product) => {
         const comp = productToEditableComposition(product.composition || [])
         setSiteComposition(comp)
-        const basePrice = comp.length > 0
-            ? comp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
-            : (product.price || 0)
-        const withMarkup = comp.length > 0
-            ? Math.round((basePrice + (basePrice * ((settings.markupPercentage || 0) / 100))) / 10) * 10
-            : basePrice
+        const catalogPrice = Number(product.price || 0)
         setFormData({
             ...formData,
             product_id: product.id,
-            sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0))
+            sale_price: String(catalogPrice + Number(formData.extra_delivery_cost || 0))
         })
         setProductSearch(product.name)
         setSiteSaleMode('catalog')

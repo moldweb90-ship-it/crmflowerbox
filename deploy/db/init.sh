@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS public.products (
   name text NOT NULL,
   sku text,
   price numeric DEFAULT 0,
+  manual_price numeric,
   composition jsonb DEFAULT '[]'::jsonb,
   description text,
   category_ids jsonb DEFAULT '[]'::jsonb,
