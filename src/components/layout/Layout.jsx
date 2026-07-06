@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Flower2, Package, Settings, Layers, LogOut, Menu, X, Truck, Receipt, ShoppingCart, Warehouse, Users, Bell, UserCheck, PieChart, TrendingUp, Sparkles, Plus, Globe, Store, Calendar, Gift, RotateCcw } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { usePermissions } from '../../context/PermissionContext'
+import { useStore } from '../../context/StoreContext'
+import { supabase } from '../../supabase'
 import { getDailyFlowerNote } from '../../lib/dailyFlowerNotes'
 
 const LOGO_SRC = '/fblogo.png'
@@ -34,8 +36,13 @@ export default function Layout() {
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [isSidebarOpen, setIsSidebarOpen] = useState(false)
     const [isQuickSaleOpen, setIsQuickSaleOpen] = useState(false)
+    const [deliveryNotifications, setDeliveryNotifications] = useState([])
+    const [notificationToasts, setNotificationToasts] = useState([])
+    const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false)
+    const audioContextRef = useRef(null)
     const pageTitle = pageTitles[location.pathname] || 'FlowerBox'
     const dailyFlowerNote = getDailyFlowerNote()
+    const { refreshDeliveryData } = useStore()
 
     // Handle Resize
     useEffect(() => {
@@ -57,6 +64,148 @@ export default function Layout() {
     // Filter groups based on permissions
     const { checkAccess, role } = usePermissions()
     const isCourierOnly = role === 'courier'
+    const canSeeDeliveryNotifications = !isCourierOnly && checkAccess('sales')
+
+    const fetchDeliveryNotifications = async () => {
+        if (!canSeeDeliveryNotifications) {
+            setDeliveryNotifications([])
+            return
+        }
+
+        const { data, error } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('event_type', 'delivery_status_changed')
+            .eq('customer_notified', false)
+            .order('created_at', { ascending: false })
+            .limit(30)
+
+        if (!error && data) setDeliveryNotifications(data)
+    }
+
+    const playNotificationSound = () => {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext
+            if (!AudioContext) return
+            const ctx = audioContextRef.current || new AudioContext()
+            audioContextRef.current = ctx
+            if (ctx.state === 'suspended') ctx.resume()
+
+            const now = ctx.currentTime
+            const gain = ctx.createGain()
+            gain.gain.setValueAtTime(0.0001, now)
+            gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02)
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55)
+            gain.connect(ctx.destination)
+
+            ;[660, 880].forEach((frequency, index) => {
+                const osc = ctx.createOscillator()
+                osc.type = 'sine'
+                osc.frequency.setValueAtTime(frequency, now + index * 0.14)
+                osc.connect(gain)
+                osc.start(now + index * 0.14)
+                osc.stop(now + index * 0.14 + 0.28)
+            })
+        } catch (error) {
+            // Browser may block sound until the first user gesture.
+        }
+    }
+
+    const showDeliveryToast = (payload) => {
+        const id = payload.notification_id || `${Date.now()}-${Math.random()}`
+        setNotificationToasts(current => [
+            {
+                id,
+                sale_id: payload.sale_id,
+                title: payload.title || 'Статус доставки изменен',
+                body: payload.body || '',
+                created_at: payload.created_at || new Date().toISOString()
+            },
+            ...current.slice(0, 2)
+        ])
+        window.setTimeout(() => {
+            setNotificationToasts(current => current.filter(item => item.id !== id))
+        }, 9000)
+    }
+
+    const markCustomerNotified = async (notificationId) => {
+        const { error } = await supabase
+            .from('notifications')
+            .update({
+                customer_notified: true,
+                acknowledged_at: new Date().toISOString(),
+                read_at: new Date().toISOString()
+            })
+            .eq('id', notificationId)
+
+        if (!error) {
+            setDeliveryNotifications(current => current.filter(item => item.id !== notificationId))
+        }
+    }
+
+    const openNotificationSale = (notification) => {
+        setIsNotificationPanelOpen(false)
+        const query = notification?.order_number || notification?.sale_id || ''
+        navigate(query ? `/sales?order=${encodeURIComponent(query)}` : '/sales')
+    }
+
+    useEffect(() => {
+        const unlockSound = () => {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext
+                if (!AudioContext || audioContextRef.current) return
+                audioContextRef.current = new AudioContext()
+                if (audioContextRef.current.state === 'suspended') audioContextRef.current.resume()
+            } catch (error) {
+                // Silent fallback.
+            }
+        }
+
+        window.addEventListener('pointerdown', unlockSound, { once: true })
+        window.addEventListener('keydown', unlockSound, { once: true })
+        return () => {
+            window.removeEventListener('pointerdown', unlockSound)
+            window.removeEventListener('keydown', unlockSound)
+        }
+    }, [])
+
+    useEffect(() => {
+        if (!canSeeDeliveryNotifications) return
+
+        fetchDeliveryNotifications()
+        const source = new EventSource('/events')
+
+        const handleStatusChange = (event) => {
+            try {
+                const payload = JSON.parse(event.data || '{}')
+                refreshDeliveryData()
+                fetchDeliveryNotifications()
+                showDeliveryToast(payload)
+                playNotificationSound()
+            } catch (error) {
+                console.error('Delivery notification parse error:', error)
+            }
+        }
+
+        source.addEventListener('delivery_status_changed', handleStatusChange)
+        source.onerror = () => {
+            // EventSource reconnects automatically.
+        }
+
+        return () => {
+            source.removeEventListener('delivery_status_changed', handleStatusChange)
+            source.close()
+        }
+    }, [canSeeDeliveryNotifications])
+
+    useEffect(() => {
+        const originalTitle = 'FlowerBox CRM'
+        if (deliveryNotifications.length > 0) {
+            document.title = `(${deliveryNotifications.length}) FlowerBox CRM`
+        } else {
+            document.title = originalTitle
+        }
+    }, [deliveryNotifications.length])
 
     // Navigation structure with groups
     const navGroups = [
@@ -160,6 +309,59 @@ export default function Layout() {
         return location.pathname === item.path
     }
 
+    const renderNotificationButton = () => {
+        if (!canSeeDeliveryNotifications) return null
+
+        return (
+            <button
+                type="button"
+                onClick={() => {
+                    setIsNotificationPanelOpen(value => !value)
+                    fetchDeliveryNotifications()
+                }}
+                title="Уведомления по доставкам"
+                style={{
+                    width: isMobile ? 44 : 48,
+                    height: isMobile ? 44 : 48,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: deliveryNotifications.length ? 'linear-gradient(135deg, #ef4444, #f97316)' : '#FFFFFF',
+                    color: deliveryNotifications.length ? '#FFFFFF' : '#64748b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: deliveryNotifications.length ? '0 14px 28px rgba(239,68,68,0.24)' : 'var(--shadow-sm)',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    flexShrink: 0
+                }}
+            >
+                <Bell size={20} />
+                {deliveryNotifications.length > 0 && (
+                    <span style={{
+                        position: 'absolute',
+                        top: -4,
+                        right: -4,
+                        minWidth: 20,
+                        height: 20,
+                        padding: '0 0.35rem',
+                        borderRadius: 999,
+                        background: '#111827',
+                        color: '#fff',
+                        fontSize: '0.7rem',
+                        fontWeight: 900,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '2px solid #fff'
+                    }}>
+                        {deliveryNotifications.length}
+                    </span>
+                )}
+            </button>
+        )
+    }
+
     return (
         <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-body)' }}>
 
@@ -187,9 +389,12 @@ export default function Layout() {
                             style={{ display: 'block', width: 178, maxWidth: '58vw', height: 46, objectFit: 'contain', objectPosition: 'left center' }}
                         />
                     </Link>
-                    <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ border: 'none', background: 'none' }}>
-                        {isSidebarOpen ? <X size={28} /> : <Menu size={28} />}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        {renderNotificationButton()}
+                        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ border: 'none', background: 'none' }}>
+                            {isSidebarOpen ? <X size={28} /> : <Menu size={28} />}
+                        </button>
+                    </div>
                 </header>
             )}
 
@@ -448,6 +653,8 @@ export default function Layout() {
                                 </div>
                             </div>
 
+                            {renderNotificationButton()}
+
                             <Link to="/settings" style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-sm)', color: 'inherit' }}>
                                 <Settings size={20} color="var(--text-muted)" />
                             </Link>
@@ -457,6 +664,204 @@ export default function Layout() {
 
                 <Outlet />
             </main>
+
+            {notificationToasts.length > 0 && (
+                <div style={{
+                    position: 'fixed',
+                    top: isMobile ? 84 : 24,
+                    right: isMobile ? 12 : 24,
+                    zIndex: 140,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem',
+                    width: isMobile ? 'calc(100vw - 24px)' : 360,
+                    pointerEvents: 'none'
+                }}>
+                    {notificationToasts.map(toast => (
+                        <div key={toast.id} style={{
+                            background: 'rgba(255,255,255,0.96)',
+                            border: '1px solid rgba(239,68,68,0.18)',
+                            borderRadius: 18,
+                            padding: '1rem',
+                            boxShadow: '0 22px 44px rgba(15,23,42,0.16)',
+                            pointerEvents: 'auto'
+                        }}>
+                            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                                <div style={{
+                                    width: 42,
+                                    height: 42,
+                                    borderRadius: '50%',
+                                    background: 'linear-gradient(135deg, #ef4444, #f97316)',
+                                    color: '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0
+                                }}>
+                                    <Bell size={19} />
+                                </div>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                    <div style={{ fontWeight: 900, color: '#111827', marginBottom: '0.25rem' }}>{toast.title}</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.86rem', fontWeight: 650, lineHeight: 1.35 }}>{toast.body}</div>
+                                    <button
+                                        type="button"
+                                        onClick={() => openNotificationSale(toast)}
+                                        style={{
+                                            marginTop: '0.65rem',
+                                            border: 'none',
+                                            background: '#111827',
+                                            color: '#fff',
+                                            borderRadius: 999,
+                                            padding: '0.45rem 0.85rem',
+                                            fontWeight: 850,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Открыть заказ
+                                    </button>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setNotificationToasts(current => current.filter(item => item.id !== toast.id))}
+                                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8' }}
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {isNotificationPanelOpen && canSeeDeliveryNotifications && (
+                <>
+                    <div
+                        onClick={() => setIsNotificationPanelOpen(false)}
+                        style={{ position: 'fixed', inset: 0, zIndex: 125, background: 'rgba(15,23,42,0.08)' }}
+                    />
+                    <aside style={{
+                        position: 'fixed',
+                        top: isMobile ? 78 : 92,
+                        right: isMobile ? 12 : 28,
+                        width: isMobile ? 'calc(100vw - 24px)' : 430,
+                        maxHeight: isMobile ? 'calc(100vh - 110px)' : 'calc(100vh - 130px)',
+                        overflowY: 'auto',
+                        zIndex: 130,
+                        background: 'rgba(255,255,255,0.96)',
+                        backdropFilter: 'blur(22px) saturate(1.2)',
+                        WebkitBackdropFilter: 'blur(22px) saturate(1.2)',
+                        border: '1px solid rgba(226,232,240,0.86)',
+                        borderRadius: 24,
+                        boxShadow: '0 28px 70px rgba(15,23,42,0.18)',
+                        padding: '1rem'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.85rem' }}>
+                            <div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 950, color: '#111827' }}>Доставки</div>
+                                <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 700 }}>
+                                    Что нужно закрыть после курьера
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => fetchDeliveryNotifications()}
+                                style={{
+                                    border: 'none',
+                                    borderRadius: 999,
+                                    padding: '0.5rem 0.75rem',
+                                    background: '#f1f5f9',
+                                    color: '#334155',
+                                    fontWeight: 850,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Обновить
+                            </button>
+                        </div>
+
+                        {deliveryNotifications.length === 0 ? (
+                            <div style={{
+                                padding: '2rem 1rem',
+                                textAlign: 'center',
+                                color: '#94a3b8',
+                                fontWeight: 800,
+                                background: '#f8fafc',
+                                borderRadius: 18
+                            }}>
+                                Новых событий нет
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {deliveryNotifications.map(item => (
+                                    <div key={item.id} style={{
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: 18,
+                                        padding: '0.9rem',
+                                        background: '#fff'
+                                    }}>
+                                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                                            <div style={{
+                                                width: 38,
+                                                height: 38,
+                                                borderRadius: '50%',
+                                                background: item.new_status === 'delivered' ? '#dcfce7' : '#fff7ed',
+                                                color: item.new_status === 'delivered' ? '#16a34a' : '#ea580c',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                flexShrink: 0
+                                            }}>
+                                                <Truck size={18} />
+                                            </div>
+                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                <div style={{ fontWeight: 900, color: '#111827', lineHeight: 1.25 }}>{item.title}</div>
+                                                <div style={{ fontSize: '0.84rem', color: '#64748b', fontWeight: 650, marginTop: '0.25rem' }}>
+                                                    {item.body || 'Адрес не указан'}
+                                                </div>
+                                                <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: '0.35rem', fontWeight: 700 }}>
+                                                    {item.created_at ? new Date(item.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.55rem', marginTop: '0.8rem' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => openNotificationSale(item)}
+                                                style={{
+                                                    border: '1px solid #dbeafe',
+                                                    background: '#eff6ff',
+                                                    color: '#2563eb',
+                                                    borderRadius: 14,
+                                                    padding: '0.65rem',
+                                                    fontWeight: 900,
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Открыть заказ
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => markCustomerNotified(item.id)}
+                                                style={{
+                                                    border: '1px solid #bbf7d0',
+                                                    background: '#dcfce7',
+                                                    color: '#15803d',
+                                                    borderRadius: 14,
+                                                    padding: '0.65rem',
+                                                    fontWeight: 900,
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Клиенту написали
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </aside>
+                </>
+            )}
 
             {isMobile && !isSidebarOpen && checkAccess('sales') && location.pathname !== '/my-deliveries' && (
                 <>

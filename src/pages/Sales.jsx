@@ -305,7 +305,7 @@ export default function Sales() {
         return sales.filter(sale => {
             // If searching by order number (from global search)
             if (orderSearch) {
-                return sale.order_number?.toString().includes(orderSearch)
+                return sale.order_number?.toString().includes(orderSearch) || sale.id?.toString().includes(orderSearch)
             }
             // If filtering by delivery date (from calendar click)
             if (deliveryDateFilter) {
