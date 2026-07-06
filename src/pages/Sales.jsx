@@ -1444,17 +1444,21 @@ export default function Sales() {
                                         {siteComposition.map((item, idx) => (
                                             <div key={`${item.type}-${item.item_id}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: '#f9fafb', borderRadius: '8px' }}>
                                                 <span style={{ flex: 1, fontWeight: 500 }}>{item.type === 'flower' ? '🌸' : '📦'} {item.name}</span>
-                                                <input type="number" min="0.01" step="any" value={item.quantity} onChange={(e) => {
+                                                <input type="number" min="0" step="any" value={item.quantity} onChange={(e) => {
                                                     const val = e.target.value
-                                                    const parsed = parseFloat(val)
-                                                    const v = val === '' ? '' : (Number.isFinite(parsed) ? Math.max(0.01, parsed) : 0.01)
-                                                    const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: v } : c)
+                                                    const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: val } : c)
                                                     setSiteComposition(newComp)
                                                     const base = newComp.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
                                                     const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
                                                     setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
+                                                }} onBlur={(e) => {
+                                                    const parsed = Number(e.target.value)
+                                                    if (!Number.isFinite(parsed) || parsed <= 0) {
+                                                        const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: 0.01 } : c)
+                                                        setSiteComposition(newComp)
+                                                    }
                                                 }} style={{ width: '60px', padding: '0.35rem', textAlign: 'center' }} />
-                                                <span style={{ minWidth: '50px', fontWeight: 600 }}>{item.price * item.quantity} L</span>
+                                                <span style={{ minWidth: '50px', fontWeight: 600 }}>{Number(item.price || 0) * Number(item.quantity || 0)} L</span>
                                                 <button type="button" onClick={() => {
                                                     const newComp = siteComposition.filter((_, i) => i !== idx)
                                                     setSiteComposition(newComp)
@@ -2385,7 +2389,7 @@ export default function Sales() {
                                             >−</button>
                                             <input
                                                 type="number"
-                                                min="0.01"
+                                                min="0"
                                                 step="any"
                                                 className="no-spinners"
                                                 disabled={Boolean(selectedShowcaseId)}
@@ -2393,13 +2397,8 @@ export default function Sales() {
                                                 onChange={(e) => {
                                                     const val = e.target.value
                                                     const newComp = [...salonFormData.composition]
-                                                    if (val === '') {
-                                                        newComp[idx].quantity = ''
-                                                    } else {
-                                                        const num = parseFloat(val)
-                                                        // Allow fractional quantities like 0.5 for packaging, ribbon, and partial goods.
-                                                        newComp[idx].quantity = Number.isFinite(num) ? Math.max(0.01, num) : 0.01
-                                                    }
+                                                    // Keep raw input while typing so the user can erase "1" and type "0.5".
+                                                    newComp[idx].quantity = val
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 }}
                                                 style={{
@@ -2415,7 +2414,15 @@ export default function Sales() {
                                                     background: '#ffffff'
                                                 }}
                                                 onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                                                onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                                                onBlur={(e) => {
+                                                    e.target.style.borderColor = '#e5e7eb'
+                                                    const parsed = Number(e.target.value)
+                                                    if (!Number.isFinite(parsed) || parsed <= 0) {
+                                                        const newComp = [...salonFormData.composition]
+                                                        newComp[idx].quantity = 0.01
+                                                        setSalonFormData({ ...salonFormData, composition: newComp })
+                                                    }
+                                                }}
                                             />
                                             <button
                                                 disabled={Boolean(selectedShowcaseId)}
