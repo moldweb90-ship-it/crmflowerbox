@@ -1444,11 +1444,13 @@ export default function Sales() {
                                         {siteComposition.map((item, idx) => (
                                             <div key={`${item.type}-${item.item_id}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: '#f9fafb', borderRadius: '8px' }}>
                                                 <span style={{ flex: 1, fontWeight: 500 }}>{item.type === 'flower' ? '🌸' : '📦'} {item.name}</span>
-                                                <input type="number" min={1} value={item.quantity} onChange={(e) => {
-                                                    const v = Math.max(1, parseInt(e.target.value) || 1)
+                                                <input type="number" min="0.01" step="any" value={item.quantity} onChange={(e) => {
+                                                    const val = e.target.value
+                                                    const parsed = parseFloat(val)
+                                                    const v = val === '' ? '' : (Number.isFinite(parsed) ? Math.max(0.01, parsed) : 0.01)
                                                     const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: v } : c)
                                                     setSiteComposition(newComp)
-                                                    const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
+                                                    const base = newComp.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
                                                     const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
                                                     setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
                                                 }} style={{ width: '60px', padding: '0.35rem', textAlign: 'center' }} />
@@ -1473,9 +1475,9 @@ export default function Sales() {
                                             {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).map(flower => (
                                                 <div key={`f-${flower.id}`} onClick={() => {
                                                     const ex = siteComposition.findIndex(c => c.type === 'flower' && c.item_id === flower.id)
-                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: c.quantity + 1 } : c) : [...siteComposition, { type: 'flower', item_id: flower.id, name: flower.name, quantity: 1, cost: flower.cost || 0, price: flower.price || 0 }]
+                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: Number(c.quantity || 0) + 1 } : c) : [...siteComposition, { type: 'flower', item_id: flower.id, name: flower.name, quantity: 1, cost: flower.cost || 0, price: flower.price || 0 }]
                                                     setSiteComposition(newComp)
-                                                    const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
+                                                    const base = newComp.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
                                                     const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
                                                     setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
                                                     setSiteItemSearch(''); setShowSiteItemDropdown(false)
@@ -1484,9 +1486,9 @@ export default function Sales() {
                                             {goods.filter(g => g.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).map(good => (
                                                 <div key={`g-${good.id}`} onClick={() => {
                                                     const ex = siteComposition.findIndex(c => c.type === 'good' && c.item_id === good.id)
-                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: c.quantity + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
+                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: Number(c.quantity || 0) + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
                                                     setSiteComposition(newComp)
-                                                    const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
+                                                    const base = newComp.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
                                                     // Markup applies to (Materials + SettingsDelivery)
                                                     // Extra Delivery is added AFTER markup
                                                     const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
@@ -2374,8 +2376,8 @@ export default function Sales() {
                                                     const newComp = [...salonFormData.composition]
                                                     // Ensure it is treated as a number
                                                     const currentQty = Number(newComp[idx].quantity) || 0
-                                                    if (currentQty > 1) {
-                                                        newComp[idx].quantity = currentQty - 1
+                                                    if (currentQty > 0.01) {
+                                                        newComp[idx].quantity = Math.max(0.01, currentQty - 1)
                                                         setSalonFormData({ ...salonFormData, composition: newComp })
                                                     }
                                                 }}
@@ -2383,7 +2385,8 @@ export default function Sales() {
                                             >−</button>
                                             <input
                                                 type="number"
-                                                min="1"
+                                                min="0.01"
+                                                step="any"
                                                 className="no-spinners"
                                                 disabled={Boolean(selectedShowcaseId)}
                                                 value={item.quantity}
@@ -2393,9 +2396,9 @@ export default function Sales() {
                                                     if (val === '') {
                                                         newComp[idx].quantity = ''
                                                     } else {
-                                                        const num = parseInt(val)
-                                                        // If valid number, ensure min 1. If NaN (unlikely with type=number but possible), default to 1
-                                                        newComp[idx].quantity = isNaN(num) ? 1 : Math.max(1, num)
+                                                        const num = parseFloat(val)
+                                                        // Allow fractional quantities like 0.5 for packaging, ribbon, and partial goods.
+                                                        newComp[idx].quantity = Number.isFinite(num) ? Math.max(0.01, num) : 0.01
                                                     }
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 }}
@@ -2419,7 +2422,7 @@ export default function Sales() {
                                                 onClick={() => {
                                                     const newComp = [...salonFormData.composition]
                                                     // Handle case where quantity is '' by treating it as 0, then add 1 -> 1
-                                                    newComp[idx].quantity = (Number(newComp[idx].quantity) || 0) + 1
+                                                    newComp[idx].quantity = Number(newComp[idx].quantity || 0) + 1
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 }}
                                                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: selectedShowcaseId ? 0.45 : 1 }}
