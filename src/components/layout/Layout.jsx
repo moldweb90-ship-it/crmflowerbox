@@ -123,34 +123,61 @@ export default function Layout() {
             if (ctx.state === 'suspended') ctx.resume()
 
             const now = ctx.currentTime
+            const compressor = ctx.createDynamicsCompressor()
+            compressor.threshold.setValueAtTime(-18, now)
+            compressor.knee.setValueAtTime(18, now)
+            compressor.ratio.setValueAtTime(8, now)
+            compressor.attack.setValueAtTime(0.004, now)
+            compressor.release.setValueAtTime(0.18, now)
+            compressor.connect(ctx.destination)
+
             const masterGain = ctx.createGain()
             masterGain.gain.setValueAtTime(0.0001, now)
-            masterGain.gain.exponentialRampToValueAtTime(0.16, now + 0.04)
-            masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 2.4)
-            masterGain.connect(ctx.destination)
+            masterGain.gain.exponentialRampToValueAtTime(0.42, now + 0.03)
+            masterGain.gain.setValueAtTime(0.42, now + 3.15)
+            masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 3.65)
+            masterGain.connect(compressor)
 
             const melody = [
-                { at: 0, notes: [587.33, 783.99], duration: 0.45 },
-                { at: 0.62, notes: [659.25, 880], duration: 0.5 },
-                { at: 1.28, notes: [783.99, 1046.5], duration: 0.62 }
+                { at: 0, notes: [659.25, 987.77], duration: 0.38 },
+                { at: 0.44, notes: [783.99, 1174.66], duration: 0.42 },
+                { at: 1.12, notes: [659.25, 987.77], duration: 0.38 },
+                { at: 1.56, notes: [783.99, 1174.66], duration: 0.42 },
+                { at: 2.34, notes: [880, 1318.51], duration: 0.58 }
             ]
 
             melody.forEach(({ at, notes, duration }) => {
                 const noteGain = ctx.createGain()
                 const startAt = now + at
                 noteGain.gain.setValueAtTime(0.0001, startAt)
-                noteGain.gain.exponentialRampToValueAtTime(0.95, startAt + 0.035)
+                noteGain.gain.exponentialRampToValueAtTime(1, startAt + 0.025)
                 noteGain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration)
                 noteGain.connect(masterGain)
 
                 notes.forEach(frequency => {
                     const osc = ctx.createOscillator()
-                    osc.type = 'sine'
+                    osc.type = 'triangle'
                     osc.frequency.setValueAtTime(frequency, startAt)
                     osc.connect(noteGain)
                     osc.start(startAt)
                     osc.stop(startAt + duration + 0.04)
                 })
+            })
+
+            ;[0, 1.12, 2.34].forEach(at => {
+                const pulseGain = ctx.createGain()
+                const startAt = now + at
+                pulseGain.gain.setValueAtTime(0.0001, startAt)
+                pulseGain.gain.exponentialRampToValueAtTime(0.38, startAt + 0.02)
+                pulseGain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.28)
+                pulseGain.connect(masterGain)
+
+                const pulse = ctx.createOscillator()
+                pulse.type = 'square'
+                pulse.frequency.setValueAtTime(440, startAt)
+                pulse.connect(pulseGain)
+                pulse.start(startAt)
+                pulse.stop(startAt + 0.3)
             })
         } catch (error) {
             // Browser may block sound until the first user gesture.
