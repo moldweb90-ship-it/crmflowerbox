@@ -362,6 +362,22 @@ BEGIN
   notification_title := 'Заказ #' || order_label || ' ' || status_label;
   notification_body := COALESCE(NEW.delivery_address, 'Адрес не указан');
 
+  IF NEW.delivery_status = 'delivering' THEN
+    PERFORM pg_notify('crm_events', json_build_object(
+      'type', 'delivery_status_changed',
+      'silent', true,
+      'sale_id', NEW.id,
+      'order_number', NEW.order_number,
+      'old_status', OLD.delivery_status,
+      'new_status', NEW.delivery_status,
+      'title', notification_title,
+      'body', notification_body,
+      'created_at', now()
+    )::text);
+
+    RETURN NEW;
+  END IF;
+
   INSERT INTO public.notifications (
     event_type,
     title,

@@ -64,6 +64,21 @@ export default function Layout() {
         }
     }
 
+    const getNotificationTone = (status) => {
+        switch (status) {
+            case 'delivered':
+                return { iconBg: '#dcfce7', iconColor: '#16a34a', actionBg: '#dcfce7', actionBorder: '#bbf7d0', actionColor: '#15803d', actionLabel: 'Клиенту написали' }
+            case 'postponed':
+                return { iconBg: '#fef3c7', iconColor: '#d97706', actionBg: '#fff7ed', actionBorder: '#fed7aa', actionColor: '#c2410c', actionLabel: 'Проверили перенос' }
+            case 'returned':
+                return { iconBg: '#ede9fe', iconColor: '#7c3aed', actionBg: '#f5f3ff', actionBorder: '#ddd6fe', actionColor: '#6d28d9', actionLabel: 'Разобрали возврат' }
+            case 'cancelled':
+                return { iconBg: '#fee2e2', iconColor: '#dc2626', actionBg: '#fef2f2', actionBorder: '#fecaca', actionColor: '#b91c1c', actionLabel: 'Закрыли отмену' }
+            default:
+                return { iconBg: '#fff7ed', iconColor: '#ea580c', actionBg: '#fff7ed', actionBorder: '#fed7aa', actionColor: '#c2410c', actionLabel: 'Закрыть' }
+        }
+    }
+
     const getNotificationSale = (notification) => {
         if (!notification?.sale_id) return null
         return sales.find(sale => sale.id === notification.sale_id) || null
@@ -190,6 +205,8 @@ export default function Layout() {
             {
                 id,
                 sale_id: payload.sale_id,
+                order_number: payload.order_number,
+                new_status: payload.new_status,
                 title: payload.title || 'Статус доставки изменен',
                 body: payload.body || '',
                 created_at: payload.created_at || new Date().toISOString()
@@ -253,9 +270,11 @@ export default function Layout() {
             try {
                 const payload = JSON.parse(event.data || '{}')
                 refreshDeliveryData()
-                fetchDeliveryNotifications()
-                showDeliveryToast(payload)
-                playNotificationSound()
+                if (!payload.silent) {
+                    fetchDeliveryNotifications()
+                    showDeliveryToast(payload)
+                    playNotificationSound()
+                }
             } catch (error) {
                 console.error('Delivery notification parse error:', error)
             }
@@ -878,8 +897,8 @@ export default function Layout() {
                                                 width: 38,
                                                 height: 38,
                                                 borderRadius: '50%',
-                                                background: item.new_status === 'delivered' ? '#dcfce7' : '#fff7ed',
-                                                color: item.new_status === 'delivered' ? '#16a34a' : '#ea580c',
+                                                background: getNotificationTone(item.new_status).iconBg,
+                                                color: getNotificationTone(item.new_status).iconColor,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
@@ -917,16 +936,16 @@ export default function Layout() {
                                                 type="button"
                                                 onClick={() => markCustomerNotified(item.id)}
                                                 style={{
-                                                    border: '1px solid #bbf7d0',
-                                                    background: '#dcfce7',
-                                                    color: '#15803d',
+                                                    border: `1px solid ${getNotificationTone(item.new_status).actionBorder}`,
+                                                    background: getNotificationTone(item.new_status).actionBg,
+                                                    color: getNotificationTone(item.new_status).actionColor,
                                                     borderRadius: 14,
                                                     padding: '0.65rem',
                                                     fontWeight: 900,
                                                     cursor: 'pointer'
                                                 }}
                                             >
-                                                Клиенту написали
+                                                {getNotificationTone(item.new_status).actionLabel}
                                             </button>
                                         </div>
                                     </div>
