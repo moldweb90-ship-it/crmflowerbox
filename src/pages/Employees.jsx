@@ -201,6 +201,16 @@ export default function Employees() {
         await deleteEmployee(emp.id)
     }
 
+    const handleDeleteShiftHistory = async (shift) => {
+        const dateLabel = shift?.shift_date ? new Date(shift.shift_date).toLocaleDateString('ru-RU') : 'эту дату'
+        const isActive = shift?.start_time && !shift?.end_time
+        const message = isActive
+            ? `Удалить активную смену за ${dateLabel}? Таймер и запись часов будут удалены.`
+            : `Удалить запись смены за ${dateLabel}? Это уберет ее из истории и расчета зарплаты.`
+        if (!window.confirm(message)) return
+        await removeShift(shift.id)
+    }
+
     const handleSave = async () => {
         if (!formData.name?.trim()) return
         setLoading(true)
@@ -631,7 +641,7 @@ export default function Employees() {
 
             {/* History Modal */}
             {historyModal && (
-                <Modal isOpen onClose={() => setHistoryModal(null)} title={`История смен: ${historyModal.name}`} maxWidth="600px">
+                <Modal isOpen onClose={() => setHistoryModal(null)} title={`История смен: ${historyModal.name}`} maxWidth="700px">
                     <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                             <thead>
@@ -640,6 +650,7 @@ export default function Employees() {
                                     <th style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b' }}>Начало</th>
                                     <th style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b' }}>Конец</th>
                                     <th style={{ textAlign: 'right', padding: '0.75rem', color: '#64748b' }}>Длительность</th>
+                                    <th style={{ textAlign: 'right', padding: '0.75rem', color: '#64748b' }}></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -668,12 +679,32 @@ export default function Employees() {
                                                 <td style={{ padding: '0.75rem', textAlign: 'right', color: '#64748b' }}>
                                                     {end ? `${h}ч ${m}м` : '—'}
                                                 </td>
+                                                <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                                                    <button
+                                                        onClick={() => handleDeleteShiftHistory(s)}
+                                                        style={{
+                                                            width: 36,
+                                                            height: 36,
+                                                            borderRadius: 10,
+                                                            border: '1px solid #fecaca',
+                                                            background: '#fff1f2',
+                                                            color: '#ef4444',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center'
+                                                        }}
+                                                        title="Удалить запись смены"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </td>
                                             </tr>
                                         )
                                     })}
                                 {getActualEmployeeShifts(historyModal.id).length === 0 && (
                                     <tr>
-                                        <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>История пуста</td>
+                                        <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>История пуста</td>
                                     </tr>
                                 )}
                             </tbody>
