@@ -87,6 +87,25 @@ export default function Employees() {
         return list
     }, [activeEmployees, searchFilter, levelFilter, sortBy, payrollThisMonth, getFloristAutoLevel])
 
+    const employeeRoleGroups = useMemo(() => {
+        const groups = [
+            { id: 'florist', title: 'Флористы', note: 'Сборка, витрина и продажи', accent: '#ec4899' },
+            { id: 'courier', title: 'Курьеры', note: 'Доставки и маршруты', accent: '#2563eb' },
+            { id: 'manager', title: 'Менеджеры', note: 'Управление сменой и CRM', accent: '#8b5cf6' },
+            { id: 'other', title: 'Другие сотрудники', note: 'Без отдельной роли', accent: '#64748b' }
+        ]
+        return groups
+            .map(group => ({
+                ...group,
+                items: filteredAndSortedEmployees.filter(emp =>
+                    group.id === 'other'
+                        ? !['florist', 'courier', 'manager'].includes(emp.role)
+                        : emp.role === group.id
+                )
+            }))
+            .filter(group => group.items.length > 0)
+    }, [filteredAndSortedEmployees])
+
     const scheduleDays = useMemo(() => {
         const year = scheduleMonth.getFullYear()
         const month = scheduleMonth.getMonth()
@@ -108,6 +127,10 @@ export default function Employees() {
         })
         return map
     }, [shifts, employees])
+
+    const getActualEmployeeShifts = (employeeId) => shifts
+        .filter(s => s.employee_id === employeeId && s.start_time)
+        .sort((a, b) => new Date(b.start_time || b.shift_date) - new Date(a.start_time || a.shift_date))
 
     const toLocalDateStr = (d) => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : ''
     const isWorkingToday = (empId, date) => {
@@ -210,6 +233,10 @@ export default function Employees() {
         const key = toLocalDateStr(date)
         const existing = shifts.find(s => s.employee_id === empId && s.shift_date === key)
         if (existing) {
+            if (existing.start_time) {
+                alert('Эта смена уже была запущена. Ее нельзя удалить из графика, чтобы не сломать историю и зарплату.')
+                return
+            }
             await removeShift(existing.id)
         } else {
             await addShift(empId, key, 'day')
@@ -389,17 +416,57 @@ export default function Employees() {
                             <button className="btn btn-primary" onClick={openAdd} style={{ marginTop: '1rem' }}>Добавить</button>
                         </div>
                     ) : (
-                        <div style={{
-                            display: isMobile ? 'flex' : 'grid',
-                            gridTemplateColumns: isMobile ? 'none' : 'repeat(4, 1fr)',
-                            gap: '1rem',
-                            overflowX: isMobile ? 'auto' : 'visible',
-                            overflowY: 'visible',
-                            paddingBottom: isMobile ? '0.5rem' : 0,
-                            scrollSnapType: isMobile ? 'x mandatory' : 'none',
-                            WebkitOverflowScrolling: 'touch'
-                        }}>
-                            {filteredAndSortedEmployees.map(emp => {
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '1.2rem' : '1.6rem' }}>
+                            {employeeRoleGroups.map(group => (
+                                <section key={group.id} style={{
+                                    background: 'rgba(255,255,255,0.56)',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '20px',
+                                    padding: isMobile ? '0.85rem' : '1rem',
+                                    boxShadow: '0 8px 28px rgba(15,23,42,0.04)'
+                                }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '1rem',
+                                        marginBottom: '0.9rem'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                                            <div style={{
+                                                width: 10,
+                                                height: 34,
+                                                borderRadius: 999,
+                                                background: group.accent,
+                                                flexShrink: 0
+                                            }} />
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ fontSize: isMobile ? '1.05rem' : '1.25rem', fontWeight: 950, color: '#0f172a' }}>{group.title}</div>
+                                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.note}</div>
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            padding: '0.45rem 0.7rem',
+                                            borderRadius: 999,
+                                            background: `${group.accent}14`,
+                                            color: group.accent,
+                                            fontSize: '0.82rem',
+                                            fontWeight: 900,
+                                            whiteSpace: 'nowrap'
+                                        }}>{group.items.length} чел.</div>
+                                    </div>
+
+                                    <div style={{
+                                        display: isMobile ? 'flex' : 'grid',
+                                        gridTemplateColumns: isMobile ? 'none' : 'repeat(4, 1fr)',
+                                        gap: '1rem',
+                                        overflowX: isMobile ? 'auto' : 'visible',
+                                        overflowY: 'visible',
+                                        paddingBottom: isMobile ? '0.5rem' : 0,
+                                        scrollSnapType: isMobile ? 'x mandatory' : 'none',
+                                        WebkitOverflowScrolling: 'touch'
+                                    }}>
+                                        {group.items.map(emp => {
                                 const level = LEVELS.find(l => l.id === getFloristAutoLevel(emp)) || LEVELS[0]
                                 return (
                                     <div
@@ -468,7 +535,10 @@ export default function Employees() {
                                         </div>
                                     </div>
                                 )
-                            })}
+                                        })}
+                                    </div>
+                                </section>
+                            ))}
                         </div>
                     )}
                 </div>
@@ -573,9 +643,7 @@ export default function Employees() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {shifts
-                                    .filter(s => s.employee_id === historyModal.id)
-                                    .sort((a, b) => new Date(b.shift_date) - new Date(a.shift_date) || new Date(b.start_time) - new Date(a.start_time))
+                                {getActualEmployeeShifts(historyModal.id)
                                     .map(s => {
                                         const start = s.start_time ? new Date(s.start_time) : null
                                         const end = s.end_time ? new Date(s.end_time) : null
@@ -603,7 +671,7 @@ export default function Employees() {
                                             </tr>
                                         )
                                     })}
-                                {shifts.filter(s => s.employee_id === historyModal.id).length === 0 && (
+                                {getActualEmployeeShifts(historyModal.id).length === 0 && (
                                     <tr>
                                         <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>История пуста</td>
                                     </tr>

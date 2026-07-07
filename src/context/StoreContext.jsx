@@ -1181,6 +1181,7 @@ export function StoreProvider({ children }) {
         const existingActive = shifts.find(s =>
             s.employee_id === employeeId &&
             (s.shift_date || '').split('T')[0] === dateStr &&
+            s.start_time &&
             !s.end_time
         )
         if (existingActive) {
@@ -1219,6 +1220,7 @@ export function StoreProvider({ children }) {
         const todayStr = toDateStr(new Date())
         const activeToday = shifts
             .filter(s =>
+                s.start_time &&
                 !s.end_time &&
                 (s.status || 'active') !== 'completed' &&
                 (s.shift_date || '').split('T')[0] === todayStr
@@ -1295,7 +1297,8 @@ export function StoreProvider({ children }) {
         const { data, error } = await supabase.from('shifts').upsert({
             employee_id: employeeId,
             shift_date: dateStr,
-            shift_type: shiftType
+            shift_type: shiftType,
+            status: 'scheduled'
         }, { onConflict: 'employee_id,shift_date' }).select()
         if (!error && data?.[0]) {
             const existing = shifts.filter(s => !(s.employee_id === employeeId && s.shift_date === dateStr))
@@ -1330,6 +1333,7 @@ export function StoreProvider({ children }) {
             const avgCheck = ordersAsFlorist > 0 ? totalSales / ordersAsFlorist : 0
             const shiftsCount = shifts.filter(s => {
                 if (s.employee_id !== emp.id) return false
+                if (!s.start_time || !s.end_time) return false
                 const sd = (s.shift_date || '').split('T')[0]
                 return sd >= startStr && sd <= endStr
             }).length
