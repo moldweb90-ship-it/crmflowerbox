@@ -277,6 +277,11 @@ export default function Employees() {
         not_delivered: { bg: '#e0f2fe', color: '#2563eb' }
     }[status] || { bg: '#e0f2fe', color: '#2563eb' })
     const getSaleTitle = (sale) => sale.custom_name || sale.product_name || sale.products?.name || sale.product?.name || 'Заказ'
+    const getCourierPayout = (sale) => {
+        if (sale.courier_payout !== undefined && sale.courier_payout !== null) return Number(sale.courier_payout || 0)
+        if (sale.extra_delivery_cost !== undefined && sale.extra_delivery_cost !== null) return Number(sale.extra_delivery_cost || 0)
+        return 0
+    }
     const getCourierDeliveries = (employee) => sales
         .filter(sale => sale.courier_id === employee.id && (sale.delivery_address || sale.delivery_date || sale.delivery_method === 'delivery'))
         .sort((a, b) => new Date(b.delivery_date || b.order_date || 0) - new Date(a.delivery_date || a.order_date || 0))
@@ -299,7 +304,7 @@ export default function Employees() {
         total: selectedCourierDeliveries.length,
         delivered: selectedCourierDeliveries.filter(s => s.delivery_status === 'delivered').length,
         active: selectedCourierDeliveries.filter(s => !['delivered', 'cancelled', 'returned'].includes(s.delivery_status)).length,
-        revenue: selectedCourierDeliveries.reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
+        payout: selectedCourierDeliveries.reduce((sum, s) => sum + getCourierPayout(s), 0)
     }
 
     return (
@@ -573,7 +578,7 @@ export default function Employees() {
                                 { label: 'Доставок', value: courierHistoryStats.total, icon: <Truck size={18} />, color: '#2563eb', bg: '#eff6ff' },
                                 { label: 'Доставлено', value: courierHistoryStats.delivered, icon: <PackageCheck size={18} />, color: '#16a34a', bg: '#dcfce7' },
                                 { label: 'В работе', value: courierHistoryStats.active, icon: <Clock size={18} />, color: '#ea580c', bg: '#ffedd5' },
-                                { label: 'Сумма', value: formatMoney(courierHistoryStats.revenue), icon: <DollarSign size={18} />, color: '#7c3aed', bg: '#f3e8ff' }
+                                { label: 'Курьеру', value: formatMoney(courierHistoryStats.payout), icon: <DollarSign size={18} />, color: '#7c3aed', bg: '#f3e8ff' }
                             ].map(card => (
                                 <div key={card.label} style={{ background: card.bg, border: `1px solid ${card.color}22`, borderRadius: 18, padding: '1rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: card.color, marginBottom: '0.6rem' }}>
@@ -617,7 +622,7 @@ export default function Employees() {
                                                         {statusLabel(sale.delivery_status)}
                                                     </span>
                                                 </div>
-                                                <div style={{ fontWeight: 950, textAlign: isMobile ? 'left' : 'right' }}>{formatMoney(sale.sale_price)}</div>
+                                                <div style={{ fontWeight: 950, textAlign: isMobile ? 'left' : 'right' }}>{formatMoney(getCourierPayout(sale))}</div>
                                             </div>
                                         )
                                     })}

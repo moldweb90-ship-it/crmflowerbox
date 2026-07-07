@@ -142,7 +142,7 @@ export function AuthProvider({ children }) {
             const passwordRecord = await createPasswordRecord(newPassword)
             const { data: currentSettings } = await supabase
                 .from('settings')
-                .select('markup_percentage, delivery_cost')
+                .select('markup_percentage, delivery_cost, pickup_discount')
                 .eq('id', 1)
                 .maybeSingle()
 
@@ -152,6 +152,7 @@ export function AuthProvider({ children }) {
                     id: 1,
                     markup_percentage: currentSettings?.markup_percentage ?? 30,
                     delivery_cost: currentSettings?.delivery_cost ?? 500,
+                    pickup_discount: currentSettings?.pickup_discount ?? 100,
                     local_admin_password_hash: passwordRecord.password_hash,
                     local_admin_password_salt: passwordRecord.password_salt
                 }, { onConflict: 'id' })

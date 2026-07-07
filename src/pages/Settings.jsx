@@ -22,6 +22,7 @@ export default function Settings() {
 
     const [markup, setMarkup] = useState(settings.markupPercentage || '')
     const [delivery, setDelivery] = useState(settings.deliveryCost || '')
+    const [pickupDiscount, setPickupDiscount] = useState(settings.pickupDiscount || 100)
     const [recalcCount, setRecalcCount] = useState(null)
     const [activeTab, setActiveTab] = useState('general')
 
@@ -30,6 +31,7 @@ export default function Settings() {
     useEffect(() => {
         if (settings.markupPercentage !== undefined) setMarkup(settings.markupPercentage)
         if (settings.deliveryCost !== undefined) setDelivery(settings.deliveryCost)
+        if (settings.pickupDiscount !== undefined) setPickupDiscount(settings.pickupDiscount)
     }, [settings])
 
     // Password State
@@ -40,7 +42,7 @@ export default function Settings() {
 
     const handleSave = (e) => {
         e.preventDefault()
-        updateSettings({ markupPercentage: parseFloat(markup), deliveryCost: parseFloat(delivery) })
+        updateSettings({ markupPercentage: parseFloat(markup), deliveryCost: parseFloat(delivery), pickupDiscount: parseFloat(pickupDiscount) })
         alert('Настройки сохранены!')
     }
 
@@ -324,6 +326,24 @@ export default function Settings() {
                                         className="input"
                                         value={delivery}
                                         onChange={e => setDelivery(e.target.value)}
+                                        required
+                                        min="0"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                                        Скидка самовывоза (lei)
+                                    </label>
+                                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                        Вычитается из готового букета с сайта, если клиент забирает заказ сам.
+                                    </p>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        value={pickupDiscount}
+                                        onChange={e => setPickupDiscount(e.target.value)}
                                         required
                                         min="0"
                                         style={{ width: '100%' }}

@@ -40,7 +40,7 @@ export function StoreProvider({ children }) {
     const [employees, setEmployees] = usePersistedState('store_employees', [])
     const [shifts, setShifts] = usePersistedState('store_shifts', [])
     const [employeePayments, setEmployeePayments] = usePersistedState('store_employee_payments', [])
-    const [settings, setSettings] = usePersistedState('store_settings', { markup_percentage: 30, delivery_cost: 500 })
+    const [settings, setSettings] = usePersistedState('store_settings', { markup_percentage: 30, delivery_cost: 500, pickup_discount: 100 })
     const [stock, setStock] = usePersistedState('store_stock', [])
     const [stockTransactions, setStockTransactions] = usePersistedState('store_stock_transactions', [])
     const [stockLots, setStockLots] = usePersistedState('store_stock_lots', [])
@@ -110,7 +110,8 @@ export function StoreProvider({ children }) {
             if (s.data) {
                 setSettings({
                     markupPercentage: Number(s.data.markup_percentage),
-                    deliveryCost: Number(s.data.delivery_cost)
+                    deliveryCost: Number(s.data.delivery_cost),
+                    pickupDiscount: Number(s.data.pickup_discount ?? 100)
                 })
             }
             if (stk.data) setStock(stk.data)
@@ -265,7 +266,8 @@ export function StoreProvider({ children }) {
         const dbUpdates = {
             id: 1, // Fixed ID for single row
             markup_percentage: updates.markupPercentage ?? settings.markupPercentage ?? 30,
-            delivery_cost: updates.deliveryCost ?? settings.deliveryCost ?? 500
+            delivery_cost: updates.deliveryCost ?? settings.deliveryCost ?? 500,
+            pickup_discount: updates.pickupDiscount ?? settings.pickupDiscount ?? 100
         }
 
         // Use upsert to create or update the settings row
@@ -273,7 +275,8 @@ export function StoreProvider({ children }) {
         if (!error) {
             setSettings({
                 markupPercentage: dbUpdates.markup_percentage,
-                deliveryCost: dbUpdates.delivery_cost
+                deliveryCost: dbUpdates.delivery_cost,
+                pickupDiscount: dbUpdates.pickup_discount
             })
         }
     }
@@ -871,6 +874,15 @@ export function StoreProvider({ children }) {
             const salePayload = { ...sale }
             delete salePayload.skip_stock_deduction
 
+            const isDelivery = salePayload.delivery_method === 'delivery'
+            const deliveryFee = isDelivery ? Number(salePayload.delivery_fee ?? salePayload.extra_delivery_cost ?? 0) : 0
+            const courierPayout = isDelivery ? Number(salePayload.courier_payout ?? deliveryFee ?? 0) : 0
+            const pickupDiscount = !isDelivery ? Number(salePayload.pickup_discount ?? settings.pickupDiscount ?? 100) : 0
+            salePayload.delivery_fee = deliveryFee
+            salePayload.courier_payout = courierPayout
+            salePayload.pickup_discount = pickupDiscount
+            salePayload.extra_delivery_cost = isDelivery ? deliveryFee : null
+
             // Очищаем customer_id
             if (customerId && typeof customerId === 'string' && customerId.length > 0) {
                 salePayload.customer_id = customerId
@@ -945,6 +957,18 @@ export function StoreProvider({ children }) {
     const updateSale = async (id, updates) => {
         // Sanitize UUID fields (convert empty strings to null or remove them)
         const payload = { ...updates }
+        if (payload.delivery_method !== undefined || payload.delivery_fee !== undefined || payload.courier_payout !== undefined || payload.pickup_discount !== undefined || payload.extra_delivery_cost !== undefined) {
+            const existing = sales.find(s => s.id === id) || {}
+            const method = payload.delivery_method ?? existing.delivery_method
+            const isDelivery = method === 'delivery'
+            const deliveryFee = isDelivery ? Number(payload.delivery_fee ?? payload.extra_delivery_cost ?? existing.delivery_fee ?? existing.extra_delivery_cost ?? 0) : 0
+            const courierPayout = isDelivery ? Number(payload.courier_payout ?? existing.courier_payout ?? deliveryFee ?? 0) : 0
+            const pickupDiscount = !isDelivery ? Number(payload.pickup_discount ?? existing.pickup_discount ?? settings.pickupDiscount ?? 100) : 0
+            payload.delivery_fee = deliveryFee
+            payload.courier_payout = courierPayout
+            payload.pickup_discount = pickupDiscount
+            payload.extra_delivery_cost = isDelivery ? deliveryFee : null
+        }
         const uuidFields = ['customer_id', 'product_id', 'courier_id', 'florist_id']
         uuidFields.forEach(field => {
             if (payload[field] === '') {
@@ -954,7 +978,7 @@ export function StoreProvider({ children }) {
 
         const { error } = await supabase.from('sales').update(payload).eq('id', id)
         if (!error) {
-            setSales(sales.map(s => s.id === id ? { ...s, ...updates } : s))
+            setSales(sales.map(s => s.id === id ? { ...s, ...payload } : s))
             return { success: true }
         }
         return { success: false, error }
@@ -1337,10 +1361,15 @@ export function StoreProvider({ children }) {
                 const sd = (s.shift_date || '').split('T')[0]
                 return sd >= startStr && sd <= endStr
             }).length
+            const getDeliveryPayout = (sale) => {
+                if (sale.courier_payout !== undefined && sale.courier_payout !== null) return Number(sale.courier_payout || 0)
+                if (sale.extra_delivery_cost !== undefined && sale.extra_delivery_cost !== null) return Number(sale.extra_delivery_cost || 0)
+                return Number(emp.rate_per_order || 0)
+            }
             let total = 0
             let rateEarned = 0, commissionEarned = 0, ratePerOrderEarned = 0
             if (isCourier) {
-                ratePerOrderEarned = ordersAsCourier * Number(emp.rate_per_order || 0)
+                ratePerOrderEarned = empSalesAsCourier.reduce((sum, sale) => sum + getDeliveryPayout(sale), 0)
                 total = ratePerOrderEarned
             } else {
                 rateEarned = shiftsCount * Number(emp.rate_per_shift || 0)
@@ -1479,7 +1508,8 @@ export function StoreProvider({ children }) {
     }
 
     // Cost calculation helper (for profit display)
-    // Calculates the ACTUAL cost: purchase prices + delivery + extra delivery
+    // Calculates material cost + optional real service cost (for example courier payout).
+    // Default catalog delivery is a sale-price component, not an automatic business expense.
     const calculateCostPrice = (composition, extraCost = 0) => {
         if (!Array.isArray(composition)) return 0
         let materialCost = 0
@@ -1494,8 +1524,7 @@ export function StoreProvider({ children }) {
                 if (g) materialCost += Number(g.cost || 0) * (item.qty || 1)
             }
         })
-        // Total cost = materials + delivery (from settings) + extra delivery
-        return materialCost + Number(settings.deliveryCost || 0) + Number(extraCost || 0)
+        return materialCost + Number(extraCost || 0)
     }
 
     // Calculation Helper (Remains same logic)

@@ -182,6 +182,9 @@ export default function Sales() {
         delivery_address: '',
         delivery_status: 'not_delivered',
         courier_id: '',
+        delivery_fee: '',
+        courier_payout: '',
+        pickup_discount: '',
         extra_delivery_cost: null,
         extra_delivery_reason: '',
         sale_price_override: ''
@@ -218,6 +221,9 @@ export default function Sales() {
         project: 'flowerbox',
         sales_channel: 'website',
         occasion: '',
+        delivery_fee: '',
+        courier_payout: '',
+        pickup_discount: '',
         extra_delivery_cost: null,
         extra_delivery_reason: null
     }
@@ -473,17 +479,28 @@ export default function Sales() {
 
     // Selected product data
     const selectedProduct = products.find(p => p.id === formData.product_id)
+    const parseMoney = (value) => Number(String(value ?? '').replace(',', '.')) || 0
+    const defaultDeliveryFee = Number(settings.deliveryCost || 0)
+    const defaultPickupDiscount = Number(settings.pickupDiscount ?? 100)
+    const isDeliveryOrder = formData.delivery_method === 'delivery'
+    const currentDeliveryFee = isDeliveryOrder ? parseMoney(formData.delivery_fee !== '' ? formData.delivery_fee : (formData.extra_delivery_cost ?? defaultDeliveryFee)) : 0
+    const currentCourierPayout = isDeliveryOrder ? parseMoney(formData.courier_payout !== '' ? formData.courier_payout : currentDeliveryFee) : 0
+    const currentPickupDiscount = !isDeliveryOrder ? parseMoney(formData.pickup_discount !== '' ? formData.pickup_discount : defaultPickupDiscount) : 0
+    const editableCompositionCost = (composition) => composition.reduce((s, i) => s + (Number(i.cost || 0) * Number(i.quantity || 0)), 0)
+    const editableCompositionSale = (composition) => composition.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0)
+    const readyProductBasePrice = selectedProduct ? Math.max(0, Number(selectedProduct.price || 0) - defaultDeliveryFee) : 0
     const calculateSiteCompositionPrice = (composition) => {
-        const base = composition.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
+        const base = editableCompositionSale(composition)
         const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
-        return withMarkup + Number(formData.extra_delivery_cost || 0)
+        return withMarkup
     }
-    const costPrice = siteSaleMode === 'custom' && siteComposition.length > 0
-        ? siteComposition.reduce((s, i) => s + (Number(i.cost || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0) + Number(formData.extra_delivery_cost || 0)
-        : (selectedProduct ? calculateCostPrice(selectedProduct.composition, formData.extra_delivery_cost) : Number(formData.extra_delivery_cost || 0))
-    const calculatedSalePrice = siteSaleMode === 'custom' && siteComposition.length > 0
+    const calculatedBouquetPrice = siteSaleMode === 'custom' && siteComposition.length > 0
         ? calculateSiteCompositionPrice(siteComposition)
-        : ((selectedProduct?.price || 0) + Number(formData.extra_delivery_cost || 0))
+        : (isDeliveryOrder ? readyProductBasePrice : Math.max(0, Number(selectedProduct?.price || 0) - currentPickupDiscount))
+    const costPrice = siteSaleMode === 'custom' && siteComposition.length > 0
+        ? editableCompositionCost(siteComposition) + currentCourierPayout
+        : (selectedProduct ? calculateCostPrice(selectedProduct.composition, currentCourierPayout) : currentCourierPayout)
+    const calculatedSalePrice = calculatedBouquetPrice + currentDeliveryFee
     const salePrice = Number(formData.sale_price) || calculatedSalePrice
     const profit = salePrice - costPrice
 
@@ -506,7 +523,13 @@ export default function Sales() {
     const openNewSaleModal = () => {
         setModalMode('add')
         setEditingSaleId(null)
-        setFormData({ ...emptyForm, order_date: toLocalDateTimeInput() })
+        setFormData({
+            ...emptyForm,
+            order_date: toLocalDateTimeInput(),
+            delivery_fee: String(defaultDeliveryFee),
+            courier_payout: String(defaultDeliveryFee),
+            extra_delivery_cost: defaultDeliveryFee
+        })
         setProductSearch('')
         setSiteComposition([])
         setSiteItemSearch('')
@@ -533,6 +556,9 @@ export default function Sales() {
                 delivery_address: sale.delivery_address || '',
                 delivery_status: sale.delivery_status || 'not_delivered',
                 courier_id: sale.courier_id || '',
+                delivery_fee: sale.delivery_fee ?? sale.extra_delivery_cost ?? '',
+                courier_payout: sale.courier_payout ?? sale.extra_delivery_cost ?? '',
+                pickup_discount: sale.pickup_discount ?? '',
                 extra_delivery_cost: sale.extra_delivery_cost ?? null,
                 extra_delivery_reason: sale.extra_delivery_reason || '',
                 sale_price_override: sale.sale_price || ''
@@ -563,6 +589,9 @@ export default function Sales() {
                 sales_channel: sale.sales_channel || 'website',
                 delivery_method: sale.delivery_method || 'delivery',
                 occasion: sale.occasion || '',
+                delivery_fee: sale.delivery_fee ?? sale.extra_delivery_cost ?? '',
+                courier_payout: sale.courier_payout ?? sale.extra_delivery_cost ?? '',
+                pickup_discount: sale.pickup_discount ?? '',
                 extra_delivery_cost: sale.extra_delivery_cost || null,
                 extra_delivery_reason: sale.extra_delivery_reason || null
             })
@@ -607,14 +636,45 @@ export default function Sales() {
         const comp = productToEditableComposition(product.composition || [])
         setSiteComposition(comp)
         const catalogPrice = Number(product.price || 0)
+        const deliveryFee = formData.delivery_method === 'delivery' ? (formData.delivery_fee !== '' ? formData.delivery_fee : String(defaultDeliveryFee)) : ''
+        const pickupDiscount = formData.delivery_method === 'pickup' ? (formData.pickup_discount !== '' ? formData.pickup_discount : String(defaultPickupDiscount)) : ''
+        const productBase = Math.max(0, catalogPrice - defaultDeliveryFee)
+        const nextPrice = formData.delivery_method === 'delivery'
+            ? productBase + parseMoney(deliveryFee)
+            : Math.max(0, catalogPrice - parseMoney(pickupDiscount))
         setFormData({
             ...formData,
             product_id: product.id,
-            sale_price: String(catalogPrice + Number(formData.extra_delivery_cost || 0))
+            delivery_fee: deliveryFee,
+            courier_payout: formData.delivery_method === 'delivery' ? (formData.courier_payout !== '' ? formData.courier_payout : deliveryFee) : '',
+            pickup_discount: pickupDiscount,
+            extra_delivery_cost: formData.delivery_method === 'delivery' ? deliveryFee : null,
+            sale_price: String(nextPrice)
         })
         setProductSearch(product.name)
         setSiteSaleMode('catalog')
         setSiteCustomName('')
+    }
+
+    const switchDeliveryMethod = (method) => {
+        const deliveryFee = method === 'delivery' ? (formData.delivery_fee !== '' ? formData.delivery_fee : String(defaultDeliveryFee)) : ''
+        const pickupDiscount = method === 'pickup' ? (formData.pickup_discount !== '' ? formData.pickup_discount : String(defaultPickupDiscount)) : ''
+        const basePrice = siteSaleMode === 'custom'
+            ? calculateSiteCompositionPrice(siteComposition)
+            : (selectedProduct ? Math.max(0, Number(selectedProduct.price || 0) - defaultDeliveryFee) : 0)
+        const nextPrice = method === 'delivery'
+            ? basePrice + parseMoney(deliveryFee)
+            : (selectedProduct ? Math.max(0, Number(selectedProduct.price || 0) - parseMoney(pickupDiscount)) : basePrice)
+
+        setFormData({
+            ...formData,
+            delivery_method: method,
+            delivery_fee: deliveryFee,
+            courier_payout: method === 'delivery' ? (formData.courier_payout !== '' ? formData.courier_payout : deliveryFee) : '',
+            pickup_discount: pickupDiscount,
+            extra_delivery_cost: method === 'delivery' ? deliveryFee : null,
+            sale_price: String(nextPrice)
+        })
     }
 
     const handleAddCourier = async () => {
@@ -653,7 +713,9 @@ export default function Sales() {
 
         setLoading(true)
         const salePrice = Number(formData.sale_price) || calculatedSalePrice
-        const hasExtraDelivery = formData.delivery_method === 'delivery' && formData.extra_delivery_cost != null
+        const deliveryFee = formData.delivery_method === 'delivery' ? currentDeliveryFee : 0
+        const courierPayout = formData.delivery_method === 'delivery' ? currentCourierPayout : 0
+        const pickupDiscount = formData.delivery_method === 'pickup' ? currentPickupDiscount : 0
         const payload = {
             ...formData,
             product_id: isCustomSiteSale ? '' : formData.product_id,
@@ -665,8 +727,11 @@ export default function Sales() {
             cost_price: costPrice,
             profit: salePrice - costPrice,
             custom_composition: siteComposition.length > 0 ? siteComposition : undefined,
-            extra_delivery_cost: hasExtraDelivery ? Number(formData.extra_delivery_cost || 0) : null,
-            extra_delivery_reason: hasExtraDelivery ? (formData.extra_delivery_reason || null) : null
+            delivery_fee: deliveryFee,
+            courier_payout: courierPayout,
+            pickup_discount: pickupDiscount,
+            extra_delivery_cost: formData.delivery_method === 'delivery' ? deliveryFee : null,
+            extra_delivery_reason: formData.delivery_method === 'delivery' ? (formData.extra_delivery_reason || null) : null
         }
 
         // Clean up delivery data if pickup
@@ -1552,9 +1617,8 @@ export default function Sales() {
                                                     const val = e.target.value
                                                     const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: val } : c)
                                                     setSiteComposition(newComp)
-                                                    const base = newComp.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
-                                                    const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
-                                                    setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
+                                                    const withMarkup = calculateSiteCompositionPrice(newComp)
+                                                    setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
                                                 }} onBlur={(e) => {
                                                     const parsed = Number(e.target.value)
                                                     if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -1567,9 +1631,8 @@ export default function Sales() {
                                                     const newComp = siteComposition.filter((_, i) => i !== idx)
                                                     setSiteComposition(newComp)
                                                     if (newComp.length > 0) {
-                                                        const base = newComp.reduce((s, i) => s + (i.price * i.quantity), 0) + Number(settings.deliveryCost || 0)
-                                                        const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
-                                                        setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
+                                                        const withMarkup = calculateSiteCompositionPrice(newComp)
+                                                        setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
                                                     } else setFormData({ ...formData, sale_price: '' })
                                                 }} style={{ padding: '0.25rem', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Trash2 size={14} /></button>
                                             </div>
@@ -1585,9 +1648,8 @@ export default function Sales() {
                                                     const ex = siteComposition.findIndex(c => c.type === 'flower' && c.item_id === flower.id)
                                                     const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: Number(c.quantity || 0) + 1 } : c) : [...siteComposition, { type: 'flower', item_id: flower.id, name: flower.name, quantity: 1, cost: flower.cost || 0, price: flower.price || 0 }]
                                                     setSiteComposition(newComp)
-                                                    const base = newComp.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
-                                                    const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
-                                                    setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
+                                                    const withMarkup = calculateSiteCompositionPrice(newComp)
+                                                    setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
                                                     setSiteItemSearch(''); setShowSiteItemDropdown(false)
                                                 }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>🌸 {flower.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{flower.price} L</span></div>
                                             ))}
@@ -1596,11 +1658,8 @@ export default function Sales() {
                                                     const ex = siteComposition.findIndex(c => c.type === 'good' && c.item_id === good.id)
                                                     const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: Number(c.quantity || 0) + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
                                                     setSiteComposition(newComp)
-                                                    const base = newComp.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0) + Number(settings.deliveryCost || 0)
-                                                    // Markup applies to (Materials + SettingsDelivery)
-                                                    // Extra Delivery is added AFTER markup
-                                                    const withMarkup = Math.round((base + base * ((settings.markupPercentage || 0) / 100)) / 10) * 10
-                                                    setFormData({ ...formData, sale_price: String(withMarkup + Number(formData.extra_delivery_cost || 0)) })
+                                                    const withMarkup = calculateSiteCompositionPrice(newComp)
+                                                    setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
                                                     setSiteItemSearch(''); setShowSiteItemDropdown(false)
                                                 }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>📦 {good.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{good.price} L</span></div>
                                             ))}
@@ -1696,11 +1755,11 @@ export default function Sales() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                             <h4 style={{ margin: 0, fontWeight: 700, color: '#1e40af' }}>🚚 Доставка</h4>
                             <div style={{ display: 'flex', background: 'white', borderRadius: '8px', padding: '2px', border: '1px solid #dbeafe' }}>
-                                <button type="button" onClick={() => setFormData({ ...formData, delivery_method: 'delivery' })}
+                                <button type="button" onClick={() => switchDeliveryMethod('delivery')}
                                     style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: 'none', background: formData.delivery_method === 'delivery' ? '#3b82f6' : 'transparent', color: formData.delivery_method === 'delivery' ? 'white' : '#6b7280', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
                                     Доставка
                                 </button>
-                                <button type="button" onClick={() => setFormData({ ...formData, delivery_method: 'pickup' })}
+                                <button type="button" onClick={() => switchDeliveryMethod('pickup')}
                                     style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: 'none', background: formData.delivery_method === 'pickup' ? '#10b981' : 'transparent', color: formData.delivery_method === 'pickup' ? 'white' : '#6b7280', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
                                     Самовывоз
                                 </button>
@@ -1731,7 +1790,7 @@ export default function Sales() {
                                     </select>
                                 </div>
 
-                                {formData.delivery_method === 'delivery' && (
+                                {false && formData.delivery_method === 'delivery' && (
                                     <div>
                                         {/* Compact Toggle */}
                                         <div style={{
@@ -1787,7 +1846,7 @@ export default function Sales() {
                             </div>
 
                             {/* Extra Delivery Inputs (Row below) */}
-                            {formData.delivery_method === 'delivery' && formData.extra_delivery_cost != null && (
+                            {false && formData.delivery_method === 'delivery' && formData.extra_delivery_cost != null && (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(100px, 1fr) 2fr', gap: '0.5rem', marginTop: '0.5rem', animation: 'fadeIn 0.2s ease-out' }}>
                                     <div>
                                         <input
@@ -1819,6 +1878,61 @@ export default function Sales() {
                                             style={{ height: '38px', padding: '0.5rem', fontSize: '0.9rem' }}
                                         />
                                     </div>
+                                </div>
+                            )}
+
+                            {formData.delivery_method === 'delivery' && (
+                                <>
+                                    <div>
+                                        <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Доставка в чеке (lei)</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={formData.delivery_fee}
+                                            onChange={(e) => {
+                                                const val = e.target.value
+                                                const oldFee = parseMoney(formData.delivery_fee)
+                                                const newFee = parseMoney(val)
+                                                const currentPrice = Number(formData.sale_price || calculatedSalePrice)
+                                                setFormData({
+                                                    ...formData,
+                                                    delivery_fee: val,
+                                                    extra_delivery_cost: val,
+                                                    sale_price: String(Math.max(0, currentPrice - oldFee + newFee))
+                                                })
+                                            }}
+                                            placeholder={String(defaultDeliveryFee)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Курьеру к выплате (lei)</label>
+                                        <input
+                                            type="number"
+                                            className="input"
+                                            value={formData.courier_payout}
+                                            onChange={(e) => setFormData({ ...formData, courier_payout: e.target.value })}
+                                            placeholder={String(defaultDeliveryFee)}
+                                        />
+                                    </div>
+                                </>
+                            )}
+
+                            {formData.delivery_method === 'pickup' && (
+                                <div>
+                                    <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#047857' }}>Скидка самовывоза (lei)</label>
+                                    <input
+                                        type="number"
+                                        className="input"
+                                        value={formData.pickup_discount}
+                                        onChange={(e) => {
+                                            const val = e.target.value
+                                            const oldDiscount = parseMoney(formData.pickup_discount)
+                                            const newDiscount = parseMoney(val)
+                                            const currentPrice = Number(formData.sale_price || calculatedSalePrice)
+                                            setFormData({ ...formData, pickup_discount: val, sale_price: String(Math.max(0, currentPrice + oldDiscount - newDiscount)) })
+                                        }}
+                                        placeholder={String(defaultPickupDiscount)}
+                                    />
                                 </div>
                             )}
 
@@ -2835,7 +2949,9 @@ export default function Sales() {
                                 onChange={(e) => setSalonFormData({
                                     ...salonFormData,
                                     needs_delivery: e.target.checked,
-                                    extra_delivery_cost: e.target.checked ? salonFormData.extra_delivery_cost : null,
+                                    delivery_fee: e.target.checked ? (salonFormData.delivery_fee || String(defaultDeliveryFee)) : '',
+                                    courier_payout: e.target.checked ? (salonFormData.courier_payout || salonFormData.delivery_fee || String(defaultDeliveryFee)) : '',
+                                    extra_delivery_cost: e.target.checked ? (salonFormData.delivery_fee || String(defaultDeliveryFee)) : null,
                                     extra_delivery_reason: e.target.checked ? salonFormData.extra_delivery_reason : ''
                                 })}
                                 style={{ width: '20px', height: '20px', accentColor: '#f59e0b' }}
@@ -2845,6 +2961,32 @@ export default function Sales() {
 
                         {salonFormData.needs_delivery && (
                             <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Доставка в чеке (lei)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        value={salonFormData.delivery_fee}
+                                        onChange={(e) => setSalonFormData({ ...salonFormData, delivery_fee: e.target.value, extra_delivery_cost: e.target.value })}
+                                        className="input"
+                                        placeholder={defaultDeliveryFee}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Курьеру к выплате (lei)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        value={salonFormData.courier_payout}
+                                        onChange={(e) => setSalonFormData({ ...salonFormData, courier_payout: e.target.value })}
+                                        className="input"
+                                        placeholder={salonFormData.delivery_fee || defaultDeliveryFee}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
                                 <div>
                                     <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Дата и время доставки</label>
                                     <input
@@ -2889,7 +3031,7 @@ export default function Sales() {
                                         {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                                     </select>
                                 </div>
-                                <div style={{
+                                {false && <div style={{
                                     gridColumn: isMobile ? '1' : '1 / -1',
                                     display: 'grid',
                                     gridTemplateColumns: isMobile ? '1fr' : 'minmax(220px, 0.8fr) minmax(120px, 0.6fr) minmax(240px, 1fr)',
@@ -2954,7 +3096,7 @@ export default function Sales() {
                                         onChange={(e) => setSalonFormData({ ...salonFormData, extra_delivery_reason: e.target.value })}
                                         style={{ height: '44px', opacity: salonFormData.extra_delivery_cost === null ? 0.55 : 1 }}
                                     />
-                                </div>
+                                </div>}
                             </div>
                         )}
                     </div>
@@ -2983,12 +3125,11 @@ export default function Sales() {
                             onClick={async () => {
                                 setLoading(true)
                                 try {
-                                    const extraDeliveryCost = salonFormData.needs_delivery && salonFormData.extra_delivery_cost !== null
-                                        ? Number(salonFormData.extra_delivery_cost || 0)
-                                        : 0
-                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0) + extraDeliveryCost
+                                    const deliveryFee = salonFormData.needs_delivery ? parseMoney(salonFormData.delivery_fee !== '' ? salonFormData.delivery_fee : defaultDeliveryFee) : 0
+                                    const courierPayout = salonFormData.needs_delivery ? parseMoney(salonFormData.courier_payout !== '' ? salonFormData.courier_payout : deliveryFee) : 0
+                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0) + courierPayout
                                     const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
-                                    const salePrice = (selectedShowcaseId ? Number(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + extraDeliveryCost
+                                    const salePrice = (selectedShowcaseId ? Number(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + deliveryFee
 
                                     // Create/Update sale record
                                     const saleData = {
@@ -3006,8 +3147,11 @@ export default function Sales() {
                                         delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
                                         delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
-                                        extra_delivery_cost: salonFormData.needs_delivery && salonFormData.extra_delivery_cost !== null ? extraDeliveryCost : null,
-                                        extra_delivery_reason: salonFormData.needs_delivery && salonFormData.extra_delivery_cost !== null ? (salonFormData.extra_delivery_reason || null) : null,
+                                        delivery_fee: deliveryFee,
+                                        courier_payout: courierPayout,
+                                        pickup_discount: 0,
+                                        extra_delivery_cost: salonFormData.needs_delivery ? deliveryFee : null,
+                                        extra_delivery_reason: salonFormData.needs_delivery ? (salonFormData.extra_delivery_reason || null) : null,
                                         project: 'flowerbox',
                                         sales_channel: 'store',
                                         profit: salePrice - costPrice,
