@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown } from 'lucide-react'
+import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
@@ -17,6 +17,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [formData, setFormData] = useState({ name: '', price: '', category: '', cost: '', markup: 2 })
     const [searchQuery, setSearchQuery] = useState('')
     const [sortMode, setSortMode] = useState('name_asc')
+    const [page, setPage] = useState(1)
     const costValue = parseFloat(formData.cost) || 0
     const priceValue = parseFloat(formData.price) || 0
     const profitValue = priceValue - costValue
@@ -51,12 +52,54 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         })
     }, [items, searchQuery, sortMode])
 
+    const pageSize = 50
+    const totalPages = Math.max(1, Math.ceil(visibleItems.length / pageSize))
+    const paginatedItems = visibleItems.slice((page - 1) * pageSize, page * pageSize)
+
+    useEffect(() => {
+        setPage(1)
+    }, [searchQuery, sortMode, mode])
+
+    useEffect(() => {
+        if (page > totalPages) setPage(totalPages)
+    }, [page, totalPages])
+
     const totalLabel = isFlowers
         ? `${items.length} видов цветов`
         : `${items.length} товаров`
     const shownLabel = searchQuery.trim()
         ? `Найдено: ${visibleItems.length}`
         : 'Показаны все'
+
+    const Pagination = () => {
+        if (visibleItems.length <= pageSize) return null
+        const start = (page - 1) * pageSize + 1
+        const end = Math.min(page * pageSize, visibleItems.length)
+        return (
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.75rem',
+                flexWrap: 'wrap',
+                marginTop: '1rem',
+                padding: isMobile ? '0 0.25rem 5.5rem' : '0'
+            }}>
+                <div style={{ color: '#94a3b8', fontWeight: 800, fontSize: '0.9rem' }}>
+                    {start}-{end} из {visibleItems.length}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button className="btn" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>
+                        <ChevronLeft size={16} /> Назад
+                    </button>
+                    <span style={{ minWidth: 72, textAlign: 'center', fontWeight: 900, color: '#475569' }}>{page} / {totalPages}</span>
+                    <button className="btn" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>
+                        Вперед <ChevronRight size={16} />
+                    </button>
+                </div>
+            </div>
+        )
+    }
 
     const openAddModal = () => {
         setModalMode('add')
@@ -180,7 +223,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             {isMobile ? (
                 // Mobile Card View - Compact
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {visibleItems.map(item => {
+                    {paginatedItems.map(item => {
                         const isPublished = item.is_published !== false
                         return (
                             <div key={item.id} className="card" style={{
@@ -229,7 +272,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             </tr>
                         </thead>
                         <tbody>
-                            {visibleItems.map(item => {
+                            {paginatedItems.map(item => {
                                 const isPublished = item.is_published !== false
                                 return (
                                     <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
@@ -260,6 +303,8 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                     </table>
                 </div>
             )}
+
+            <Pagination />
 
             <Modal
                 isOpen={isModalOpen}
