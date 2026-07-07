@@ -1178,11 +1178,20 @@ export function StoreProvider({ children }) {
     const startShift = async (employeeId, openingCash = 0) => {
         const now = new Date().toISOString()
         const dateStr = toDateStr(new Date())
+        const existingActive = shifts.find(s =>
+            s.employee_id === employeeId &&
+            (s.shift_date || '').split('T')[0] === dateStr &&
+            !s.end_time
+        )
+        if (existingActive) {
+            return { success: true, data: existingActive, alreadyActive: true }
+        }
         const { data, error } = await supabase.from('shifts').upsert({
             employee_id: employeeId,
             shift_date: dateStr,
             shift_type: 'day',
             start_time: now,
+            end_time: null,
             opening_cash: Number(openingCash) || 0,
             status: 'active'
         }, { onConflict: 'employee_id,shift_date' }).select()
@@ -1207,7 +1216,24 @@ export function StoreProvider({ children }) {
     }
 
     const getActiveShifts = () => {
-        return shifts.filter(s => !s.end_time)
+        const todayStr = toDateStr(new Date())
+        const activeToday = shifts
+            .filter(s =>
+                !s.end_time &&
+                (s.status || 'active') !== 'completed' &&
+                (s.shift_date || '').split('T')[0] === todayStr
+            )
+            .sort((a, b) => new Date(a.start_time || 0) - new Date(b.start_time || 0))
+
+        const byEmployee = new Map()
+        activeToday.forEach(shift => {
+            const current = byEmployee.get(shift.employee_id)
+            if (!current || new Date(shift.start_time || 0) > new Date(current.start_time || 0)) {
+                byEmployee.set(shift.employee_id, shift)
+            }
+        })
+
+        return Array.from(byEmployee.values())
     }
 
     const getCashBalance = () => {

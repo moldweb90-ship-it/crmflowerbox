@@ -614,17 +614,22 @@ export default function Dashboard() {
     const [startForm, setStartForm] = useState({ floristId: '', openingCash: '' })
     const [endFormClosingCash, setEndFormClosingCash] = useState('')
     const [shiftLoading, setShiftLoading] = useState(false)
-    const [elapsedSeconds, setElapsedSeconds] = useState(0)
+    const [elapsedSeconds, setElapsedSeconds] = useState(Date.now())
 
     useEffect(() => {
         const active = getActiveShifts()
         if (active.length === 0) return
-        const start = active[0]?.start_time ? new Date(active[0].start_time).getTime() : 0
-        const tick = () => setElapsedSeconds(Math.floor((Date.now() - start) / 1000))
+        const tick = () => setElapsedSeconds(Date.now())
         tick()
         const id = setInterval(tick, 1000)
         return () => clearInterval(id)
     }, [shifts])
+
+    const getShiftElapsedSeconds = (shift) => {
+        const start = shift?.start_time ? new Date(shift.start_time).getTime() : Date.now()
+        if (!start || Number.isNaN(start)) return 0
+        return Math.max(0, Math.floor((elapsedSeconds - start) / 1000))
+    }
 
     const handleStartShift = async () => {
         if (!startForm.floristId) return
@@ -741,15 +746,24 @@ export default function Dashboard() {
                             </div>
                         </div>
                     ) : (
-                        <div style={{
-                            padding: '0.75rem 1rem', background: 'white',
-                            border: '1px solid #e5e7eb', borderRadius: '16px', display: 'flex',
-                            alignItems: 'center', gap: '1rem', boxShadow: 'var(--shadow-sm)'
+                        <div className="custom-scrollbar" style={{
+                            padding: '0.7rem', background: 'white',
+                            border: '1px solid #e5e7eb', borderRadius: '18px', display: 'flex',
+                            alignItems: 'stretch', gap: '0.65rem', boxShadow: 'var(--shadow-sm)',
+                            overflowX: activeShifts.length > 1 ? 'auto' : 'visible',
+                            maxWidth: '100%'
                         }}>
                             {activeShifts.map(shift => {
                                 const emp = employees.find(e => e.id === shift.employee_id)
                                 return (
-                                    <div key={shift.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                                    <div key={shift.id} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.75rem',
+                                        flex: activeShifts.length > 1 ? '0 0 220px' : '1 1 auto',
+                                        minWidth: activeShifts.length > 1 ? 220 : 0,
+                                        padding: activeShifts.length > 1 ? '0.35rem 0.45rem' : 0
+                                    }}>
                                         {/* Avatar / Photo */}
                                         <div style={{
                                             width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden',
@@ -759,14 +773,14 @@ export default function Dashboard() {
                                         </div>
 
                                         {/* Info */}
-                                        <div style={{ flex: 1 }}>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '50%', display: 'inline-block' }}></span>
                                                 Работает
                                             </div>
-                                            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827', lineHeight: 1.2 }}>{emp?.name || 'Флорист'}</div>
+                                            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{emp?.name || 'Флорист'}</div>
                                             <div style={{ fontSize: '0.85rem', color: '#059669', marginTop: '2px', fontWeight: 600 }}>
-                                                {formatTimer(elapsedSeconds)}
+                                                {formatTimer(getShiftElapsedSeconds(shift))}
                                             </div>
                                         </div>
 
