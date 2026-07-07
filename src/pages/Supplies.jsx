@@ -51,6 +51,8 @@ export default function Supplies() {
     // Draft Item State
     const [itemType, setItemType] = useState('flower') // 'flower' | 'good'
     const [currentItem, setCurrentItem] = useState({ id: '', quantity: '', unitCost: '' })
+    const [itemSearch, setItemSearch] = useState('')
+    const [isItemDropdownOpen, setIsItemDropdownOpen] = useState(false)
 
     // --- Filters & Analytics State ---
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'month' }) // presets: 'week', 'month', '30days', 'custom', 'all'
@@ -128,6 +130,8 @@ export default function Supplies() {
         }])
 
         setCurrentItem({ id: '', quantity: '', unitCost: '' })
+        setItemSearch('')
+        setIsItemDropdownOpen(false)
     }
 
     const handleRemoveItem = (index) => {
@@ -171,6 +175,8 @@ export default function Supplies() {
             setSupplyItems([])
             setUpdateCatalogPrices(true)
             setCurrentItem({ id: '', quantity: '', unitCost: '' })
+            setItemSearch('')
+            setIsItemDropdownOpen(false)
             setEditingSupplyId(null)
         } else {
             alert('Ошибка при сохранении поставки: ' + (result.error?.message || ''))
@@ -221,10 +227,18 @@ export default function Supplies() {
         setSupplyItems([])
         setUpdateCatalogPrices(true)
         setCurrentItem({ id: '', quantity: '', unitCost: '' })
+        setItemSearch('')
+        setIsItemDropdownOpen(false)
         setIsModalOpen(true)
     }
 
     // Modal Totals Calculation
+    const availableSupplyItems = itemType === 'flower' ? flowers : goods
+    const selectedCurrentItem = availableSupplyItems.find(item => item.id === currentItem.id)
+    const filteredSupplyItems = availableSupplyItems.filter(item =>
+        item.name?.toLowerCase().includes(itemSearch.trim().toLowerCase())
+    )
+
     const currentItemSum = (Number(currentItem.quantity) || 0) * (Number(currentItem.unitCost) || 0)
     // Add current item to calculations if valid
     const allItems = [...supplyItems]
@@ -767,7 +781,12 @@ export default function Supplies() {
                             {/* Type Switcher Tabs */}
                             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                                 <button
-                                    onClick={() => setItemType('flower')}
+                                    onClick={() => {
+                                        setItemType('flower')
+                                        setCurrentItem({ ...currentItem, id: '' })
+                                        setItemSearch('')
+                                        setIsItemDropdownOpen(false)
+                                    }}
                                     style={{
                                         flex: 1,
                                         padding: '0.5rem',
@@ -786,7 +805,12 @@ export default function Supplies() {
                                     <Flower size={16} /> Цветы
                                 </button>
                                 <button
-                                    onClick={() => setItemType('good')}
+                                    onClick={() => {
+                                        setItemType('good')
+                                        setCurrentItem({ ...currentItem, id: '' })
+                                        setItemSearch('')
+                                        setIsItemDropdownOpen(false)
+                                    }}
                                     style={{
                                         flex: 1,
                                         padding: '0.5rem',
@@ -806,17 +830,99 @@ export default function Supplies() {
                                 </button>
                             </div>
 
-                            <select
-                                className="input"
-                                value={currentItem.id}
-                                onChange={e => setCurrentItem({ ...currentItem, id: e.target.value })}
-                                style={{ padding: '0.75rem' }}
-                            >
-                                <option value="">{itemType === 'flower' ? 'Выберите цветок...' : 'Выберите товар...'}</option>
-                                {(itemType === 'flower' ? flowers : goods).map(f => (
-                                    <option key={f.id} value={f.id}>{f.name}</option>
-                                ))}
-                            </select>
+                            <div style={{ position: 'relative' }}>
+                                <button
+                                    type="button"
+                                    className="input"
+                                    onClick={() => {
+                                        setIsItemDropdownOpen(!isItemDropdownOpen)
+                                        setItemSearch('')
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.75rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        textAlign: 'left',
+                                        background: '#fff',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <span style={{ color: selectedCurrentItem ? '#111827' : 'var(--text-muted)' }}>
+                                        {selectedCurrentItem?.name || (itemType === 'flower' ? 'Выберите цветок...' : 'Выберите товар...')}
+                                    </span>
+                                    <ChevronDown size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                                </button>
+
+                                {isItemDropdownOpen && (
+                                    <>
+                                        <div
+                                            onClick={() => setIsItemDropdownOpen(false)}
+                                            style={{ position: 'fixed', inset: 0, zIndex: 70 }}
+                                        />
+                                        <div style={{
+                                            position: 'absolute',
+                                            left: 0,
+                                            right: 0,
+                                            top: 'calc(100% + 8px)',
+                                            zIndex: 80,
+                                            background: '#fff',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: 16,
+                                            boxShadow: '0 18px 45px rgba(15,23,42,0.16)',
+                                            overflow: 'hidden'
+                                        }}>
+                                            <div style={{ padding: '0.65rem', borderBottom: '1px solid var(--border)' }}>
+                                                <input
+                                                    autoFocus
+                                                    className="input"
+                                                    placeholder={itemType === 'flower' ? 'Поиск цветка...' : 'Поиск товара...'}
+                                                    value={itemSearch}
+                                                    onChange={e => setItemSearch(e.target.value)}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Escape') setIsItemDropdownOpen(false)
+                                                    }}
+                                                    style={{ padding: '0.65rem 0.75rem', width: '100%' }}
+                                                />
+                                            </div>
+                                            <div style={{ maxHeight: 280, overflowY: 'auto', padding: '0.35rem' }}>
+                                                {filteredSupplyItems.length === 0 ? (
+                                                    <div style={{ padding: '0.9rem', color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>
+                                                        Ничего не найдено
+                                                    </div>
+                                                ) : (
+                                                    filteredSupplyItems.map(item => (
+                                                        <button
+                                                            key={item.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setCurrentItem({ ...currentItem, id: item.id })
+                                                                setItemSearch('')
+                                                                setIsItemDropdownOpen(false)
+                                                            }}
+                                                            style={{
+                                                                width: '100%',
+                                                                border: 'none',
+                                                                background: currentItem.id === item.id ? '#fff1ed' : 'transparent',
+                                                                color: '#111827',
+                                                                padding: '0.7rem 0.8rem',
+                                                                borderRadius: 10,
+                                                                textAlign: 'left',
+                                                                cursor: 'pointer',
+                                                                fontSize: '0.95rem',
+                                                                fontWeight: currentItem.id === item.id ? 850 : 600
+                                                            }}
+                                                        >
+                                                            {item.name}
+                                                        </button>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                 <input
