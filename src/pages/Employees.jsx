@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useStore } from '../context/StoreContext'
-import { Users, Calendar, DollarSign, Plus, Edit2, ChevronLeft, ChevronRight, Phone, Trash2, Search, Upload, Banknote, Gift, Wallet, List, RotateCcw, Clock } from 'lucide-react'
+import { Users, Calendar, DollarSign, Plus, Edit2, ChevronLeft, ChevronRight, Phone, Trash2, Search, Upload, Banknote, Gift, Wallet, List, RotateCcw, Clock, MapPin, Truck, PackageCheck } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 
 const ROLES = [
@@ -30,6 +30,7 @@ export default function Employees() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingEmployee, setEditingEmployee] = useState(null)
     const [historyModal, setHistoryModal] = useState(null)
+    const [courierHistoryModal, setCourierHistoryModal] = useState(null)
     const [scheduleMonth, setScheduleMonth] = useState(new Date())
     const [payrollDateStart, setPayrollDateStart] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10) })
     const [payrollDateEnd, setPayrollDateEnd] = useState(() => { const d = new Date(); return d.toISOString().slice(0, 10) })
@@ -44,12 +45,18 @@ export default function Employees() {
     const [searchFilter, setSearchFilter] = useState('')
     const [levelFilter, setLevelFilter] = useState('')
     const [sortBy, setSortBy] = useState('name') // name | salary | level
+    const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7))
+    const [historyPage, setHistoryPage] = useState(1)
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768)
         window.addEventListener('resize', handleResize)
         return () => window.removeEventListener('resize', handleResize)
     }, [])
+
+    useEffect(() => {
+        setHistoryPage(1)
+    }, [historyModal, courierHistoryModal, historyMonth])
 
     const activeEmployees = useMemo(() => employees.filter(e => e.is_active !== false), [employees])
 
@@ -207,6 +214,55 @@ export default function Employees() {
         } else {
             await addShift(empId, key, 'day')
         }
+    }
+
+    const formatMoney = (value) => `${Number(value || 0).toLocaleString('ru-RU')} lei`
+    const formatDeliveryDate = (value) => {
+        if (!value) return '—'
+        const d = new Date(value)
+        if (Number.isNaN(d.getTime())) return '—'
+        return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    }
+    const statusLabel = (status) => ({
+        delivered: 'Доставлен',
+        not_delivered: 'Ждет доставки',
+        delivering: 'В пути',
+        postponed: 'Перенесен',
+        returned: 'Возврат',
+        cancelled: 'Отменен'
+    }[status] || 'Ждет доставки')
+    const statusColor = (status) => ({
+        delivered: { bg: '#dcfce7', color: '#16a34a' },
+        delivering: { bg: '#ffedd5', color: '#ea580c' },
+        postponed: { bg: '#fef3c7', color: '#d97706' },
+        returned: { bg: '#fee2e2', color: '#dc2626' },
+        cancelled: { bg: '#f1f5f9', color: '#64748b' },
+        not_delivered: { bg: '#e0f2fe', color: '#2563eb' }
+    }[status] || { bg: '#e0f2fe', color: '#2563eb' })
+    const getSaleTitle = (sale) => sale.custom_name || sale.product_name || sale.products?.name || sale.product?.name || 'Заказ'
+    const getCourierDeliveries = (employee) => sales
+        .filter(sale => sale.courier_id === employee.id && (sale.delivery_address || sale.delivery_date || sale.delivery_method === 'delivery'))
+        .sort((a, b) => new Date(b.delivery_date || b.order_date || 0) - new Date(a.delivery_date || a.order_date || 0))
+
+    const selectedCourierDeliveries = useMemo(() => {
+        if (!courierHistoryModal) return []
+        const list = getCourierDeliveries(courierHistoryModal)
+        if (!historyMonth) return list
+        return list.filter(sale => {
+            const d = new Date(sale.delivery_date || sale.order_date || 0)
+            if (Number.isNaN(d.getTime())) return false
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === historyMonth
+        })
+    }, [courierHistoryModal, sales, historyMonth])
+
+    const deliveryPageSize = 10
+    const deliveryPages = Math.max(1, Math.ceil(selectedCourierDeliveries.length / deliveryPageSize))
+    const visibleCourierDeliveries = selectedCourierDeliveries.slice((historyPage - 1) * deliveryPageSize, historyPage * deliveryPageSize)
+    const courierHistoryStats = {
+        total: selectedCourierDeliveries.length,
+        delivered: selectedCourierDeliveries.filter(s => s.delivery_status === 'delivered').length,
+        active: selectedCourierDeliveries.filter(s => !['delivered', 'cancelled', 'returned'].includes(s.delivery_status)).length,
+        revenue: selectedCourierDeliveries.reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
     }
 
     return (
@@ -385,7 +441,12 @@ export default function Employees() {
                                                     {emp.email && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.email}</div>}
                                                 </div>
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); setHistoryModal(emp) }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setHistoryPage(1)
+                                                        if (emp.role === 'courier') setCourierHistoryModal(emp)
+                                                        else setHistoryModal(emp)
+                                                    }}
                                                     style={{
                                                         padding: '6px',
                                                         borderRadius: '8px',
@@ -411,6 +472,91 @@ export default function Employees() {
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* Courier Delivery History Modal */}
+            {courierHistoryModal && (
+                <Modal isOpen onClose={() => setCourierHistoryModal(null)} title={`История доставок: ${courierHistoryModal.name}`} maxWidth="920px">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <div style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 700 }}>
+                                Все доставки, назначенные на этого курьера
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <input className="input" type="month" value={historyMonth} onChange={e => setHistoryMonth(e.target.value)} style={{ width: 160, height: 42 }} />
+                                <button className="btn" onClick={() => setHistoryMonth('')} style={{ height: 42, padding: '0 0.9rem' }}>Все</button>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '0.75rem' }}>
+                            {[
+                                { label: 'Доставок', value: courierHistoryStats.total, icon: <Truck size={18} />, color: '#2563eb', bg: '#eff6ff' },
+                                { label: 'Доставлено', value: courierHistoryStats.delivered, icon: <PackageCheck size={18} />, color: '#16a34a', bg: '#dcfce7' },
+                                { label: 'В работе', value: courierHistoryStats.active, icon: <Clock size={18} />, color: '#ea580c', bg: '#ffedd5' },
+                                { label: 'Сумма', value: formatMoney(courierHistoryStats.revenue), icon: <DollarSign size={18} />, color: '#7c3aed', bg: '#f3e8ff' }
+                            ].map(card => (
+                                <div key={card.label} style={{ background: card.bg, border: `1px solid ${card.color}22`, borderRadius: 18, padding: '1rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: card.color, marginBottom: '0.6rem' }}>
+                                        <span style={{ color: '#64748b', fontSize: '0.78rem', fontWeight: 900, textTransform: 'uppercase' }}>{card.label}</span>
+                                        {card.icon}
+                                    </div>
+                                    <div style={{ fontWeight: 950, fontSize: '1.35rem', color: '#111827' }}>{card.value}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{ maxHeight: '55vh', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 18, background: '#fff' }}>
+                            {visibleCourierDeliveries.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#94a3b8', fontWeight: 800 }}>Доставок за период нет</div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    {visibleCourierDeliveries.map((sale) => {
+                                        const status = statusColor(sale.delivery_status)
+                                        return (
+                                            <div key={sale.id} style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: isMobile ? '1fr' : '1.05fr 1.2fr 1.7fr 0.8fr 0.8fr',
+                                                gap: '0.75rem',
+                                                alignItems: 'center',
+                                                padding: '1rem',
+                                                borderBottom: '1px solid #f1f5f9'
+                                            }}>
+                                                <div>
+                                                    <div style={{ color: '#94a3b8', fontSize: '0.78rem', fontWeight: 900 }}>#{sale.order_number || sale.id?.slice(0, 8)}</div>
+                                                    <div style={{ fontWeight: 900 }}>{getSaleTitle(sale)}</div>
+                                                </div>
+                                                <div style={{ color: '#475569', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 7 }}>
+                                                    <Clock size={16} color="#64748b" /> {formatDeliveryDate(sale.delivery_date || sale.order_date)}
+                                                </div>
+                                                <div style={{ color: '#475569', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                                                    <MapPin size={16} color="#ef4444" style={{ flexShrink: 0 }} />
+                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap' }}>{sale.delivery_address || 'Адрес не указан'}</span>
+                                                </div>
+                                                <div>
+                                                    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0.35rem 0.65rem', borderRadius: 999, background: status.bg, color: status.color, fontWeight: 900, fontSize: '0.78rem' }}>
+                                                        {statusLabel(sale.delivery_status)}
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontWeight: 950, textAlign: isMobile ? 'left' : 'right' }}>{formatMoney(sale.sale_price)}</div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <div style={{ color: '#94a3b8', fontWeight: 800, fontSize: '0.85rem' }}>
+                                Показано {visibleCourierDeliveries.length} из {selectedCourierDeliveries.length}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <button className="btn" disabled={historyPage <= 1} onClick={() => setHistoryPage(p => Math.max(1, p - 1))}><ChevronLeft size={16} /> Назад</button>
+                                <span style={{ fontWeight: 900, color: '#475569' }}>{historyPage} / {deliveryPages}</span>
+                                <button className="btn" disabled={historyPage >= deliveryPages} onClick={() => setHistoryPage(p => Math.min(deliveryPages, p + 1))}>Вперед <ChevronRight size={16} /></button>
+                            </div>
+                        </div>
+                    </div>
+                </Modal>
             )}
 
             {/* History Modal */}
