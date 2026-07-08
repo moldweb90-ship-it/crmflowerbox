@@ -596,7 +596,7 @@ export default function Products() {
                                     )}
                                 </div>
                                 <div>
-                                    <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Кол-во</label>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontSize: '0.88rem', fontWeight: 600 }}>Кол-во</label>
                                     <QuantityStepper
                                         value={compQty}
                                         onChange={setCompQty}
@@ -623,7 +623,7 @@ export default function Products() {
                                     const unitLabel = comp.type === 'good' ? (item.stock_unit || 'шт') : 'шт'
                                     return (
                                         <div key={idx} style={{ padding: '0.75rem 0.5rem', borderBottom: '1px solid var(--border)' }}>
-                                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 126px 132px 28px', alignItems: 'center', gap: '0.75rem' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 120px 118px 28px', alignItems: 'center', gap: '0.75rem' }}>
                                                 <div>
                                                     <div style={{ fontWeight: 800 }}>{item.name}</div>
                                                     {comp.technique_enabled && (
@@ -650,9 +650,9 @@ export default function Products() {
                                                         onChange={e => updateCompositionLinePrice(idx, e.target.value)}
                                                         placeholder={linePrice.toFixed(0)}
                                                         title="Ручная цена этой позиции в букете"
-                                                        style={{ width: 92, height: 38, textAlign: 'right', fontWeight: 900, padding: '0.45rem 0.6rem' }}
+                                                        style={{ width: 84, height: 40, textAlign: 'right', fontSize: '0.95rem', fontWeight: 400, padding: '0 0.7rem' }}
                                                     />
-                                                    <span style={{ fontWeight: 900 }}>lei</span>
+                                                    <span style={{ color: '#64748b', fontSize: '0.88rem', fontWeight: 500 }}>lei</span>
                                                 </div>
                                                 <button onClick={() => removeItemFromComposition(idx)} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
                                             </div>

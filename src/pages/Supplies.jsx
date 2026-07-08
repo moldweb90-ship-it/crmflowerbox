@@ -978,9 +978,9 @@ export default function Supplies() {
                                 )}
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(150px, 0.85fr) minmax(150px, 1fr)', gap: '0.75rem', alignItems: 'end' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(130px, 0.75fr) minmax(150px, 1fr)', gap: '0.75rem', alignItems: 'end' }}>
                                 <div>
-                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.82rem' }}>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 600, fontSize: '0.88rem' }}>
                                         Кол-во{itemType === 'good' && selectedCurrentItem ? `, ${selectedCurrentItem.purchase_unit || 'шт'}` : ''}
                                     </label>
                                     <QuantityStepper
@@ -992,7 +992,7 @@ export default function Supplies() {
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.82rem' }}>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 600, fontSize: '0.88rem' }}>
                                         Цена{itemType === 'good' && selectedCurrentItem ? ` за ${selectedCurrentItem.purchase_unit || 'шт'}` : ''}
                                     </label>
                                     <input
@@ -1002,7 +1002,7 @@ export default function Supplies() {
                                         placeholder="Цена"
                                         value={currentItem.unitCost}
                                         onChange={e => setCurrentItem({ ...currentItem, unitCost: e.target.value })}
-                                        style={{ padding: '0.75rem' }}
+                                        style={{ height: 40, padding: '0 0.9rem' }}
                                     />
                                 </div>
                             </div>

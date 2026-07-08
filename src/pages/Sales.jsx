@@ -2723,7 +2723,7 @@ export default function Sales() {
                                         />
                                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '92px 88px', gap: '0.5rem', alignItems: 'center' }}>
                                             <div>
-                                                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: '#9ca3af', marginBottom: '0.2rem' }}>Цена/{unitLabel}</label>
+                                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#64748b', marginBottom: '0.25rem' }}>Цена/{unitLabel}</label>
                                                 <input
                                                     type="text"
                                                     inputMode="decimal"
@@ -2738,20 +2738,22 @@ export default function Sales() {
                                                     }}
                                                     style={{
                                                         width: '100%',
-                                                        height: '36px',
+                                                        height: '40px',
                                                         textAlign: 'center',
-                                                        fontWeight: 800,
-                                                        border: '2px solid #e9d5ff',
-                                                        borderRadius: '10px',
-                                                        color: '#7c3aed',
+                                                        fontFamily: 'inherit',
+                                                        fontSize: '0.95rem',
+                                                        fontWeight: 400,
+                                                        border: '1px solid #dbe3ee',
+                                                        borderRadius: '12px',
+                                                        color: '#111827',
                                                         outline: 'none',
-                                                        background: selectedShowcaseId ? '#f3f4f6' : '#faf5ff'
+                                                        background: selectedShowcaseId ? '#f3f4f6' : '#fff'
                                                     }}
-                                                    onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                                                    onBlur={(e) => e.target.style.borderColor = '#e9d5ff'}
+                                                    onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
+                                                    onBlur={(e) => e.target.style.borderColor = '#dbe3ee'}
                                                 />
                                             </div>
-                                            <div style={{ minWidth: '80px', textAlign: isMobile ? 'left' : 'right', fontWeight: 800, color: '#7c3aed' }}>
+                                            <div style={{ minWidth: '80px', textAlign: isMobile ? 'left' : 'right', fontSize: '0.95rem', fontWeight: 500, color: '#64748b' }}>
                                                 {(parseDecimal(item.price) * parseDecimal(item.quantity)).toFixed(0)} lei
                                             </div>
                                         </div>

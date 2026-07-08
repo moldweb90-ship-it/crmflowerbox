@@ -122,7 +122,17 @@ a {
   outline: none;
   background-color: #F9FAFB;
   /* Slight grey background for inputs */
+  color: #111827;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.2;
   transition: all 0.2s;
+}
+
+.input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
 }
 
 .input:focus {
@@ -272,7 +282,7 @@ tr:last-child td {
   position: relative;
   display: inline-flex;
   align-items: center;
-  width: 86px;
+  width: 82px;
   max-width: 100%;
 }
 
@@ -284,18 +294,20 @@ tr:last-child td {
   border: 1px solid #dbe3ee;
   border-radius: 12px;
   background: #fff;
-  color: #0f172a;
-  font-size: 1rem;
-  font-weight: 500;
+  color: #111827;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.2;
   text-align: left;
   outline: none;
-  padding: 0 1.55rem 0 0.72rem;
+  padding: 0 1.48rem 0 0.72rem;
   transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .qty-stepper-input::placeholder {
   color: #94a3b8;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .qty-stepper-input:focus {
@@ -306,7 +318,7 @@ tr:last-child td {
 .qty-stepper-arrows {
   position: absolute;
   top: 50%;
-  right: 0.48rem;
+  right: 0.44rem;
   display: inline-flex;
   flex-direction: column;
   gap: 2px;
@@ -359,7 +371,7 @@ tr:last-child td {
 .qty-stepper-unit {
   min-width: 0;
   color: #64748b;
-  font-weight: 700;
-  font-size: 0.86rem;
+  font-weight: 500;
+  font-size: 0.88rem;
   white-space: nowrap;
 }
