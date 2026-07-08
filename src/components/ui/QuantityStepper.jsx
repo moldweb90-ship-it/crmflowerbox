@@ -8,7 +8,7 @@ const parseAmount = (value, fallback = 0) => {
 
 const formatAmount = (value, preferComma = true) => {
     const rounded = Math.round((value + Number.EPSILON) * 1000) / 1000
-    const text = String(rounded).replace(/\.?0+$/, '')
+    const text = String(rounded).replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
     return preferComma ? text.replace('.', ',') : text
 }
 
