@@ -265,18 +265,19 @@ export default function Products() {
         if (!selectedItem) return
 
         const correctId = selectedItem.id
+        const quantityToAdd = Number(String(compQty || 0).replace(',', '.')) || 0
 
         const existing = formData.composition.find(i => i.id === correctId && i.type === compType && !i.technique_enabled)
 
         if (existing) {
             setFormData({
                 ...formData,
-                composition: formData.composition.map(i => i.id === correctId && i.type === compType && !i.technique_enabled ? { ...i, qty: i.qty + parseFloat(compQty) } : i)
+                composition: formData.composition.map(i => i.id === correctId && i.type === compType && !i.technique_enabled ? { ...i, qty: (Number(String(i.qty || 0).replace(',', '.')) || 0) + quantityToAdd } : i)
             })
         } else {
             setFormData({
                 ...formData,
-                composition: [...formData.composition, { type: compType, id: correctId, qty: parseFloat(compQty) }]
+                composition: [...formData.composition, { type: compType, id: correctId, qty: quantityToAdd }]
             })
         }
         setCompId('')
@@ -299,6 +300,11 @@ export default function Products() {
             : value
     }
 
+    const parseCompositionNumber = (value, fallback = 0) => {
+        const parsed = Number(String(value ?? '').replace(',', '.'))
+        return Number.isFinite(parsed) ? parsed : fallback
+    }
+
     const getCompositionSaleUnitPrice = (comp, catalogUnitPrice) => {
         const override = Number(comp?.price_override)
         if (comp?.price_override !== undefined && comp?.price_override !== '' && Number.isFinite(override) && override >= 0) {
@@ -316,7 +322,7 @@ export default function Products() {
                 if (i !== index) return item
                 if (value === '') return { ...item, price_override: '' }
                 const linePrice = Number(normalized)
-                const qty = Number(item.qty || 0)
+                const qty = parseCompositionNumber(item.qty)
                 if (!Number.isFinite(linePrice) || linePrice < 0 || qty <= 0) return item
                 return { ...item, price_override: linePrice / qty }
             })
@@ -345,7 +351,8 @@ export default function Products() {
     }
 
     const updateCompositionQty = (index, value) => {
-        const nextQty = value === '' ? '' : Math.max(0, parseFloat(value) || 0)
+        const parsed = Number(String(value).replace(',', '.'))
+        const nextQty = value === '' ? '' : Math.max(0, Number.isFinite(parsed) ? parsed : 0)
         setFormData({
             ...formData,
             composition: formData.composition.map((item, i) => i === index ? { ...item, qty: nextQty } : item)
@@ -356,7 +363,7 @@ export default function Products() {
         // Clean composition: remove items that no longer exist in flowers/goods
         const cleanedComposition = formData.composition.map(c => ({
             ...c,
-            qty: Number(c.qty) || 0,
+            qty: Number(String(c.qty).replace(',', '.')) || 0,
             technique_enabled: Boolean(c.technique_enabled),
             technique_name: c.technique_enabled ? (c.technique_name || '') : undefined,
             technique_mode: c.technique_enabled ? (c.technique_mode || 'fixed') : undefined,
@@ -590,10 +597,9 @@ export default function Products() {
                                 <div>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Кол-во</label>
                                     <input
-                                        type="number"
+                                        type="text"
+                                        inputMode="decimal"
                                         className="input"
-                                        min="0"
-                                        step="any"
                                         value={compQty}
                                         onChange={e => setCompQty(e.target.value)}
                                     />
@@ -611,9 +617,10 @@ export default function Products() {
                                     // Use loose comparison or string conversion for safety
                                     const item = list.find(x => String(x.id) === String(comp.id))
                                     if (!item) return null
-                                    const qty = Number(comp.qty || 0)
+                                    const qty = parseCompositionNumber(comp.qty)
                                     const unitPrice = getCompositionSaleUnitPrice(comp, item.price)
                                     const linePrice = unitPrice * qty
+                                    const unitLabel = comp.type === 'good' ? (item.stock_unit || 'шт') : 'шт'
                                     return (
                                         <div key={idx} style={{ padding: '0.75rem 0.5rem', borderBottom: '1px solid var(--border)' }}>
                                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 92px 132px 28px', alignItems: 'center', gap: '0.75rem' }}>
@@ -625,15 +632,17 @@ export default function Products() {
                                                         </div>
                                                     )}
                                                 </div>
-                                                <input
-                                                    type="number"
-                                                    className="input"
-                                                    min="0"
-                                                    step="any"
-                                                    value={comp.qty}
-                                                    onChange={e => updateCompositionQty(idx, e.target.value)}
-                                                    style={{ height: 38, textAlign: 'center', fontWeight: 800 }}
-                                                />
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                    <input
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        className="input"
+                                                        value={comp.qty}
+                                                        onChange={e => updateCompositionQty(idx, e.target.value)}
+                                                        style={{ height: 38, textAlign: 'center', fontWeight: 800, width: '100%' }}
+                                                    />
+                                                    <span style={{ color: '#64748b', fontWeight: 850, minWidth: 24 }}>{unitLabel}</span>
+                                                </div>
                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: '0.35rem' }}>
                                                     <input
                                                         type="text"
@@ -790,7 +799,7 @@ export default function Products() {
         return product.composition.reduce((sum, comp) => {
             const list = comp.type === 'flower' ? flowers : goods
             const item = list.find(x => String(x.id) === String(comp.id))
-            return sum + (Number(item?.cost || 0) * Number(comp.qty || 0))
+            return sum + (Number(item?.cost || 0) * parseCompositionNumber(comp.qty))
         }, 0)
     }
 
@@ -1311,7 +1320,7 @@ export default function Products() {
                                             const item = list.find(x => String(x.id) === String(comp.id))
                                             if (!item) return null
                                             const unitPrice = getCompositionSaleUnitPrice(comp, item.price)
-                                            const linePrice = unitPrice * Number(comp.qty || 0)
+                                            const linePrice = unitPrice * parseCompositionNumber(comp.qty)
                                             return (
                                                 <div key={idx} style={{
                                                     display: 'flex',
@@ -1378,7 +1387,7 @@ export default function Products() {
                                             const list = comp.type === 'flower' ? flowers : goods
                                             const item = list.find(x => String(x.id) === String(comp.id))
                                             if (!item) return acc
-                                            return acc + (getCompositionSaleUnitPrice(comp, item.price) * Number(comp.qty || 0))
+                                            return acc + (getCompositionSaleUnitPrice(comp, item.price) * parseCompositionNumber(comp.qty))
                                         }, 0)} lei
                                     </span>
                                 </div>

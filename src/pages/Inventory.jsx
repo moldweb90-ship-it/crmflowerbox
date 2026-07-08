@@ -14,7 +14,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [modalMode, setModalMode] = useState('add') // 'add' | 'edit'
     const [currentItem, setCurrentItem] = useState(null)
-    const [formData, setFormData] = useState({ name: '', price: '', category: '', cost: '', markup: 2 })
+    const [formData, setFormData] = useState({ name: '', price: '', category: '', cost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
     const [searchQuery, setSearchQuery] = useState('')
     const [sortMode, setSortMode] = useState('name_asc')
     const [page, setPage] = useState(1)
@@ -103,7 +103,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
 
     const openAddModal = () => {
         setModalMode('add')
-        setFormData({ name: '', price: '', category: '', cost: '', markup: isFlowers ? 2 : 1.5 })
+        setFormData({ name: '', price: '', category: '', cost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
         setIsModalOpen(true)
     }
 
@@ -115,7 +115,10 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             price: item.price,
             category: item.category || '',
             cost: item.cost || '',
-            markup: item.markup_factor || (isFlowers ? 2 : 1.5)
+            markup: item.markup_factor || (isFlowers ? 2 : 1.5),
+            purchaseUnit: item.purchase_unit || 'шт',
+            stockUnit: item.stock_unit || 'шт',
+            unitsPerPurchase: item.units_per_purchase || 1
         })
         setIsModalOpen(true)
     }
@@ -128,6 +131,11 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             ...(!isFlowers && { category: formData.category }),
             cost: parseFloat(formData.cost) || 0,
             markup_factor: parseFloat(formData.markup) || (isFlowers ? 2 : 1.5)
+        }
+        if (!isFlowers) {
+            itemData.purchase_unit = formData.purchaseUnit || 'шт'
+            itemData.stock_unit = formData.stockUnit || 'шт'
+            itemData.units_per_purchase = parseFloat(String(formData.unitsPerPurchase).replace(',', '.')) || 1
         }
 
         if (modalMode === 'add') {
@@ -324,7 +332,9 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Закупка</label>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                                {isFlowers ? 'Закупка' : `Закупка за 1 ${formData.stockUnit || 'шт'}`}
+                            </label>
                             <input
                                 type="number"
                                 placeholder="0"
@@ -375,6 +385,71 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                 <option value="Инструменты">Инструменты</option>
                                 <option value="Прочее">Прочее</option>
                             </select>
+                        </div>
+                    )}
+
+                    {!isFlowers && (
+                        <div style={{
+                            padding: '1rem',
+                            borderRadius: 16,
+                            background: '#f8fafc',
+                            border: '1px solid var(--border)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.75rem'
+                        }}>
+                            <div style={{ fontWeight: 900, color: '#0f172a' }}>Единицы учета</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.8fr 1fr', gap: '0.75rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.85rem' }}>Покупаем как</label>
+                                    <input
+                                        className="input"
+                                        list="purchase-units"
+                                        value={formData.purchaseUnit}
+                                        onChange={e => setFormData({ ...formData, purchaseUnit: e.target.value })}
+                                        placeholder="рулон"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.85rem' }}>Внутри</label>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="input"
+                                        value={formData.unitsPerPurchase}
+                                        onChange={e => setFormData({ ...formData, unitsPerPurchase: e.target.value })}
+                                        placeholder="100"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.85rem' }}>Списываем как</label>
+                                    <input
+                                        className="input"
+                                        list="stock-units"
+                                        value={formData.stockUnit}
+                                        onChange={e => setFormData({ ...formData, stockUnit: e.target.value })}
+                                        placeholder="м"
+                                    />
+                                </div>
+                            </div>
+                            <datalist id="purchase-units">
+                                <option value="шт" />
+                                <option value="пачка" />
+                                <option value="рулон" />
+                                <option value="коробка" />
+                                <option value="упаковка" />
+                            </datalist>
+                            <datalist id="stock-units">
+                                <option value="шт" />
+                                <option value="лист" />
+                                <option value="м" />
+                                <option value="кирпич" />
+                                <option value="см" />
+                            </datalist>
+                            <div style={{ color: '#64748b', fontWeight: 700, lineHeight: 1.45 }}>
+                                1 {formData.purchaseUnit || 'шт'} = {formData.unitsPerPurchase || 1} {formData.stockUnit || 'шт'}.
+                                В букетах, продажах и складе расходуем в “{formData.stockUnit || 'шт'}”.
+                            </div>
                         </div>
                     )}
 

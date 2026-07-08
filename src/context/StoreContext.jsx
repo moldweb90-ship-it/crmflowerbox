@@ -306,10 +306,72 @@ export function StoreProvider({ children }) {
         }
     }
 
+    const parseLooseNumber = (value, fallbackValue = 0) => {
+        if (value === '' || value === null || value === undefined) return fallbackValue
+        const parsed = Number(String(value).replace(',', '.'))
+        return Number.isFinite(parsed) ? parsed : fallbackValue
+    }
+
+    const getItemUnitMeta = (itemType, itemId, fallback = {}) => {
+        if (itemType === 'good') {
+            const good = goods.find(g => String(g.id) === String(itemId)) || {}
+            const unitsPerPurchase = parseLooseNumber(fallback.unitsPerPurchase ?? fallback.units_per_purchase ?? good.units_per_purchase, 1)
+            return {
+                purchaseUnit: fallback.purchaseUnit ?? fallback.purchase_unit ?? good.purchase_unit ?? 'шт',
+                stockUnit: fallback.stockUnit ?? fallback.stock_unit ?? good.stock_unit ?? 'шт',
+                unitsPerPurchase: Number.isFinite(unitsPerPurchase) && unitsPerPurchase > 0 ? unitsPerPurchase : 1
+            }
+        }
+        return { purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 }
+    }
+
+    const normalizeSupplyItemUnits = (item) => {
+        const meta = getItemUnitMeta(item.type, item.id, item)
+        const purchaseQuantity = parseLooseNumber(item.purchaseQuantity ?? item.purchase_quantity ?? item.quantity, 0)
+        const purchaseUnitCost = parseLooseNumber(item.purchaseUnitCost ?? item.purchase_unit_cost ?? item.unitCost, 0)
+        const stockQuantity = item.type === 'good'
+            ? purchaseQuantity * meta.unitsPerPurchase
+            : purchaseQuantity
+        const stockUnitCost = stockQuantity > 0 ? purchaseUnitCost / (item.type === 'good' ? meta.unitsPerPurchase : 1) : purchaseUnitCost
+
+        return {
+            ...item,
+            purchaseQuantity,
+            purchaseUnitCost,
+            stockQuantity,
+            stockUnitCost,
+            purchaseUnit: meta.purchaseUnit,
+            stockUnit: meta.stockUnit,
+            unitsPerPurchase: meta.unitsPerPurchase
+        }
+    }
+
+    const getSupplyLineAmount = (item) => {
+        const normalized = normalizeSupplyItemUnits(item)
+        return normalized.purchaseQuantity * normalized.purchaseUnitCost
+    }
+
+    const toSupplyItemPayload = (supplyId, item) => {
+        const normalized = normalizeSupplyItemUnits(item)
+        return {
+            supply_id: supplyId,
+            flower_id: item.type === 'flower' ? item.id : null,
+            good_id: item.type === 'good' ? item.id : null,
+            quantity: normalized.stockQuantity,
+            unit_cost: normalized.stockUnitCost,
+            purchase_quantity: normalized.purchaseQuantity,
+            purchase_unit_cost: normalized.purchaseUnitCost,
+            purchase_unit: normalized.purchaseUnit,
+            stock_unit: normalized.stockUnit,
+            units_per_purchase: normalized.unitsPerPurchase
+        }
+    }
+
     // Supplies
     const saveSupply = async (supplierName, items, options = {}) => {
         try {
             const shouldUpdateCatalogPrices = options.updateCatalogPrices !== false
+            const normalizedItems = items.map(normalizeSupplyItemUnits)
 
             // 1. Get or Create Supplier
             let supplierId
@@ -325,9 +387,9 @@ export function StoreProvider({ children }) {
             }
 
             // 2. Create Supply Record
-            const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
-            const flowersAmount = items.filter(i => i.type === 'flower').reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
-            const goodsAmount = items.filter(i => i.type === 'good').reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+            const totalAmount = normalizedItems.reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
+            const flowersAmount = normalizedItems.filter(i => i.type === 'flower').reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
+            const goodsAmount = normalizedItems.filter(i => i.type === 'good').reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
 
             const { data: newSupply, error: supplyError } = await supabase.from('supplies').insert([{
                 supplier_id: supplierId,
@@ -342,36 +404,30 @@ export function StoreProvider({ children }) {
 
             // 3. Insert Items & Update Flowers
             // 3. Insert Items & Update Flowers/Goods
-            const supplyItemsPayload = items.map(item => ({
-                supply_id: newSupply.id,
-                flower_id: item.type === 'flower' ? item.id : null,
-                good_id: item.type === 'good' ? item.id : null,
-                quantity: item.quantity,
-                unit_cost: item.unitCost
-            }))
+            const supplyItemsPayload = normalizedItems.map(item => toSupplyItemPayload(newSupply.id, item))
 
             await supabase.from('supply_items').insert(supplyItemsPayload)
 
             // 3.5. Update Stock - auto add to inventory from supply
             const createdLots = []
-            for (const item of items) {
+            for (const item of normalizedItems) {
                 const existing = stock.find(s => s.item_type === item.type && s.item_id === item.id)
                 if (existing) {
-                    const newQty = existing.quantity + item.quantity
+                    const newQty = existing.quantity + item.stockQuantity
                     await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
                     setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
                 } else {
-                    const { data: newStock } = await supabase.from('stock').insert([{ item_type: item.type, item_id: item.id, quantity: item.quantity }]).select()
+                    const { data: newStock } = await supabase.from('stock').insert([{ item_type: item.type, item_id: item.id, quantity: item.stockQuantity }]).select()
                     if (newStock) setStock(prev => [...prev, newStock[0]])
                 }
                 // Log transaction
                 await supabase.from('stock_transactions').insert([{
                     item_type: item.type,
                     item_id: item.id,
-                    quantity: item.quantity,
+                    quantity: item.stockQuantity,
                     transaction_type: 'supply',
                     reference_id: newSupply.id,
-                    cost_price: item.unitCost,
+                    cost_price: item.stockUnitCost,
                     supplier_id: supplierId
                 }])
 
@@ -380,9 +436,9 @@ export function StoreProvider({ children }) {
                     item_id: item.id,
                     supplier_id: supplierId,
                     supply_id: newSupply.id,
-                    quantity: item.quantity,
-                    remaining_quantity: item.quantity,
-                    unit_cost: item.unitCost
+                    quantity: item.stockQuantity,
+                    remaining_quantity: item.stockQuantity,
+                    unit_cost: item.stockUnitCost
                 }]).select('*, suppliers(name)')
 
                 if (lotData?.[0]) createdLots.push(lotData[0])
@@ -395,8 +451,8 @@ export function StoreProvider({ children }) {
                 const updatedFlowers = [...flowers]
                 const updatedGoods = [...goods]
 
-                for (const item of items) {
-                    const newCost = item.unitCost
+                for (const item of normalizedItems) {
+                    const newCost = item.stockUnitCost
 
                     if (item.type === 'flower') {
                         const flower = flowers.find(f => f.id === item.id)
@@ -440,6 +496,7 @@ export function StoreProvider({ children }) {
     const updateSupply = async (supplyId, supplierName, items, options = {}) => {
         try {
             const shouldUpdateCatalogPrices = options.updateCatalogPrices !== false
+            const normalizedItems = items.map(normalizeSupplyItemUnits)
 
             // 1. Get/Create Supplier (Reuse fetch logic or just ID if passed, but name is safer for edits)
             let supplierId
@@ -453,9 +510,9 @@ export function StoreProvider({ children }) {
             }
 
             // 2. Calc Totals
-            const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
-            const flowersAmount = items.filter(i => i.type === 'flower').reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
-            const goodsAmount = items.filter(i => i.type === 'good').reduce((sum, item) => sum + (item.quantity * item.unitCost), 0)
+            const totalAmount = normalizedItems.reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
+            const flowersAmount = normalizedItems.filter(i => i.type === 'flower').reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
+            const goodsAmount = normalizedItems.filter(i => i.type === 'good').reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
 
             // 3. Update Supply Header
             const { error: headerError } = await supabase.from('supplies').update({
@@ -470,13 +527,7 @@ export function StoreProvider({ children }) {
             // 4. Replace Items (Delete All + Insert All) - Easiest valid strategy
             await supabase.from('supply_items').delete().eq('supply_id', supplyId)
 
-            const supplyItemsPayload = items.map(item => ({
-                supply_id: supplyId,
-                flower_id: item.type === 'flower' ? item.id : null,
-                good_id: item.type === 'good' ? item.id : null,
-                quantity: item.quantity,
-                unit_cost: item.unitCost
-            }))
+            const supplyItemsPayload = normalizedItems.map(item => toSupplyItemPayload(supplyId, item))
 
             await supabase.from('supply_items').insert(supplyItemsPayload)
 
@@ -485,8 +536,8 @@ export function StoreProvider({ children }) {
                 const updatedFlowers = [...flowers]
                 const updatedGoods = [...goods]
 
-                for (const item of items) {
-                    const newCost = item.unitCost
+                for (const item of normalizedItems) {
+                    const newCost = item.stockUnitCost
 
                     if (item.type === 'flower') {
                         const flower = flowers.find(f => f.id === item.id)
@@ -818,8 +869,15 @@ export function StoreProvider({ children }) {
             id: i.flower_id || i.good_id,
             type: i.flower_id ? 'flower' : 'good',
             name: i.flowers?.name || i.goods?.name || 'Unknown',
-            quantity: i.quantity,
-            unitCost: i.unit_cost
+            quantity: i.purchase_quantity ?? i.quantity,
+            unitCost: i.purchase_unit_cost ?? i.unit_cost,
+            purchaseQuantity: i.purchase_quantity ?? i.quantity,
+            purchaseUnitCost: i.purchase_unit_cost ?? i.unit_cost,
+            purchaseUnit: i.purchase_unit || (i.flower_id ? 'шт' : 'шт'),
+            stockQuantity: i.quantity,
+            stockUnitCost: i.unit_cost,
+            stockUnit: i.stock_unit || (i.flower_id ? 'шт' : 'шт'),
+            unitsPerPurchase: i.units_per_purchase || 1
         }))
     }
 

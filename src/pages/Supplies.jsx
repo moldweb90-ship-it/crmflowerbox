@@ -110,24 +110,62 @@ export default function Supplies() {
 
     // --- Handlers ---
 
-    const handleAddItem = () => {
-        if (!currentItem.id || !currentItem.quantity || !currentItem.unitCost) return
+    const parseAmount = (value) => {
+        if (value === '' || value === null || value === undefined) return 0
+        const parsed = Number(String(value).replace(',', '.'))
+        return Number.isFinite(parsed) ? parsed : 0
+    }
 
-        let itemData
-        if (itemType === 'flower') {
-            const f = flowers.find(x => x.id === currentItem.id)
-            itemData = { type: 'flower', name: f ? f.name : 'Unknown Flower', ...currentItem }
-        } else {
-            const g = goods.find(x => x.id === currentItem.id)
-            itemData = { type: 'good', name: g ? g.name : 'Unknown Good', ...currentItem }
+    const getCurrentUnitMeta = (item = selectedCurrentItem, fallback = {}) => {
+        if (itemType !== 'good' && fallback.type !== 'good') {
+            return { purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 }
         }
+        const unitsPerPurchase = parseAmount(fallback.unitsPerPurchase ?? fallback.units_per_purchase ?? item?.units_per_purchase ?? 1) || 1
+        return {
+            purchaseUnit: fallback.purchaseUnit ?? fallback.purchase_unit ?? item?.purchase_unit ?? 'шт',
+            stockUnit: fallback.stockUnit ?? fallback.stock_unit ?? item?.stock_unit ?? 'шт',
+            unitsPerPurchase
+        }
+    }
 
-        setSupplyItems([...supplyItems, {
-            ...itemData,
-            name: itemData.name,
-            quantity: Number(currentItem.quantity),
-            unitCost: Number(currentItem.unitCost)
-        }])
+    const getSupplyItemAmount = (item) => {
+        const quantity = parseAmount(item.purchaseQuantity ?? item.purchase_quantity ?? item.quantity)
+        const unitCost = parseAmount(item.purchaseUnitCost ?? item.purchase_unit_cost ?? item.unitCost)
+        return quantity * unitCost
+    }
+
+    const buildSupplyItem = () => {
+        if (!currentItem.id || !currentItem.quantity || !currentItem.unitCost) return null
+
+        const selected = availableSupplyItems.find(x => x.id === currentItem.id)
+        const type = itemType
+        const meta = type === 'good' ? getCurrentUnitMeta(selected, currentItem) : { purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 }
+        const purchaseQuantity = parseAmount(currentItem.quantity)
+        const purchaseUnitCost = parseAmount(currentItem.unitCost)
+        const stockQuantity = type === 'good' ? purchaseQuantity * meta.unitsPerPurchase : purchaseQuantity
+        const stockUnitCost = type === 'good' && meta.unitsPerPurchase > 0 ? purchaseUnitCost / meta.unitsPerPurchase : purchaseUnitCost
+
+        return {
+            type,
+            id: currentItem.id,
+            name: selected ? selected.name : 'Unknown',
+            quantity: purchaseQuantity,
+            unitCost: purchaseUnitCost,
+            purchaseQuantity,
+            purchaseUnitCost,
+            purchaseUnit: meta.purchaseUnit,
+            stockQuantity,
+            stockUnitCost,
+            stockUnit: meta.stockUnit,
+            unitsPerPurchase: meta.unitsPerPurchase
+        }
+    }
+
+    const handleAddItem = () => {
+        const itemData = buildSupplyItem()
+        if (!itemData) return
+
+        setSupplyItems([...supplyItems, itemData])
 
         setCurrentItem({ id: '', quantity: '', unitCost: '' })
         setItemSearch('')
@@ -142,19 +180,8 @@ export default function Supplies() {
         // If there are unsaved items in the form, add them first
         let finalItems = [...supplyItems]
         if (currentItem.id && currentItem.quantity && currentItem.unitCost) {
-            let itemData
-            if (itemType === 'flower') {
-                const f = flowers.find(x => x.id === currentItem.id)
-                itemData = { type: 'flower', name: f ? f.name : 'Unknown', ...currentItem }
-            } else {
-                const g = goods.find(x => x.id === currentItem.id)
-                itemData = { type: 'good', name: g ? g.name : 'Unknown', ...currentItem }
-            }
-            finalItems.push({
-                ...itemData,
-                quantity: Number(currentItem.quantity),
-                unitCost: Number(currentItem.unitCost)
-            })
+            const itemData = buildSupplyItem()
+            if (itemData) finalItems.push(itemData)
         }
 
         if (!supplierName || finalItems.length === 0) return
@@ -239,7 +266,7 @@ export default function Supplies() {
         item.name?.toLowerCase().includes(itemSearch.trim().toLowerCase())
     )
 
-    const currentItemSum = (Number(currentItem.quantity) || 0) * (Number(currentItem.unitCost) || 0)
+    const currentItemSum = (parseAmount(currentItem.quantity) || 0) * (parseAmount(currentItem.unitCost) || 0)
     // Add current item to calculations if valid
     const allItems = [...supplyItems]
     if (currentItem.id && currentItem.quantity && currentItem.unitCost) {
@@ -248,13 +275,33 @@ export default function Supplies() {
         // It's safer to just calculate `itemsSum` and `currentItemSum` 
     }
 
-    const flowersTotal = supplyItems.filter(i => i.type === 'flower').reduce((acc, i) => acc + (i.quantity * i.unitCost), 0)
+    const flowersTotal = supplyItems.filter(i => i.type === 'flower').reduce((acc, i) => acc + getSupplyItemAmount(i), 0)
         + (itemType === 'flower' ? currentItemSum : 0)
 
-    const goodsTotal = supplyItems.filter(i => i.type === 'good').reduce((acc, i) => acc + (i.quantity * i.unitCost), 0)
+    const goodsTotal = supplyItems.filter(i => i.type === 'good').reduce((acc, i) => acc + getSupplyItemAmount(i), 0)
         + (itemType === 'good' ? currentItemSum : 0)
 
     const totalSum = flowersTotal + goodsTotal
+
+    const formatSupplyQuantity = (item) => {
+        const purchaseQty = parseAmount(item.purchaseQuantity ?? item.quantity)
+        const purchaseUnit = item.purchaseUnit || 'шт'
+        if (item.type !== 'good') return `${purchaseQty} шт`
+
+        const stockQty = parseAmount(item.stockQuantity ?? purchaseQty * parseAmount(item.unitsPerPurchase || 1))
+        const stockUnit = item.stockUnit || 'шт'
+        return `${purchaseQty} ${purchaseUnit} = ${stockQty} ${stockUnit}`
+    }
+
+    const formatSupplyCost = (item) => {
+        const purchaseCost = parseAmount(item.purchaseUnitCost ?? item.unitCost)
+        const purchaseUnit = item.purchaseUnit || 'шт'
+        if (item.type !== 'good') return `${purchaseCost} L`
+
+        const stockCost = parseAmount(item.stockUnitCost ?? (purchaseCost / (parseAmount(item.unitsPerPurchase || 1) || 1)))
+        const stockUnit = item.stockUnit || 'шт'
+        return `${purchaseCost} L/${purchaseUnit} · ${stockCost.toFixed(2)} L/${stockUnit}`
+    }
 
     return (
         <div style={{ paddingBottom: '6rem' }}>
@@ -755,10 +802,10 @@ export default function Supplies() {
                                         {item.type === 'flower' ? <Flower size={16} color="var(--primary)" /> : <Package size={16} color="#f59e0b" />}
                                         <div style={{ fontWeight: 600, gridColumn: isMobile ? '2 / -1' : 'auto' }}>
                                             {item.name}
-                                            {isMobile && <div style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)' }}>{item.quantity} шт x {item.unitCost} L</div>}
+                                            {isMobile && <div style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)' }}>{formatSupplyQuantity(item)} · {formatSupplyCost(item)}</div>}
                                         </div>
-                                        {!isMobile && <div style={{ fontSize: '0.9rem' }}>{item.quantity} шт</div>}
-                                        {!isMobile && <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{item.unitCost} L</div>}
+                                        {!isMobile && <div style={{ fontSize: '0.9rem' }}>{formatSupplyQuantity(item)}</div>}
+                                        {!isMobile && <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{formatSupplyCost(item)}</div>}
                                         <button onClick={() => handleRemoveItem(idx)} style={{ color: '#ef4444', padding: '0.25rem', gridColumn: isMobile ? '-1' : 'auto', gridRow: isMobile ? '1' : 'auto' }}>
                                             <X size={20} />
                                         </button>
@@ -897,7 +944,13 @@ export default function Supplies() {
                                                             key={item.id}
                                                             type="button"
                                                             onClick={() => {
-                                                                setCurrentItem({ ...currentItem, id: item.id })
+                                                                setCurrentItem({
+                                                                    ...currentItem,
+                                                                    id: item.id,
+                                                                    unitsPerPurchase: item.units_per_purchase || 1,
+                                                                    purchaseUnit: item.purchase_unit || 'шт',
+                                                                    stockUnit: item.stock_unit || 'шт'
+                                                                })
                                                                 setItemSearch('')
                                                                 setIsItemDropdownOpen(false)
                                                             }}
@@ -925,22 +978,34 @@ export default function Supplies() {
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                <input
-                                    type="number"
-                                    className="input"
-                                    placeholder="Кол-во"
-                                    value={currentItem.quantity}
-                                    onChange={e => setCurrentItem({ ...currentItem, quantity: e.target.value })}
-                                    style={{ padding: '0.75rem' }}
-                                />
-                                <input
-                                    type="number"
-                                    className="input"
-                                    placeholder="Цена"
-                                    value={currentItem.unitCost}
-                                    onChange={e => setCurrentItem({ ...currentItem, unitCost: e.target.value })}
-                                    style={{ padding: '0.75rem' }}
-                                />
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.82rem' }}>
+                                        Кол-во{itemType === 'good' && selectedCurrentItem ? `, ${selectedCurrentItem.purchase_unit || 'шт'}` : ''}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="input"
+                                        placeholder="Кол-во"
+                                        value={currentItem.quantity}
+                                        onChange={e => setCurrentItem({ ...currentItem, quantity: e.target.value })}
+                                        style={{ padding: '0.75rem' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.82rem' }}>
+                                        Цена{itemType === 'good' && selectedCurrentItem ? ` за ${selectedCurrentItem.purchase_unit || 'шт'}` : ''}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="input"
+                                        placeholder="Цена"
+                                        value={currentItem.unitCost}
+                                        onChange={e => setCurrentItem({ ...currentItem, unitCost: e.target.value })}
+                                        style={{ padding: '0.75rem' }}
+                                    />
+                                </div>
                             </div>
 
                             <button
@@ -961,8 +1026,18 @@ export default function Supplies() {
                         </div>
 
                         {currentItem.id && (
-                            <div style={{ textAlign: 'right', fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                                Сумма: <b>{((Number(currentItem.quantity) || 0) * (Number(currentItem.unitCost) || 0)).toFixed(2)} lei</b>
+                            <div style={{ textAlign: 'right', fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: 1.5 }}>
+                                {itemType === 'good' && selectedCurrentItem && (() => {
+                                    const meta = getCurrentUnitMeta(selectedCurrentItem, currentItem)
+                                    const stockQty = parseAmount(currentItem.quantity) * meta.unitsPerPurchase
+                                    const stockCost = meta.unitsPerPurchase > 0 ? parseAmount(currentItem.unitCost) / meta.unitsPerPurchase : 0
+                                    return (
+                                        <div>
+                                            На склад: <b>{stockQty.toFixed(2)} {meta.stockUnit}</b> · себест. <b>{stockCost.toFixed(2)} lei/{meta.stockUnit}</b>
+                                        </div>
+                                    )
+                                })()}
+                                Сумма: <b>{currentItemSum.toFixed(2)} lei</b>
                             </div>
                         )}
                     </div>
@@ -1044,10 +1119,10 @@ export default function Supplies() {
                                             </div>
                                             <div style={{ fontWeight: 500 }}>{item.name}</div>
                                             <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                                                {item.quantity} шт <span style={{ fontSize: '0.8em' }}>x {item.unitCost} L</span>
+                                                {formatSupplyQuantity(item)} <span style={{ fontSize: '0.8em' }}>· {formatSupplyCost(item)}</span>
                                             </div>
                                             <div style={{ textAlign: 'right', fontWeight: 600 }}>
-                                                {(Number(item.quantity) * Number(item.unitCost)).toLocaleString('ru-RU')} L
+                                                {getSupplyItemAmount(item).toLocaleString('ru-RU')} L
                                             </div>
                                         </div>
                                     ))

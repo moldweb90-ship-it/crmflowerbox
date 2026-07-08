@@ -487,14 +487,18 @@ export default function Sales() {
     // Selected product data
     const selectedProduct = products.find(p => p.id === formData.product_id)
     const parseMoney = (value) => Number(String(value ?? '').replace(',', '.')) || 0
+    const parseDecimal = (value, fallback = 0) => {
+        const parsed = Number(String(value ?? '').replace(',', '.'))
+        return Number.isFinite(parsed) ? parsed : fallback
+    }
     const defaultDeliveryFee = Number(settings.deliveryCost || 0)
     const defaultPickupDiscount = Number(settings.pickupDiscount ?? 100)
     const isDeliveryOrder = formData.delivery_method === 'delivery'
     const currentDeliveryFee = isDeliveryOrder ? parseMoney(formData.delivery_fee !== '' ? formData.delivery_fee : (formData.extra_delivery_cost ?? defaultDeliveryFee)) : 0
     const currentCourierPayout = isDeliveryOrder ? parseMoney(formData.courier_payout !== '' ? formData.courier_payout : currentDeliveryFee) : 0
     const currentPickupDiscount = !isDeliveryOrder ? parseMoney(formData.pickup_discount !== '' ? formData.pickup_discount : defaultPickupDiscount) : 0
-    const editableCompositionCost = (composition) => composition.reduce((s, i) => s + (Number(i.cost || 0) * Number(i.quantity || 0)), 0)
-    const editableCompositionSale = (composition) => composition.reduce((s, i) => s + (Number(i.price || 0) * Number(i.quantity || 0)), 0)
+    const editableCompositionCost = (composition) => composition.reduce((s, i) => s + (parseDecimal(i.cost) * parseDecimal(i.quantity)), 0)
+    const editableCompositionSale = (composition) => composition.reduce((s, i) => s + (parseDecimal(i.price) * parseDecimal(i.quantity)), 0)
     const readyProductBasePrice = selectedProduct ? Math.max(0, Number(selectedProduct.price || 0) - defaultDeliveryFee) : 0
     const calculateSiteCompositionPrice = (composition) => {
         const base = editableCompositionSale(composition)
@@ -1697,20 +1701,20 @@ export default function Sales() {
                                         {siteComposition.map((item, idx) => (
                                             <div key={`${item.type}-${item.item_id}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: '#f9fafb', borderRadius: '8px' }}>
                                                 <span style={{ flex: 1, fontWeight: 500 }}>{item.type === 'flower' ? '🌸' : '📦'} {item.name}</span>
-                                                <input type="number" min="0" step="any" value={item.quantity} onChange={(e) => {
+                                                <input type="text" inputMode="decimal" value={item.quantity} onChange={(e) => {
                                                     const val = e.target.value
                                                     const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: val } : c)
                                                     setSiteComposition(newComp)
                                                     const withMarkup = calculateSiteCompositionPrice(newComp)
                                                     setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
                                                 }} onBlur={(e) => {
-                                                    const parsed = Number(e.target.value)
+                                                    const parsed = parseDecimal(e.target.value, NaN)
                                                     if (!Number.isFinite(parsed) || parsed <= 0) {
                                                         const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: 0.01 } : c)
                                                         setSiteComposition(newComp)
                                                     }
                                                 }} style={{ width: '60px', padding: '0.35rem', textAlign: 'center' }} />
-                                                <span style={{ minWidth: '50px', fontWeight: 600 }}>{Number(item.price || 0) * Number(item.quantity || 0)} L</span>
+                                                <span style={{ minWidth: '50px', fontWeight: 600 }}>{parseDecimal(item.price) * parseDecimal(item.quantity)} L</span>
                                                 <button type="button" onClick={() => {
                                                     const newComp = siteComposition.filter((_, i) => i !== idx)
                                                     setSiteComposition(newComp)
@@ -1730,7 +1734,7 @@ export default function Sales() {
                                             {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).map(flower => (
                                                 <div key={`f-${flower.id}`} onClick={() => {
                                                     const ex = siteComposition.findIndex(c => c.type === 'flower' && c.item_id === flower.id)
-                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: Number(c.quantity || 0) + 1 } : c) : [...siteComposition, { type: 'flower', item_id: flower.id, name: flower.name, quantity: 1, cost: flower.cost || 0, price: flower.price || 0 }]
+                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: parseDecimal(c.quantity) + 1 } : c) : [...siteComposition, { type: 'flower', item_id: flower.id, name: flower.name, quantity: 1, cost: flower.cost || 0, price: flower.price || 0 }]
                                                     setSiteComposition(newComp)
                                                     const withMarkup = calculateSiteCompositionPrice(newComp)
                                                     setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
@@ -1740,7 +1744,7 @@ export default function Sales() {
                                             {goods.filter(g => g.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).map(good => (
                                                 <div key={`g-${good.id}`} onClick={() => {
                                                     const ex = siteComposition.findIndex(c => c.type === 'good' && c.item_id === good.id)
-                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: Number(c.quantity || 0) + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
+                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: parseDecimal(c.quantity) + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
                                                     setSiteComposition(newComp)
                                                     const withMarkup = calculateSiteCompositionPrice(newComp)
                                                     setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
@@ -2696,7 +2700,9 @@ export default function Sales() {
                         {/* Existing items */}
                         {salonFormData.composition.length > 0 && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-                                {salonFormData.composition.map((item, idx) => (
+                                {salonFormData.composition.map((item, idx) => {
+                                    const unitLabel = item.type === 'good' ? (goods.find(g => String(g.id) === String(item.item_id))?.stock_unit || 'шт') : 'шт'
+                                    return (
                                     <div key={idx} style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -2714,7 +2720,7 @@ export default function Sales() {
                                                 onClick={() => {
                                                     const newComp = [...salonFormData.composition]
                                                     // Ensure it is treated as a number
-                                                    const currentQty = Number(newComp[idx].quantity) || 0
+                                                    const currentQty = parseDecimal(newComp[idx].quantity)
                                                     if (currentQty > 0.01) {
                                                         newComp[idx].quantity = Math.max(0.01, currentQty - 1)
                                                         setSalonFormData({ ...salonFormData, composition: newComp })
@@ -2723,9 +2729,8 @@ export default function Sales() {
                                                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: selectedShowcaseId ? 0.45 : 1 }}
                                             >−</button>
                                             <input
-                                                type="number"
-                                                min="0"
-                                                step="any"
+                                                type="text"
+                                                inputMode="decimal"
                                                 className="no-spinners"
                                                 disabled={Boolean(selectedShowcaseId)}
                                                 value={item.quantity}
@@ -2751,7 +2756,7 @@ export default function Sales() {
                                                 onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
                                                 onBlur={(e) => {
                                                     e.target.style.borderColor = '#e5e7eb'
-                                                    const parsed = Number(e.target.value)
+                                                    const parsed = parseDecimal(e.target.value, NaN)
                                                     if (!Number.isFinite(parsed) || parsed <= 0) {
                                                         const newComp = [...salonFormData.composition]
                                                         newComp[idx].quantity = 0.01
@@ -2759,12 +2764,13 @@ export default function Sales() {
                                                     }
                                                 }}
                                             />
+                                            <span style={{ color: '#64748b', fontWeight: 850, minWidth: 24 }}>{unitLabel}</span>
                                             <button
                                                 disabled={Boolean(selectedShowcaseId)}
                                                 onClick={() => {
                                                     const newComp = [...salonFormData.composition]
                                                     // Handle case where quantity is '' by treating it as 0, then add 1 -> 1
-                                                    newComp[idx].quantity = Number(newComp[idx].quantity || 0) + 1
+                                                    newComp[idx].quantity = parseDecimal(newComp[idx].quantity) + 1
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 }}
                                                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: selectedShowcaseId ? 0.45 : 1 }}
@@ -2772,17 +2778,17 @@ export default function Sales() {
                                         </div>
                                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '92px 88px', gap: '0.5rem', alignItems: 'center' }}>
                                             <div>
-                                                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: '#9ca3af', marginBottom: '0.2rem' }}>Цена/шт</label>
+                                                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: '#9ca3af', marginBottom: '0.2rem' }}>Цена/{unitLabel}</label>
                                                 <input
-                                                    type="number"
-                                                    min="0"
+                                                    type="text"
+                                                    inputMode="decimal"
                                                     className="no-spinners"
                                                     disabled={Boolean(selectedShowcaseId)}
                                                     value={item.price}
                                                     onChange={(e) => {
                                                         const val = e.target.value
                                                         const newComp = [...salonFormData.composition]
-                                                        newComp[idx].price = val === '' ? '' : Math.max(0, Number(val))
+                                                        newComp[idx].price = val === '' ? '' : Math.max(0, parseDecimal(val))
                                                         setSalonFormData({ ...salonFormData, composition: newComp })
                                                     }}
                                                     style={{
@@ -2801,7 +2807,7 @@ export default function Sales() {
                                                 />
                                             </div>
                                             <div style={{ minWidth: '80px', textAlign: isMobile ? 'left' : 'right', fontWeight: 800, color: '#7c3aed' }}>
-                                                {(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(0)} lei
+                                                {(parseDecimal(item.price) * parseDecimal(item.quantity)).toFixed(0)} lei
                                             </div>
                                         </div>
                                         <button
@@ -2813,7 +2819,8 @@ export default function Sales() {
                                             style={{ width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', opacity: selectedShowcaseId ? 0.45 : 1 }}
                                         >×</button>
                                     </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         )}
 
@@ -2855,7 +2862,7 @@ export default function Sales() {
                                                 const existingIdx = salonFormData.composition.findIndex(c => c.type === 'flower' && c.item_id === flower.id)
                                                 if (existingIdx >= 0) {
                                                     const newComp = [...salonFormData.composition]
-                                                    newComp[existingIdx].quantity += 1
+                                                    newComp[existingIdx].quantity = parseDecimal(newComp[existingIdx].quantity) + 1
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 } else {
                                                     setSalonFormData({
@@ -2890,7 +2897,7 @@ export default function Sales() {
                                                 const existingIdx = salonFormData.composition.findIndex(c => c.type === 'good' && c.item_id === good.id)
                                                 if (existingIdx >= 0) {
                                                     const newComp = [...salonFormData.composition]
-                                                    newComp[existingIdx].quantity += 1
+                                                    newComp[existingIdx].quantity = parseDecimal(newComp[existingIdx].quantity) + 1
                                                     setSalonFormData({ ...salonFormData, composition: newComp })
                                                 } else {
                                                     setSalonFormData({
@@ -2927,9 +2934,9 @@ export default function Sales() {
 
                         {/* Price Summary */}
                         {salonFormData.composition.length > 0 && (() => {
-                            const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0)
-                            const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
-                            const salePrice = selectedShowcaseId ? Number(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice
+                            const costPrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.cost) * parseDecimal(item.quantity)), 0)
+                            const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.price) * parseDecimal(item.quantity)), 0)
+                            const salePrice = selectedShowcaseId ? parseDecimal(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice
                             const margin = salePrice - costPrice
                             const marginPercent = costPrice > 0 ? ((margin / costPrice) * 100).toFixed(0) : 0
                             return (
@@ -3227,9 +3234,9 @@ export default function Sales() {
                                 try {
                                     const deliveryFee = salonFormData.needs_delivery ? parseMoney(salonFormData.delivery_fee !== '' ? salonFormData.delivery_fee : defaultDeliveryFee) : 0
                                     const courierPayout = salonFormData.needs_delivery ? parseMoney(salonFormData.courier_payout !== '' ? salonFormData.courier_payout : deliveryFee) : 0
-                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0) + courierPayout
-                                    const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
-                                    const salePrice = (selectedShowcaseId ? Number(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + deliveryFee
+                                    const costPrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.cost) * parseDecimal(item.quantity)), 0) + courierPayout
+                                    const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.price) * parseDecimal(item.quantity)), 0)
+                                    const salePrice = (selectedShowcaseId ? parseDecimal(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + deliveryFee
 
                                     // Create/Update sale record
                                     const saleData = {
