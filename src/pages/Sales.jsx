@@ -93,6 +93,7 @@ const formatSignedLei = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${Numbe
 export default function Sales() {
     const {
         sales, addSale, updateSale, deleteSale,
+        markCourierPaid,
         products, couriers, florists, addCourier, addFlorist,
         expenses, addExpense,
         calculateCostPrice,
@@ -184,6 +185,9 @@ export default function Sales() {
         courier_id: '',
         delivery_fee: '',
         courier_payout: '',
+        courier_paid: false,
+        courier_paid_at: null,
+        courier_paid_amount: 0,
         pickup_discount: '',
         extra_delivery_cost: null,
         extra_delivery_reason: '',
@@ -223,6 +227,9 @@ export default function Sales() {
         occasion: '',
         delivery_fee: '',
         courier_payout: '',
+        courier_paid: false,
+        courier_paid_at: null,
+        courier_paid_amount: 0,
         pickup_discount: '',
         extra_delivery_cost: null,
         extra_delivery_reason: null
@@ -558,6 +565,9 @@ export default function Sales() {
                 courier_id: sale.courier_id || '',
                 delivery_fee: sale.delivery_fee ?? sale.extra_delivery_cost ?? '',
                 courier_payout: sale.courier_payout ?? sale.extra_delivery_cost ?? '',
+                courier_paid: Boolean(sale.courier_paid),
+                courier_paid_at: sale.courier_paid_at || null,
+                courier_paid_amount: sale.courier_paid_amount || 0,
                 pickup_discount: sale.pickup_discount ?? '',
                 extra_delivery_cost: sale.extra_delivery_cost ?? null,
                 extra_delivery_reason: sale.extra_delivery_reason || '',
@@ -591,6 +601,9 @@ export default function Sales() {
                 occasion: sale.occasion || '',
                 delivery_fee: sale.delivery_fee ?? sale.extra_delivery_cost ?? '',
                 courier_payout: sale.courier_payout ?? sale.extra_delivery_cost ?? '',
+                courier_paid: Boolean(sale.courier_paid),
+                courier_paid_at: sale.courier_paid_at || null,
+                courier_paid_amount: sale.courier_paid_amount || 0,
                 pickup_discount: sale.pickup_discount ?? '',
                 extra_delivery_cost: sale.extra_delivery_cost || null,
                 extra_delivery_reason: sale.extra_delivery_reason || null
@@ -765,6 +778,23 @@ export default function Sales() {
 
     const handleStatusChange = async (saleId, field, value) => {
         await updateSale(saleId, { [field]: value })
+    }
+
+    const handleMarkCourierPaid = async (sale) => {
+        const amount = Number(sale.courier_payout ?? sale.extra_delivery_cost ?? 0)
+        if (amount <= 0) {
+            alert('Укажите сумму курьеру перед оплатой')
+            return
+        }
+        if (!sale.courier_id) {
+            alert('Сначала назначьте курьера')
+            return
+        }
+        if (!window.confirm(`Отметить выплату курьеру ${amount.toLocaleString('ru-RU')} lei?`)) return
+        const result = await markCourierPaid(sale.id)
+        if (!result.success) {
+            alert('Не удалось отметить оплату курьеру: ' + (result.error?.message || 'ошибка'))
+        }
     }
 
     // Date helpers
@@ -1190,6 +1220,8 @@ export default function Sales() {
                                 const deliveryStatus = getStatusData(DELIVERY_STATUSES, effectiveDeliveryStatus)
                                 const courierName = couriers.find(c => c.id === sale.courier_id)?.name
                                 const floristName = florists.find(f => f.id === sale.florist_id)?.name
+                                const courierPayout = Number(sale.courier_payout ?? sale.extra_delivery_cost ?? 0)
+                                const shouldShowCourierPay = sale.delivery_method === 'delivery' && sale.courier_id && courierPayout > 0
                                 return (
                                     <div
                                         key={sale.id}
@@ -1355,6 +1387,44 @@ export default function Sales() {
                                             >
                                                 {DELIVERY_STATUSES.map(s => <option key={s.id} value={s.id}>{getDeliveryStatusLabel(s, sale.delivery_method)}</option>)}
                                             </select>
+                                            {shouldShowCourierPay && (
+                                                sale.courier_paid ? (
+                                                    <span style={{
+                                                        padding: '0.28rem 0.6rem',
+                                                        borderRadius: '8px',
+                                                        background: '#dcfce7',
+                                                        color: '#15803d',
+                                                        fontWeight: 800,
+                                                        fontSize: '0.75rem',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.25rem'
+                                                    }}>
+                                                        <Check size={13} /> Курьер оплачен
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleMarkCourierPaid(sale)}
+                                                        style={{
+                                                            padding: '0.32rem 0.65rem',
+                                                            borderRadius: '8px',
+                                                            border: '1px solid #f59e0b',
+                                                            background: '#fffbeb',
+                                                            color: '#b45309',
+                                                            fontWeight: 900,
+                                                            fontSize: '0.75rem',
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '0.3rem'
+                                                        }}
+                                                        title="Отметить оплату курьеру"
+                                                    >
+                                                        <DollarSign size={13} /> Курьеру {courierPayout.toLocaleString('ru-RU')} lei
+                                                    </button>
+                                                )
+                                            )}
                                         </div>
 
                                         {/* Actions */}
@@ -1913,6 +1983,22 @@ export default function Sales() {
                                             onChange={(e) => setFormData({ ...formData, courier_payout: e.target.value })}
                                             placeholder={String(defaultDeliveryFee)}
                                         />
+                                    </div>
+                                    <div style={{
+                                        alignSelf: 'end',
+                                        minHeight: 44,
+                                        borderRadius: 14,
+                                        padding: '0.65rem 0.9rem',
+                                        background: formData.courier_paid ? '#dcfce7' : '#fff7ed',
+                                        color: formData.courier_paid ? '#15803d' : '#c2410c',
+                                        border: `1px solid ${formData.courier_paid ? '#86efac' : '#fed7aa'}`,
+                                        fontWeight: 900,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.45rem'
+                                    }}>
+                                        {formData.courier_paid ? <Check size={16} /> : <DollarSign size={16} />}
+                                        {formData.courier_paid ? 'Курьеру оплачено' : 'Курьеру не оплачено'}
                                     </div>
                                 </>
                             )}

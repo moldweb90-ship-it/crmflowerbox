@@ -49,6 +49,9 @@ const getCourierPayout = (sale) => {
     if (sale.extra_delivery_cost !== undefined && sale.extra_delivery_cost !== null) return Number(sale.extra_delivery_cost || 0)
     return 0
 }
+const isCourierPaid = (sale) => sale.courier_paid === true
+const getUnpaidCourierPayout = (sale) => isCourierPaid(sale) ? 0 : getCourierPayout(sale)
+const getPaidCourierPayout = (sale) => isCourierPaid(sale) ? getCourierPayout(sale) : 0
 const formatMoney = (value) => `${Number(value || 0).toLocaleString('ru-RU')} lei`
 
 export default function Couriers() {
@@ -107,8 +110,10 @@ export default function Couriers() {
                 delivered: list.filter(sale => sale.delivery_status === 'delivered').length,
                 deliveredToday: today.filter(sale => sale.delivery_status === 'delivered').length,
                 active: list.filter(isActiveDelivery).length,
-                payoutToday: today.reduce((sum, sale) => sum + getCourierPayout(sale), 0),
-                payoutTotal: list.reduce((sum, sale) => sum + getCourierPayout(sale), 0)
+                payoutToday: today.reduce((sum, sale) => sum + getUnpaidCourierPayout(sale), 0),
+                paidToday: today.reduce((sum, sale) => sum + getPaidCourierPayout(sale), 0),
+                payoutTotal: list.reduce((sum, sale) => sum + getUnpaidCourierPayout(sale), 0),
+                paidTotal: list.reduce((sum, sale) => sum + getPaidCourierPayout(sale), 0)
             }
         })
         return result.sort((a, b) => b.todayActive - a.todayActive || b.active - a.active || b.today - a.today || a.courier.name.localeCompare(b.courier.name))
@@ -122,7 +127,8 @@ export default function Couriers() {
             deliveredToday: todayDeliveries.filter(sale => sale.delivery_status === 'delivered').length,
             active: deliveries.filter(isActiveDelivery).length,
             empty: deliveries.filter(sale => !sale.courier_id && isActiveDelivery(sale)).length,
-            payoutToday: todayDeliveries.reduce((sum, sale) => sum + getCourierPayout(sale), 0)
+            payoutToday: todayDeliveries.reduce((sum, sale) => sum + getUnpaidCourierPayout(sale), 0),
+            paidToday: todayDeliveries.reduce((sum, sale) => sum + getPaidCourierPayout(sale), 0)
         }
     }, [deliveries])
 
@@ -148,7 +154,8 @@ export default function Couriers() {
                     ['Сегодня осталось', totals.todayActive, '#2563eb', Clock],
                     ['Сегодня доставлено', totals.deliveredToday, '#16a34a', CheckCircle2],
                     ['Без курьера', totals.empty, '#ef4444', UserRound],
-                    ['Курьерам сегодня', formatMoney(totals.payoutToday), '#0f766e', DollarSign]
+                    ['К выплате сегодня', formatMoney(totals.payoutToday), '#0f766e', DollarSign],
+                    ['Оплачено сегодня', formatMoney(totals.paidToday), '#16a34a', CheckCircle2]
                 ].map(([label, value, color, Icon]) => (
                     <div key={label} style={{ background: 'white', borderRadius: 18, padding: '1rem', border: '1px solid #e5e7eb', boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -171,6 +178,7 @@ export default function Couriers() {
                             <span><b>{row.deliveredToday}</b><br /><small>готово</small></span>
                         </div>
                         <div style={{ marginTop: '0.8rem', fontWeight: 950, color: courierFilter === row.courier.id ? '#a7f3d0' : '#0f766e' }}>К выплате: {formatMoney(row.payoutToday)}</div>
+                        <div style={{ marginTop: '0.25rem', fontWeight: 800, opacity: 0.78 }}>Оплачено: {formatMoney(row.paidToday)}</div>
                     </button>
                 ))}
             </div>
@@ -218,7 +226,17 @@ export default function Couriers() {
                             </div>
                             <div>
                                 <div style={{ fontWeight: 900, marginBottom: '0.35rem' }}>{courier?.name || 'Без курьера'}</div>
-                                <div style={{ color: '#0f766e', fontWeight: 950, marginBottom: '0.35rem' }}>Курьеру: {formatMoney(getCourierPayout(sale))}</div>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                                    <span style={{ color: '#0f766e', fontWeight: 950 }}>Курьеру: {formatMoney(getCourierPayout(sale))}</span>
+                                    <span style={{
+                                        borderRadius: 999,
+                                        padding: '0.18rem 0.5rem',
+                                        background: isCourierPaid(sale) ? '#dcfce7' : '#fff7ed',
+                                        color: isCourierPaid(sale) ? '#15803d' : '#c2410c',
+                                        fontWeight: 900,
+                                        fontSize: '0.72rem'
+                                    }}>{isCourierPaid(sale) ? 'оплачено' : 'не оплачено'}</span>
+                                </div>
                                 <div style={{ color: '#475569', fontWeight: 700, lineHeight: 1.35, display: 'flex', gap: '0.45rem' }}><MapPin size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} /> {sale.delivery_address || 'Адрес не указан'}</div>
                                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
                                     {phone && <a href={`tel:${phone}`} style={{ color: '#0f172a', fontWeight: 900, display: 'inline-flex', gap: 5, alignItems: 'center', textDecoration: 'none' }}><Phone size={15} /> {phone}</a>}

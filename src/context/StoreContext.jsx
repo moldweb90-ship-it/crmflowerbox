@@ -983,6 +983,51 @@ export function StoreProvider({ children }) {
         }
         return { success: false, error }
     }
+
+    const markCourierPaid = async (saleId) => {
+        try {
+            const sale = sales.find(s => s.id === saleId)
+            if (!sale) return { success: false, error: { message: 'Заказ не найден' } }
+            if (sale.courier_paid) return { success: true, data: sale }
+            if (!sale.courier_id) return { success: false, error: { message: 'Курьер не назначен' } }
+
+            const amount = Number(sale.courier_payout ?? sale.extra_delivery_cost ?? 0)
+            if (amount <= 0) return { success: false, error: { message: 'Сумма курьеру не указана' } }
+
+            const courier = employees.find(e => e.id === sale.courier_id) || couriersList.find(c => c.id === sale.courier_id)
+            const paidAt = new Date().toISOString()
+            const periodBase = sale.delivery_date || sale.order_date || sale.created_at || paidAt
+            const orderLabel = sale.order_number ? `#${sale.order_number}` : `#${String(sale.id || '').slice(0, 8)}`
+            const note = `Оплата доставки ${orderLabel}${sale.delivery_address ? ` — ${sale.delivery_address}` : ''}`
+
+            const paymentResult = await addEmployeePayment(
+                sale.courier_id,
+                amount,
+                'salary',
+                periodBase,
+                note,
+                courier?.name || ''
+            )
+            if (!paymentResult.success) return paymentResult
+
+            const payload = {
+                courier_paid: true,
+                courier_paid_at: paidAt,
+                courier_payment_id: paymentResult.data?.id || null,
+                courier_paid_amount: amount
+            }
+            const { data, error } = await supabase.from('sales').update(payload).eq('id', saleId).select()
+            if (error) return { success: false, error }
+
+            const updatedSale = data?.[0] || { ...sale, ...payload }
+            setSales(prev => prev.map(s => s.id === saleId ? { ...s, ...updatedSale } : s))
+            return { success: true, data: updatedSale }
+        } catch (error) {
+            console.error('Error marking courier paid:', error)
+            return { success: false, error }
+        }
+    }
+
     const deleteSale = async (id) => {
         const linkedClaims = claims.filter(claim => claim.sale_id === id)
         for (const claim of linkedClaims) {
@@ -2429,7 +2474,7 @@ export function StoreProvider({ children }) {
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
             suppliers, supplies, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,
             expenses, addExpense, updateExpense, deleteExpense,
-            sales, addSale, updateSale, deleteSale,
+            sales, addSale, updateSale, deleteSale, markCourierPaid,
             claims, addClaim, updateClaim, deleteClaim, getSaleClaims, getCustomerClaims,
             tasks, addTask, toggleTask, deleteTask, toggleTaskImportance, clearCompletedTasks,
             couriers: couriersList, addCourier,
