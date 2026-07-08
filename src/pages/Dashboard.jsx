@@ -105,7 +105,7 @@ function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies
 
 export default function Dashboard() {
     const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, customers, getItemName,
-        employees, shifts, startShift, endShift, getActiveShifts, getCashBalance, claims } = useStore()
+        employees, shifts, startShift, endShift, getActiveShifts, getCashBalance, claims, calculateCostPrice } = useStore()
     const navigate = useNavigate()
 
     // Waste Analytics — один период 30 дней для списаний и выручки
@@ -604,6 +604,38 @@ export default function Dashboard() {
 
     const totalValue = products.reduce((acc, p) => acc + (p.price || 0), 0)
     const totalItems = flowers.length + goods.length
+
+    const bouquetMarginStats = React.useMemo(() => {
+        const items = products
+            .map(product => {
+                const price = Number(product.price || 0)
+                const cost = calculateCostPrice(product.composition || [])
+                const margin = price - cost
+                const marginPct = cost > 0 ? (margin / cost) * 100 : (price > 0 ? 100 : 0)
+                return {
+                    id: product.id,
+                    name: product.name || 'Букет',
+                    sku: product.sku || '',
+                    price,
+                    cost,
+                    margin,
+                    marginPct
+                }
+            })
+            .filter(item => item.price > 0 && item.cost >= 0)
+
+        const high = [...items]
+            .filter(item => item.margin > 0)
+            .sort((a, b) => b.margin - a.margin)
+            .slice(0, 10)
+
+        const low = [...items]
+            .filter(item => item.cost > 0)
+            .sort((a, b) => a.marginPct - b.marginPct)
+            .slice(0, 10)
+
+        return { high, low }
+    }, [products, calculateCostPrice])
 
     // Shift block
     const florists = employees.filter(e => ['florist', 'manager'].includes(e.role))
@@ -1389,6 +1421,123 @@ export default function Dashboard() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+
+            {/* Топ маржинальности по букетам */}
+            <div style={{
+                display: isMobile ? 'flex' : 'grid',
+                gridTemplateColumns: isMobile ? 'none' : '1fr 1fr',
+                gap: '1.5rem',
+                marginBottom: '4rem',
+                overflowX: isMobile ? 'auto' : 'visible',
+                scrollSnapType: isMobile ? 'x mandatory' : 'none',
+                paddingBottom: isMobile ? '1rem' : 0,
+                paddingRight: isMobile ? '1rem' : 0
+            }}>
+                {[
+                    {
+                        title: 'Топ маржи',
+                        subtitle: 'Что выгоднее продавать',
+                        items: bouquetMarginStats.high,
+                        accent: '#16a34a',
+                        bg: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)',
+                        border: '#bbf7d0',
+                        icon: TrendingUp,
+                        empty: 'Пока нет букетов с положительной маржой'
+                    },
+                    {
+                        title: 'Слабая маржа',
+                        subtitle: 'Что стоит пересмотреть',
+                        items: bouquetMarginStats.low,
+                        accent: '#f97316',
+                        bg: 'linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%)',
+                        border: '#fed7aa',
+                        icon: TrendingDown,
+                        empty: 'Пока нет букетов для проверки'
+                    }
+                ].map(block => {
+                    const Icon = block.icon
+                    return (
+                        <div key={block.title} style={{ minWidth: isMobile ? '88%' : 'auto', scrollSnapAlign: 'center' }}>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', marginLeft: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Icon size={20} color={block.accent} />
+                                {block.title}
+                            </h2>
+                            <div className="card" style={{
+                                background: block.bg,
+                                border: `1px solid ${block.border}`,
+                                padding: '1.25rem',
+                                minHeight: '320px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.9rem'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>{block.subtitle}</div>
+                                        <div style={{ marginTop: '0.2rem', fontSize: '0.85rem', color: '#64748b', fontWeight: 700 }}>10 позиций из каталога букетов</div>
+                                    </div>
+                                    <div style={iconBubbleStyle(block.accent, 42)}>
+                                        <Icon {...bubbleIconProps(18)} />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                                    {block.items.length > 0 ? block.items.map((item, idx) => (
+                                        <Link
+                                            key={item.id}
+                                            to={`/products?search=${encodeURIComponent(item.sku || item.name)}`}
+                                            style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '34px minmax(0, 1fr) auto',
+                                                alignItems: 'center',
+                                                gap: '0.75rem',
+                                                padding: '0.7rem 0.75rem',
+                                                borderRadius: '14px',
+                                                background: 'rgba(255,255,255,0.78)',
+                                                border: '1px solid rgba(255,255,255,0.9)',
+                                                textDecoration: 'none',
+                                                color: 'inherit',
+                                                boxShadow: '0 8px 20px rgba(15, 23, 42, 0.04)'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: 30,
+                                                height: 30,
+                                                borderRadius: '999px',
+                                                display: 'grid',
+                                                placeItems: 'center',
+                                                background: idx < 3 ? block.accent : '#eef2f7',
+                                                color: idx < 3 ? 'white' : '#64748b',
+                                                fontWeight: 950,
+                                                fontSize: '0.82rem'
+                                            }}>
+                                                {idx + 1}
+                                            </div>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                                                <div style={{ marginTop: 2, fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>
+                                                    Цена {Math.round(item.price).toLocaleString()} lei · Себест. {Math.round(item.cost).toLocaleString()} lei
+                                                </div>
+                                            </div>
+                                            <div style={{ textAlign: 'right', minWidth: 92 }}>
+                                                <div style={{ color: item.margin >= 0 ? '#16a34a' : '#dc2626', fontWeight: 950 }}>
+                                                    {Math.round(item.margin).toLocaleString()} lei
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 800 }}>
+                                                    {Math.round(item.marginPct)}%
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    )) : (
+                                        <div style={{ color: '#94a3b8', fontWeight: 800, textAlign: 'center', padding: '3rem 1rem' }}>{block.empty}</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )
+                })}
             </div>
 
 
