@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
 import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp, Flower } from 'lucide-react'
 import Modal from '../components/ui/Modal'
+import QuantityStepper from '../components/ui/QuantityStepper'
 
 export default function Supplies() {
     const { supplies, suppliers, flowers, goods, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, createSupplier } = useStore() // Added goods
@@ -982,14 +983,12 @@ export default function Supplies() {
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.82rem' }}>
                                         Кол-во{itemType === 'good' && selectedCurrentItem ? `, ${selectedCurrentItem.purchase_unit || 'шт'}` : ''}
                                     </label>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        className="input"
+                                    <QuantityStepper
                                         placeholder="Кол-во"
                                         value={currentItem.quantity}
-                                        onChange={e => setCurrentItem({ ...currentItem, quantity: e.target.value })}
-                                        style={{ padding: '0.75rem' }}
+                                        onChange={value => setCurrentItem({ ...currentItem, quantity: value })}
+                                        min={0.01}
+                                        step={1}
                                     />
                                 </div>
                                 <div>

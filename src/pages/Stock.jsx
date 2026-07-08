@@ -3,7 +3,10 @@ import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
 import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck } from 'lucide-react'
 import Modal from '../components/ui/Modal'
+import QuantityStepper from '../components/ui/QuantityStepper'
 import { supabase } from '../supabase'
+
+const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 
 export default function Stock() {
     const {
@@ -181,12 +184,13 @@ export default function Stock() {
     }, [filteredWasteHistory])
 
     const handleAddStock = async () => {
-        if (!itemId || qty <= 0) return
+        const qtyValue = parseAmount(qty)
+        if (!itemId || qtyValue <= 0) return
         const item = itemType === 'flower'
             ? flowers.find(f => f.id === itemId)
             : goods.find(g => g.id === itemId)
 
-        await addToStock(itemType, itemId, qty, 'manual', null, item?.price || 0, notes || 'Ручное пополнение')
+        await addToStock(itemType, itemId, qtyValue, 'manual', null, item?.price || 0, notes || 'Ручное пополнение')
         setIsAddModalOpen(false)
         setQty(1)
         setNotes('')
@@ -194,8 +198,9 @@ export default function Stock() {
     }
 
     const handleRecordWaste = async () => {
-        if (!selectedItem || qty <= 0) return
-        await recordWaste(selectedItem.type, selectedItem.id, qty, notes || wasteReason, wasteReason, user?.id, wasteSupplierId)
+        const qtyValue = parseAmount(qty)
+        if (!selectedItem || qtyValue <= 0) return
+        await recordWaste(selectedItem.type, selectedItem.id, qtyValue, notes || wasteReason, wasteReason, user?.id, wasteSupplierId)
         setIsWasteModalOpen(false)
         setQty(1)
         setNotes('')
@@ -1103,12 +1108,11 @@ export default function Stock() {
 
                     <div>
                         <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Количество</label>
-                        <input
-                            type="number"
-                            className="input"
+                        <QuantityStepper
                             value={qty}
-                            onChange={(e) => setQty(Number(e.target.value))}
-                            min="1"
+                            onChange={setQty}
+                            min={0.01}
+                            step={1}
                         />
                     </div>
 
@@ -1124,7 +1128,7 @@ export default function Stock() {
 
                     <button
                         onClick={handleAddStock}
-                        disabled={!itemId || qty <= 0}
+                        disabled={!itemId || parseAmount(qty) <= 0}
                         style={{
                             padding: '1rem',
                             background: 'var(--primary)',
@@ -1134,7 +1138,7 @@ export default function Stock() {
                             fontWeight: 700,
                             fontSize: '1rem',
                             cursor: 'pointer',
-                            opacity: (!itemId || qty <= 0) ? 0.5 : 1
+                            opacity: (!itemId || parseAmount(qty) <= 0) ? 0.5 : 1
                         }}
                     >
                         <Plus size={18} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} />
@@ -1167,17 +1171,16 @@ export default function Stock() {
 
                     <div>
                         <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Количество брака</label>
-                        <input
-                            type="number"
-                            className="input"
+                        <QuantityStepper
                             value={qty}
-                            onChange={(e) => setQty(Math.min(Number(e.target.value), selectedItem?.quantity || 0))}
-                            min="1"
+                            onChange={(value) => setQty(value === '' ? '' : Math.min(parseAmount(value), selectedItem?.quantity || 0))}
+                            min={0.01}
                             max={selectedItem?.quantity || 1}
+                            step={1}
                         />
-                        {selectedItem && qty > 0 && (
+                        {selectedItem && parseAmount(qty) > 0 && (
                             <div style={{ fontSize: '0.85rem', color: '#ef4444', marginTop: '0.5rem', fontWeight: 600 }}>
-                                Сумма списания: {(qty * selectedItem.cost).toLocaleString()} lei
+                                Сумма списания: {(parseAmount(qty) * selectedItem.cost).toLocaleString()} lei
                             </div>
                         )}
                     </div>
@@ -1208,7 +1211,7 @@ export default function Stock() {
 
                     <button
                         onClick={handleRecordWaste}
-                        disabled={qty <= 0}
+                        disabled={parseAmount(qty) <= 0}
                         style={{
                             padding: '1rem',
                             background: '#ef4444',
@@ -1218,7 +1221,7 @@ export default function Stock() {
                             fontWeight: 700,
                             fontSize: '1rem',
                             cursor: 'pointer',
-                            opacity: qty <= 0 ? 0.5 : 1
+                            opacity: parseAmount(qty) <= 0 ? 0.5 : 1
                         }}
                     >
                         <Trash2 size={18} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} />

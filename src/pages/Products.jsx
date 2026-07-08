@@ -4,6 +4,7 @@ import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, Refres
 import { useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import Modal from '../components/ui/Modal'
+import QuantityStepper from '../components/ui/QuantityStepper'
 
 export default function Products() {
     const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice, calculateCostPrice, recalculateAllProducts } = useStore()
@@ -596,12 +597,11 @@ export default function Products() {
                                 </div>
                                 <div>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Кол-во</label>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        className="input"
+                                    <QuantityStepper
                                         value={compQty}
-                                        onChange={e => setCompQty(e.target.value)}
+                                        onChange={setCompQty}
+                                        step={1}
+                                        min={0.01}
                                     />
                                 </div>
                                 <button className="btn btn-primary" onClick={addItemToComposition} style={{ minWidth: '120px', minHeight: 46 }}>
@@ -633,15 +633,13 @@ export default function Products() {
                                                     )}
                                                 </div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                                    <input
-                                                        type="text"
-                                                        inputMode="decimal"
-                                                        className="input"
+                                                    <QuantityStepper
                                                         value={comp.qty}
-                                                        onChange={e => updateCompositionQty(idx, e.target.value)}
-                                                        style={{ height: 38, textAlign: 'center', fontWeight: 800, width: '100%' }}
+                                                        onChange={value => updateCompositionQty(idx, value)}
+                                                        step={1}
+                                                        min={0.01}
+                                                        unit={unitLabel}
                                                     />
-                                                    <span style={{ color: '#64748b', fontWeight: 850, minWidth: 24 }}>{unitLabel}</span>
                                                 </div>
                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: '0.35rem' }}>
                                                     <input

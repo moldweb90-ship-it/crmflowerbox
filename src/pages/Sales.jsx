@@ -4,6 +4,7 @@ import { useStore } from '../context/StoreContext'
 import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye, Search } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import ClaimModal from '../components/claims/ClaimModal'
+import QuantityStepper from '../components/ui/QuantityStepper'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -1701,19 +1702,12 @@ export default function Sales() {
                                         {siteComposition.map((item, idx) => (
                                             <div key={`${item.type}-${item.item_id}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: '#f9fafb', borderRadius: '8px' }}>
                                                 <span style={{ flex: 1, fontWeight: 500 }}>{item.type === 'flower' ? '🌸' : '📦'} {item.name}</span>
-                                                <input type="text" inputMode="decimal" value={item.quantity} onChange={(e) => {
-                                                    const val = e.target.value
+                                                <QuantityStepper value={item.quantity} onChange={(val) => {
                                                     const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: val } : c)
                                                     setSiteComposition(newComp)
                                                     const withMarkup = calculateSiteCompositionPrice(newComp)
                                                     setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
-                                                }} onBlur={(e) => {
-                                                    const parsed = parseDecimal(e.target.value, NaN)
-                                                    if (!Number.isFinite(parsed) || parsed <= 0) {
-                                                        const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: 0.01 } : c)
-                                                        setSiteComposition(newComp)
-                                                    }
-                                                }} style={{ width: '60px', padding: '0.35rem', textAlign: 'center' }} />
+                                                }} step={1} min={0.01} style={{ width: '148px' }} inputStyle={{ minWidth: '54px', height: '34px' }} buttonStyle={{ width: '30px', height: '30px' }} />
                                                 <span style={{ minWidth: '50px', fontWeight: 600 }}>{parseDecimal(item.price) * parseDecimal(item.quantity)} L</span>
                                                 <button type="button" onClick={() => {
                                                     const newComp = siteComposition.filter((_, i) => i !== idx)
@@ -2714,68 +2708,19 @@ export default function Sales() {
                                     }}>
                                         <span style={{ fontSize: '1.25rem' }}>{item.type === 'flower' ? '🌸' : '📦'}</span>
                                         <span style={{ flex: 1, fontWeight: 500 }}>{item.name}</span>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <button
-                                                disabled={Boolean(selectedShowcaseId)}
-                                                onClick={() => {
-                                                    const newComp = [...salonFormData.composition]
-                                                    // Ensure it is treated as a number
-                                                    const currentQty = parseDecimal(newComp[idx].quantity)
-                                                    if (currentQty > 0.01) {
-                                                        newComp[idx].quantity = Math.max(0.01, currentQty - 1)
-                                                        setSalonFormData({ ...salonFormData, composition: newComp })
-                                                    }
-                                                }}
-                                                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: selectedShowcaseId ? 0.45 : 1 }}
-                                            >−</button>
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                className="no-spinners"
-                                                disabled={Boolean(selectedShowcaseId)}
-                                                value={item.quantity}
-                                                onChange={(e) => {
-                                                    const val = e.target.value
-                                                    const newComp = [...salonFormData.composition]
-                                                    // Keep raw input while typing so the user can erase "1" and type "0.5".
-                                                    newComp[idx].quantity = val
-                                                    setSalonFormData({ ...salonFormData, composition: newComp })
-                                                }}
-                                                style={{
-                                                    width: '64px',
-                                                    textAlign: 'center',
-                                                    fontWeight: 700,
-                                                    border: '2px solid #e5e7eb',
-                                                    borderRadius: '8px',
-                                                    padding: '0.25rem 0',
-                                                    fontSize: '1.1rem',
-                                                    color: '#1f2937',
-                                                    outline: 'none',
-                                                    background: '#ffffff'
-                                                }}
-                                                onFocus={(e) => e.target.style.borderColor = '#7c3aed'}
-                                                onBlur={(e) => {
-                                                    e.target.style.borderColor = '#e5e7eb'
-                                                    const parsed = parseDecimal(e.target.value, NaN)
-                                                    if (!Number.isFinite(parsed) || parsed <= 0) {
-                                                        const newComp = [...salonFormData.composition]
-                                                        newComp[idx].quantity = 0.01
-                                                        setSalonFormData({ ...salonFormData, composition: newComp })
-                                                    }
-                                                }}
-                                            />
-                                            <span style={{ color: '#64748b', fontWeight: 850, minWidth: 24 }}>{unitLabel}</span>
-                                            <button
-                                                disabled={Boolean(selectedShowcaseId)}
-                                                onClick={() => {
-                                                    const newComp = [...salonFormData.composition]
-                                                    // Handle case where quantity is '' by treating it as 0, then add 1 -> 1
-                                                    newComp[idx].quantity = parseDecimal(newComp[idx].quantity) + 1
-                                                    setSalonFormData({ ...salonFormData, composition: newComp })
-                                                }}
-                                                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #d1d5db', background: 'white', cursor: selectedShowcaseId ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: selectedShowcaseId ? 0.45 : 1 }}
-                                            >+</button>
-                                        </div>
+                                        <QuantityStepper
+                                            value={item.quantity}
+                                            onChange={(val) => {
+                                                const newComp = [...salonFormData.composition]
+                                                newComp[idx].quantity = val
+                                                setSalonFormData({ ...salonFormData, composition: newComp })
+                                            }}
+                                            step={1}
+                                            min={0.01}
+                                            disabled={Boolean(selectedShowcaseId)}
+                                            unit={unitLabel}
+                                            style={{ width: '168px' }}
+                                        />
                                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '92px 88px', gap: '0.5rem', alignItems: 'center' }}>
                                             <div>
                                                 <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: '#9ca3af', marginBottom: '0.2rem' }}>Цена/{unitLabel}</label>

@@ -259,3 +259,69 @@ tr:last-child td {
   -moz-appearance: textfield;
   appearance: none;
 }
+
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.qty-stepper-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #dbe3ee;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  color: #0f172a;
+  font-size: 1.15rem;
+  font-weight: 900;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.qty-stepper-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #94a3b8;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1);
+}
+
+.qty-stepper-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.qty-stepper-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.qty-stepper-input {
+  min-width: 58px;
+  height: 38px;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 900;
+  text-align: center;
+  outline: none;
+  padding: 0.35rem 0.45rem;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.qty-stepper-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(239, 86, 59, 0.12);
+}
+
+.qty-stepper-unit {
+  min-width: 24px;
+  color: #64748b;
+  font-weight: 850;
+  white-space: nowrap;
+}

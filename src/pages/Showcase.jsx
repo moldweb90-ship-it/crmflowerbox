@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Plus, Search, Store, Trash2, BadgeCheck, Sparkles, PackageCheck, RotateCcw, AlarmClock, Flame, Edit2 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
+import QuantityStepper from '../components/ui/QuantityStepper'
 import { useStore } from '../context/StoreContext'
 
 const emptyForm = {
@@ -9,6 +10,8 @@ const emptyForm = {
     sale_price: '',
     notes: ''
 }
+
+const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 
 const getShowcaseAgeDays = (dateValue) => {
     if (!dateValue) return 0
@@ -107,22 +110,22 @@ export default function Showcase() {
         }
     }, [showcaseBouquets])
 
-    const formCost = formData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * Number(item.quantity || 0)), 0)
-    const suggestedPrice = formData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0)
+    const formCost = formData.composition.reduce((sum, item) => sum + (Number(item.cost || 0) * parseAmount(item.quantity)), 0)
+    const suggestedPrice = formData.composition.reduce((sum, item) => sum + (Number(item.price || 0) * parseAmount(item.quantity)), 0)
     const finalPrice = Number(formData.sale_price || 0) || suggestedPrice
     const formProfit = finalPrice - formCost
     const formMargin = formCost > 0 ? Math.round((formProfit / formCost) * 100) : 0
     const getAddedComposition = () => {
         if (!editingBouquet) return formData.composition
         const oldByKey = (editingBouquet.composition || []).reduce((acc, item) => {
-            acc[`${item.type}:${item.item_id || item.id}`] = Number(item.quantity || item.qty || 0)
+            acc[`${item.type}:${item.item_id || item.id}`] = parseAmount(item.quantity || item.qty)
             return acc
         }, {})
         return formData.composition
             .map(item => {
                 const key = `${item.type}:${item.item_id || item.id}`
-                const qty = Number(item.quantity || item.qty || 0)
-                const diff = qty - Number(oldByKey[key] || 0)
+                const qty = parseAmount(item.quantity || item.qty)
+                const diff = qty - parseAmount(oldByKey[key])
                 return diff > 0 ? { ...item, quantity: diff } : null
             })
             .filter(Boolean)
@@ -130,7 +133,7 @@ export default function Showcase() {
     const stockIssues = getShowcaseItemStockIssues(getAddedComposition())
 
     const applyComposition = (composition) => {
-        const nextSuggested = composition.reduce((sum, c) => sum + (Number(c.price || 0) * Number(c.quantity || 0)), 0)
+        const nextSuggested = composition.reduce((sum, c) => sum + (Number(c.price || 0) * parseAmount(c.quantity)), 0)
         setFormData(prev => ({ ...prev, composition, sale_price: String(nextSuggested) }))
     }
 
@@ -166,7 +169,7 @@ export default function Showcase() {
     const addItem = (item, type) => {
         const existingIndex = formData.composition.findIndex(c => c.type === type && c.item_id === item.id)
         const nextComposition = existingIndex >= 0
-            ? formData.composition.map((c, i) => i === existingIndex ? { ...c, quantity: Number(c.quantity || 0) + 1 } : c)
+            ? formData.composition.map((c, i) => i === existingIndex ? { ...c, quantity: parseAmount(c.quantity) + 1 } : c)
             : [
                 ...formData.composition,
                 {
@@ -186,8 +189,8 @@ export default function Showcase() {
 
     const writeOffCompositionItem = (item, idx) => {
         const key = compositionKey(item)
-        const currentQty = Number(item.quantity || 0)
-        const qtyToWriteOff = Math.min(currentQty, Math.max(0, Number(writeOffQtyByKey[key] || 0)))
+        const currentQty = parseAmount(item.quantity)
+        const qtyToWriteOff = Math.min(currentQty, Math.max(0, parseAmount(writeOffQtyByKey[key])))
         if (qtyToWriteOff <= 0) {
             alert('Укажите количество для списания')
             return
@@ -512,32 +515,26 @@ export default function Showcase() {
                                                 {issue && <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '0.15rem' }}>Не хватает: {issue.missing}</div>}
                                                 {editingBouquet && <div style={{ color: '#94a3b8', fontSize: '0.72rem', fontWeight: 750, marginTop: '0.15rem' }}>Осталось в букете</div>}
                                             </div>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                className="input"
+                                            <QuantityStepper
                                                 value={item.quantity}
-                                                onChange={e => {
-                                                    const qty = Math.max(1, Number(e.target.value || 1))
-                                                    const comp = formData.composition.map((c, i) => i === idx ? { ...c, quantity: qty } : c)
+                                                onChange={value => {
+                                                    const comp = formData.composition.map((c, i) => i === idx ? { ...c, quantity: value } : c)
                                                     applyComposition(comp)
                                                 }}
-                                                style={{ textAlign: 'center', fontWeight: 800 }}
+                                                min={0.01}
+                                                step={1}
                                             />
                                             {editingBouquet && (
                                                 <div style={{ display: 'grid', gridTemplateColumns: '74px 1fr', gap: '0.35rem', alignItems: 'center' }}>
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        max={item.quantity}
-                                                        className="input"
+                                                    <QuantityStepper
                                                         value={writeOffQtyByKey[key] || ''}
-                                                        onChange={e => {
-                                                            const qty = Math.min(Number(item.quantity || 0), Math.max(0, Number(e.target.value || 0)))
-                                                            setWriteOffQtyByKey(prev => ({ ...prev, [key]: qty || '' }))
+                                                        onChange={value => {
+                                                            setWriteOffQtyByKey(prev => ({ ...prev, [key]: value }))
                                                         }}
+                                                        min={0}
+                                                        max={parseAmount(item.quantity)}
+                                                        step={1}
                                                         placeholder="шт"
-                                                        style={{ textAlign: 'center', fontWeight: 800 }}
                                                     />
                                                     <button
                                                         type="button"
@@ -550,7 +547,7 @@ export default function Showcase() {
                                                     </button>
                                                 </div>
                                             )}
-                                            <div style={{ textAlign: isMobile ? 'left' : 'right', fontWeight: 900, color: '#7c3aed' }}>{(Number(item.price || 0) * Number(item.quantity || 0)).toLocaleString()} lei</div>
+                                            <div style={{ textAlign: isMobile ? 'left' : 'right', fontWeight: 900, color: '#7c3aed' }}>{(Number(item.price || 0) * parseAmount(item.quantity)).toLocaleString()} lei</div>
                                             <button
                                                 type="button"
                                                 onClick={() => applyComposition(formData.composition.filter((_, i) => i !== idx))}

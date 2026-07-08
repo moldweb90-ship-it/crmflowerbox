@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
 import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import Modal from '../components/ui/Modal'
+import QuantityStepper from '../components/ui/QuantityStepper'
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
     const { flowers, addFlower, updateFlower, deleteFlower, goods, addGood, updateGood, deleteGood } = useStore()
@@ -435,13 +436,9 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.85rem' }}>Внутри</label>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        className="input"
+                                    <QuantityStepper
                                         value={formData.unitsPerPurchase}
-                                        onChange={e => {
-                                            const nextUnits = e.target.value
+                                        onChange={nextUnits => {
                                             const nextUnitCost = parseAmount(formData.purchaseCost || formData.cost) / Math.max(parseAmount(nextUnits), 1)
                                             const markupVal = parseAmount(formData.markup) || 1.5
                                             setFormData({
@@ -451,6 +448,8 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                                 price: nextUnitCost ? (nextUnitCost * markupVal).toFixed(2) : ''
                                             })
                                         }}
+                                        min={1}
+                                        step={1}
                                         placeholder="100"
                                     />
                                 </div>

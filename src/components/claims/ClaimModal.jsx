@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { AlertTriangle, Plus, Search, Trash2 } from 'lucide-react'
 import Modal from '../ui/Modal'
+import QuantityStepper from '../ui/QuantityStepper'
 import { useStore } from '../../context/StoreContext'
 
 export const CLAIM_REASONS = [
@@ -50,6 +51,7 @@ const emptyForm = {
     compensation_composition: []
 }
 
+const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 const money = (value) => `${Number(value || 0).toLocaleString()} lei`
 
 export default function ClaimModal({ isOpen, onClose, sale = null }) {
@@ -69,7 +71,7 @@ export default function ClaimModal({ isOpen, onClose, sale = null }) {
     }, [isOpen, sale?.id])
 
     const selectedSale = sale || sales.find(s => s.id === form.sale_id)
-    const compensationCost = form.compensation_composition.reduce((sum, item) => sum + Number(item.cost || 0) * Number(item.quantity || 0), 0)
+    const compensationCost = form.compensation_composition.reduce((sum, item) => sum + Number(item.cost || 0) * parseAmount(item.quantity), 0)
     const totalLoss = Number(form.loss_amount || 0) || Number(form.refund_amount || 0) + compensationCost
 
     const searchResults = useMemo(() => {
@@ -84,7 +86,7 @@ export default function ClaimModal({ isOpen, onClose, sale = null }) {
     const addItem = (item) => {
         const existing = form.compensation_composition.find(x => x.type === item.type && x.item_id === item.id)
         const next = existing
-            ? form.compensation_composition.map(x => x === existing ? { ...x, quantity: Number(x.quantity || 0) + 1 } : x)
+            ? form.compensation_composition.map(x => x === existing ? { ...x, quantity: parseAmount(x.quantity) + 1 } : x)
             : [...form.compensation_composition, {
                 type: item.type,
                 item_id: item.id,
@@ -98,7 +100,7 @@ export default function ClaimModal({ isOpen, onClose, sale = null }) {
     }
 
     const updateItemQty = (idx, quantity) => {
-        const qty = Math.max(1, Number(quantity || 1))
+        const qty = quantity === '' ? '' : Math.max(0.01, parseAmount(quantity) || 0.01)
         setForm({
             ...form,
             compensation_composition: form.compensation_composition.map((item, i) => i === idx ? { ...item, quantity: qty } : item)
@@ -198,10 +200,10 @@ export default function ClaimModal({ isOpen, onClose, sale = null }) {
                     </div>
                     <div style={{ display: 'grid', gap: '0.5rem' }}>
                         {form.compensation_composition.map((item, idx) => (
-                            <div key={`${item.type}-${item.item_id}`} style={{ display: 'grid', gridTemplateColumns: '1fr 88px 100px 34px', gap: '0.5rem', alignItems: 'center', background: 'white', borderRadius: 12, padding: '0.65rem' }}>
+                            <div key={`${item.type}-${item.item_id}`} style={{ display: 'grid', gridTemplateColumns: '1fr 150px 100px 34px', gap: '0.5rem', alignItems: 'center', background: 'white', borderRadius: 12, padding: '0.65rem' }}>
                                 <div style={{ fontWeight: 850 }}>{item.name}</div>
-                                <input className="input" type="number" min="1" value={item.quantity} onChange={e => updateItemQty(idx, e.target.value)} />
-                                <div style={{ fontWeight: 900, textAlign: 'right' }}>{money(Number(item.cost || 0) * Number(item.quantity || 0))}</div>
+                                <QuantityStepper value={item.quantity} onChange={value => updateItemQty(idx, value)} min={0.01} step={1} />
+                                <div style={{ fontWeight: 900, textAlign: 'right' }}>{money(Number(item.cost || 0) * parseAmount(item.quantity))}</div>
                                 <button onClick={() => removeItem(idx)} style={{ color: '#ef4444', background: '#fee2e2', border: 0, borderRadius: 10, height: 34 }}><Trash2 size={16} /></button>
                             </div>
                         ))}
