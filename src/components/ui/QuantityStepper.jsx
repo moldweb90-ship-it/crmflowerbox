@@ -42,36 +42,40 @@ export default function QuantityStepper({
 
     return (
         <div className={`qty-stepper ${className}`.trim()} style={style}>
-            <button
-                type="button"
-                className="qty-stepper-btn"
-                disabled={disabled}
-                onClick={() => bump(-1)}
-                style={buttonStyle}
-                aria-label="Decrease quantity"
-            >
-                -
-            </button>
-            <input
-                type="text"
-                inputMode="decimal"
-                className="qty-stepper-input"
-                disabled={disabled}
-                value={currentText}
-                placeholder={placeholder}
-                onChange={e => onChange(cleanInput(e.target.value))}
-                style={inputStyle}
-            />
-            <button
-                type="button"
-                className="qty-stepper-btn"
-                disabled={disabled}
-                onClick={() => bump(1)}
-                style={buttonStyle}
-                aria-label="Increase quantity"
-            >
-                +
-            </button>
+            <span className="qty-stepper-field">
+                <input
+                    type="text"
+                    inputMode="decimal"
+                    className="qty-stepper-input"
+                    disabled={disabled}
+                    value={currentText}
+                    placeholder={placeholder}
+                    onChange={e => onChange(cleanInput(e.target.value))}
+                    style={inputStyle}
+                />
+                <span className="qty-stepper-arrows">
+                    <button
+                        type="button"
+                        className="qty-stepper-arrow qty-stepper-arrow-up"
+                        disabled={disabled}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => bump(1)}
+                        style={buttonStyle}
+                        tabIndex={-1}
+                        aria-label="Increase quantity"
+                    />
+                    <button
+                        type="button"
+                        className="qty-stepper-arrow qty-stepper-arrow-down"
+                        disabled={disabled}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => bump(-1)}
+                        style={buttonStyle}
+                        tabIndex={-1}
+                        aria-label="Decrease quantity"
+                    />
+                </span>
+            </span>
             {unit ? <span className="qty-stepper-unit">{unit}</span> : null}
         </div>
     )
