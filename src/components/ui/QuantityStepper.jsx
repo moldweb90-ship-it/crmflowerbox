@@ -23,6 +23,7 @@ export default function QuantityStepper({
     disabled = false,
     unit = '',
     placeholder = '',
+    className = '',
     style = {},
     inputStyle = {},
     buttonStyle = {}
@@ -40,14 +41,14 @@ export default function QuantityStepper({
     }
 
     return (
-        <div className="qty-stepper" style={style}>
+        <div className={`qty-stepper ${className}`.trim()} style={style}>
             <button
                 type="button"
                 className="qty-stepper-btn"
                 disabled={disabled}
                 onClick={() => bump(-1)}
                 style={buttonStyle}
-                aria-label="Уменьшить"
+                aria-label="Decrease quantity"
             >
                 -
             </button>
@@ -67,7 +68,7 @@ export default function QuantityStepper({
                 disabled={disabled}
                 onClick={() => bump(1)}
                 style={buttonStyle}
-                aria-label="Увеличить"
+                aria-label="Increase quantity"
             >
                 +
             </button>

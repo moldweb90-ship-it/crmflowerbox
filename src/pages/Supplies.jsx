@@ -978,7 +978,7 @@ export default function Supplies() {
                                 )}
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(150px, 0.85fr) minmax(150px, 1fr)', gap: '0.75rem', alignItems: 'end' }}>
                                 <div>
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.82rem' }}>
                                         Кол-во{itemType === 'good' && selectedCurrentItem ? `, ${selectedCurrentItem.purchase_unit || 'шт'}` : ''}

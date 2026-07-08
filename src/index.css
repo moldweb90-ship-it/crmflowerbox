@@ -261,33 +261,36 @@ tr:last-child td {
 }
 
 .qty-stepper {
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: 24px 50px 24px auto;
   align-items: center;
-  gap: 0.35rem;
-  width: 100%;
+  gap: 0.25rem;
+  width: max-content;
+  max-width: 100%;
 }
 
 .qty-stepper-btn {
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
   border-radius: 999px;
   border: 1px solid #dbe3ee;
-  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  background: #fff;
   color: #0f172a;
-  font-size: 1.15rem;
+  font-size: 0.95rem;
   font-weight: 900;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
   transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .qty-stepper-btn:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: #94a3b8;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.1);
 }
 
 .qty-stepper-btn:active:not(:disabled) {
@@ -300,17 +303,19 @@ tr:last-child td {
 }
 
 .qty-stepper-input {
-  min-width: 58px;
-  height: 38px;
+  width: 50px;
+  min-width: 0;
+  height: 32px;
+  box-sizing: border-box;
   border: 1px solid #dbe3ee;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   color: #0f172a;
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 900;
   text-align: center;
   outline: none;
-  padding: 0.35rem 0.45rem;
+  padding: 0 0.35rem;
   transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
@@ -320,8 +325,9 @@ tr:last-child td {
 }
 
 .qty-stepper-unit {
-  min-width: 24px;
+  min-width: 0;
   color: #64748b;
   font-weight: 850;
+  font-size: 0.86rem;
   white-space: nowrap;
 }

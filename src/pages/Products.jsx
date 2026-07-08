@@ -514,7 +514,7 @@ export default function Products() {
                             <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Состав</h3>
 
                             {/* Add Item Control */}
-                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '130px minmax(220px, 1fr) 100px 140px', gap: '0.5rem', marginBottom: '1rem', alignItems: 'end' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '130px minmax(220px, 1fr) 112px 140px', gap: '0.5rem', marginBottom: '1rem', alignItems: 'end' }}>
                                 <div>
                                     <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>Тип</label>
                                     <select className="input" value={compType} onChange={e => { setCompType(e.target.value); setCompId(''); setCompSearch(''); setCompDropdownOpen(false) }}>
@@ -623,7 +623,7 @@ export default function Products() {
                                     const unitLabel = comp.type === 'good' ? (item.stock_unit || 'шт') : 'шт'
                                     return (
                                         <div key={idx} style={{ padding: '0.75rem 0.5rem', borderBottom: '1px solid var(--border)' }}>
-                                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 92px 132px 28px', alignItems: 'center', gap: '0.75rem' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 126px 132px 28px', alignItems: 'center', gap: '0.75rem' }}>
                                                 <div>
                                                     <div style={{ fontWeight: 800 }}>{item.name}</div>
                                                     {comp.technique_enabled && (
