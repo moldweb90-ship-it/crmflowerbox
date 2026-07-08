@@ -402,13 +402,17 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.8fr 1fr', gap: '0.75rem' }}>
                                 <div>
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.85rem' }}>Покупаем как</label>
-                                    <input
+                                    <select
                                         className="input"
-                                        list="purchase-units"
                                         value={formData.purchaseUnit}
                                         onChange={e => setFormData({ ...formData, purchaseUnit: e.target.value })}
-                                        placeholder="рулон"
-                                    />
+                                    >
+                                        <option value="шт">шт</option>
+                                        <option value="пачка">пачка</option>
+                                        <option value="рулон">рулон</option>
+                                        <option value="коробка">коробка</option>
+                                        <option value="упаковка">упаковка</option>
+                                    </select>
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.85rem' }}>Внутри</label>
@@ -423,29 +427,19 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 800, fontSize: '0.85rem' }}>Списываем как</label>
-                                    <input
+                                    <select
                                         className="input"
-                                        list="stock-units"
                                         value={formData.stockUnit}
                                         onChange={e => setFormData({ ...formData, stockUnit: e.target.value })}
-                                        placeholder="м"
-                                    />
+                                    >
+                                        <option value="шт">шт</option>
+                                        <option value="лист">лист</option>
+                                        <option value="м">м</option>
+                                        <option value="кирпич">кирпич</option>
+                                        <option value="см">см</option>
+                                    </select>
                                 </div>
                             </div>
-                            <datalist id="purchase-units">
-                                <option value="шт" />
-                                <option value="пачка" />
-                                <option value="рулон" />
-                                <option value="коробка" />
-                                <option value="упаковка" />
-                            </datalist>
-                            <datalist id="stock-units">
-                                <option value="шт" />
-                                <option value="лист" />
-                                <option value="м" />
-                                <option value="кирпич" />
-                                <option value="см" />
-                            </datalist>
                             <div style={{ color: '#64748b', fontWeight: 700, lineHeight: 1.45 }}>
                                 1 {formData.purchaseUnit || 'шт'} = {formData.unitsPerPurchase || 1} {formData.stockUnit || 'шт'}.
                                 В букетах, продажах и складе расходуем в “{formData.stockUnit || 'шт'}”.
