@@ -639,13 +639,18 @@ export default function Sales() {
             const techniqueExtra = c.technique_enabled
                 ? (c.technique_mode === 'percent' ? basePrice * (techniqueValue / 100) : techniqueValue)
                 : 0
+            const priceOverride = Number(c.price_override)
+            const saleUnitPrice = c.price_override !== undefined && c.price_override !== '' && Number.isFinite(priceOverride) && priceOverride >= 0
+                ? priceOverride
+                : basePrice + techniqueExtra
             return {
                 type: c.type,
                 item_id: c.id,
                 name: c.technique_enabled ? `${item?.name || '?'} (${c.technique_name || 'техника'})` : (item?.name || '?'),
                 quantity: c.qty || 1,
                 cost: item?.cost ?? item?.purchase_price ?? 0,
-                price: basePrice + techniqueExtra,
+                price: saleUnitPrice,
+                price_override: c.price_override !== undefined && c.price_override !== '' ? saleUnitPrice : undefined,
                 technique_enabled: Boolean(c.technique_enabled),
                 technique_name: c.technique_name || '',
                 technique_mode: c.technique_mode || 'fixed',

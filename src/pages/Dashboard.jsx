@@ -626,7 +626,7 @@ export default function Dashboard() {
 
         const high = [...items]
             .filter(item => item.margin > 0)
-            .sort((a, b) => b.margin - a.margin)
+            .sort((a, b) => (b.marginPct - a.marginPct) || (b.margin - a.margin))
             .slice(0, 10)
 
         const low = [...items]

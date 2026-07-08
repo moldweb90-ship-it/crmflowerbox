@@ -1581,6 +1581,15 @@ export function StoreProvider({ children }) {
             : value
     }
 
+    const getCompositionSaleUnitPrice = (item, catalogUnitPrice) => {
+        const override = Number(item?.price_override)
+        if (item?.price_override !== undefined && item?.price_override !== '' && Number.isFinite(override) && override >= 0) {
+            return override
+        }
+        const baseUnitPrice = Number(catalogUnitPrice || 0)
+        return baseUnitPrice + getTechniqueExtra(item, baseUnitPrice)
+    }
+
     // Calculation Helper (Remains same logic)
     const calculatePrice = (composition) => {
         if (!Array.isArray(composition)) return 0
@@ -1589,14 +1598,12 @@ export function StoreProvider({ children }) {
             if (item.type === 'flower') {
                 const f = flowers.find(x => x.id === item.id)
                 if (f) {
-                    const unitPrice = Number(f.price || 0)
-                    cost += (unitPrice + getTechniqueExtra(item, unitPrice)) * Number(item.qty || 0)
+                    cost += getCompositionSaleUnitPrice(item, f.price) * Number(item.qty || 0)
                 }
             } else if (item.type === 'good') {
                 const g = goods.find(x => x.id === item.id)
                 if (g) {
-                    const unitPrice = Number(g.price || 0)
-                    cost += (unitPrice + getTechniqueExtra(item, unitPrice)) * Number(item.qty || 0)
+                    cost += getCompositionSaleUnitPrice(item, g.price) * Number(item.qty || 0)
                 }
             }
         })

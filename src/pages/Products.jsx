@@ -247,8 +247,7 @@ export default function Products() {
             const list = item.type === 'flower' ? flowers : goods
             const obj = list.find(x => x.id === item.id)
             if (obj) {
-                const unitPrice = Number(obj.price || 0)
-                cost += (unitPrice + getTechniqueUnitExtra(item, unitPrice)) * Number(item.qty || 0)
+                cost += getCompositionSaleUnitPrice(item, obj.price) * Number(item.qty || 0)
             }
         })
         setCalculatedCost(cost)
@@ -300,6 +299,30 @@ export default function Products() {
             : value
     }
 
+    const getCompositionSaleUnitPrice = (comp, catalogUnitPrice) => {
+        const override = Number(comp?.price_override)
+        if (comp?.price_override !== undefined && comp?.price_override !== '' && Number.isFinite(override) && override >= 0) {
+            return override
+        }
+        const baseUnitPrice = Number(catalogUnitPrice || 0)
+        return baseUnitPrice + getTechniqueUnitExtra(comp, baseUnitPrice)
+    }
+
+    const updateCompositionLinePrice = (index, value) => {
+        const normalized = String(value).replace(',', '.')
+        setFormData({
+            ...formData,
+            composition: formData.composition.map((item, i) => {
+                if (i !== index) return item
+                if (value === '') return { ...item, price_override: '' }
+                const linePrice = Number(normalized)
+                const qty = Number(item.qty || 0)
+                if (!Number.isFinite(linePrice) || linePrice < 0 || qty <= 0) return item
+                return { ...item, price_override: linePrice / qty }
+            })
+        })
+    }
+
     const updateCompositionTechnique = (index, updates) => {
         setFormData({
             ...formData,
@@ -338,6 +361,7 @@ export default function Products() {
             technique_name: c.technique_enabled ? (c.technique_name || '') : undefined,
             technique_mode: c.technique_enabled ? (c.technique_mode || 'fixed') : undefined,
             technique_value: c.technique_enabled ? Number(c.technique_value || 0) : undefined,
+            price_override: c.price_override !== undefined && c.price_override !== '' ? Number(c.price_override || 0) : undefined,
         })).filter(c => {
             const list = c.type === 'flower' ? flowers : goods
             return c.qty > 0 && list.some(x => String(x.id) === String(c.id))
@@ -587,13 +611,12 @@ export default function Products() {
                                     // Use loose comparison or string conversion for safety
                                     const item = list.find(x => String(x.id) === String(comp.id))
                                     if (!item) return null
-                                    const unitPrice = Number(item.price || 0)
-                                    const techniqueExtra = getTechniqueUnitExtra(comp, unitPrice)
                                     const qty = Number(comp.qty || 0)
-                                    const linePrice = (unitPrice + techniqueExtra) * qty
+                                    const unitPrice = getCompositionSaleUnitPrice(comp, item.price)
+                                    const linePrice = unitPrice * qty
                                     return (
                                         <div key={idx} style={{ padding: '0.75rem 0.5rem', borderBottom: '1px solid var(--border)' }}>
-                                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 92px 110px 28px', alignItems: 'center', gap: '0.75rem' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 92px 132px 28px', alignItems: 'center', gap: '0.75rem' }}>
                                                 <div>
                                                     <div style={{ fontWeight: 800 }}>{item.name}</div>
                                                     {comp.technique_enabled && (
@@ -611,7 +634,19 @@ export default function Products() {
                                                     onChange={e => updateCompositionQty(idx, e.target.value)}
                                                     style={{ height: 38, textAlign: 'center', fontWeight: 800 }}
                                                 />
-                                                <span style={{ fontWeight: 900, textAlign: isMobile ? 'left' : 'right' }}>{linePrice.toFixed(0)} lei</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'flex-end', gap: '0.35rem' }}>
+                                                    <input
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        className="input"
+                                                        value={comp.price_override === '' ? '' : linePrice.toFixed(0)}
+                                                        onChange={e => updateCompositionLinePrice(idx, e.target.value)}
+                                                        placeholder={linePrice.toFixed(0)}
+                                                        title="Ручная цена этой позиции в букете"
+                                                        style={{ width: 92, height: 38, textAlign: 'right', fontWeight: 900, padding: '0.45rem 0.6rem' }}
+                                                    />
+                                                    <span style={{ fontWeight: 900 }}>lei</span>
+                                                </div>
                                                 <button onClick={() => removeItemFromComposition(idx)} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
                                             </div>
 
@@ -1275,9 +1310,8 @@ export default function Products() {
                                             const list = comp.type === 'flower' ? flowers : goods
                                             const item = list.find(x => String(x.id) === String(comp.id))
                                             if (!item) return null
-                                            const unitPrice = Number(item.price || 0)
-                                            const techniqueExtra = getTechniqueUnitExtra(comp, unitPrice)
-                                            const linePrice = (unitPrice + techniqueExtra) * Number(comp.qty || 0)
+                                            const unitPrice = getCompositionSaleUnitPrice(comp, item.price)
+                                            const linePrice = unitPrice * Number(comp.qty || 0)
                                             return (
                                                 <div key={idx} style={{
                                                     display: 'flex',
@@ -1344,8 +1378,7 @@ export default function Products() {
                                             const list = comp.type === 'flower' ? flowers : goods
                                             const item = list.find(x => String(x.id) === String(comp.id))
                                             if (!item) return acc
-                                            const unitPrice = Number(item.price || 0)
-                                            return acc + ((unitPrice + getTechniqueUnitExtra(comp, unitPrice)) * Number(comp.qty || 0))
+                                            return acc + (getCompositionSaleUnitPrice(comp, item.price) * Number(comp.qty || 0))
                                         }, 0)} lei
                                     </span>
                                 </div>
