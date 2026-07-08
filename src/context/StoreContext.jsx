@@ -1572,6 +1572,15 @@ export function StoreProvider({ children }) {
         return materialCost + Number(extraCost || 0)
     }
 
+    const getTechniqueExtra = (item, baseUnitPrice) => {
+        if (!item?.technique_enabled) return 0
+        const value = Number(item.technique_value || 0)
+        if (!Number.isFinite(value) || value <= 0) return 0
+        return item.technique_mode === 'percent'
+            ? Number(baseUnitPrice || 0) * (value / 100)
+            : value
+    }
+
     // Calculation Helper (Remains same logic)
     const calculatePrice = (composition) => {
         if (!Array.isArray(composition)) return 0
@@ -1579,10 +1588,16 @@ export function StoreProvider({ children }) {
         composition.forEach(item => {
             if (item.type === 'flower') {
                 const f = flowers.find(x => x.id === item.id)
-                if (f) cost += Number(f.price) * item.qty
+                if (f) {
+                    const unitPrice = Number(f.price || 0)
+                    cost += (unitPrice + getTechniqueExtra(item, unitPrice)) * Number(item.qty || 0)
+                }
             } else if (item.type === 'good') {
                 const g = goods.find(x => x.id === item.id)
-                if (g) cost += Number(g.price) * item.qty
+                if (g) {
+                    const unitPrice = Number(g.price || 0)
+                    cost += (unitPrice + getTechniqueExtra(item, unitPrice)) * Number(item.qty || 0)
+                }
             }
         })
 

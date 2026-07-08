@@ -246,7 +246,10 @@ export default function Products() {
         formData.composition.forEach(item => {
             const list = item.type === 'flower' ? flowers : goods
             const obj = list.find(x => x.id === item.id)
-            if (obj) cost += obj.price * item.qty
+            if (obj) {
+                const unitPrice = Number(obj.price || 0)
+                cost += (unitPrice + getTechniqueUnitExtra(item, unitPrice)) * Number(item.qty || 0)
+            }
         })
         setCalculatedCost(cost)
 
@@ -264,12 +267,12 @@ export default function Products() {
 
         const correctId = selectedItem.id
 
-        const existing = formData.composition.find(i => i.id === correctId && i.type === compType)
+        const existing = formData.composition.find(i => i.id === correctId && i.type === compType && !i.technique_enabled)
 
         if (existing) {
             setFormData({
                 ...formData,
-                composition: formData.composition.map(i => i.id === correctId && i.type === compType ? { ...i, qty: i.qty + parseFloat(compQty) } : i)
+                composition: formData.composition.map(i => i.id === correctId && i.type === compType && !i.technique_enabled ? { ...i, qty: i.qty + parseFloat(compQty) } : i)
             })
         } else {
             setFormData({
@@ -288,6 +291,36 @@ export default function Products() {
         })
     }
 
+    const getTechniqueUnitExtra = (comp, baseUnitPrice) => {
+        if (!comp?.technique_enabled) return 0
+        const value = Number(comp.technique_value || 0)
+        if (!Number.isFinite(value) || value <= 0) return 0
+        return comp.technique_mode === 'percent'
+            ? Number(baseUnitPrice || 0) * (value / 100)
+            : value
+    }
+
+    const updateCompositionTechnique = (index, updates) => {
+        setFormData({
+            ...formData,
+            composition: formData.composition.map((item, i) => {
+                if (i !== index) return item
+                const next = { ...item, ...updates }
+                if (updates.technique_enabled === true) {
+                    next.technique_mode = next.technique_mode || 'fixed'
+                    next.technique_name = next.technique_name || ''
+                    next.technique_value = next.technique_value ?? ''
+                }
+                if (updates.technique_enabled === false) {
+                    delete next.technique_name
+                    delete next.technique_mode
+                    delete next.technique_value
+                }
+                return next
+            })
+        })
+    }
+
     const updateCompositionQty = (index, value) => {
         const nextQty = value === '' ? '' : Math.max(0, parseFloat(value) || 0)
         setFormData({
@@ -300,7 +333,11 @@ export default function Products() {
         // Clean composition: remove items that no longer exist in flowers/goods
         const cleanedComposition = formData.composition.map(c => ({
             ...c,
-            qty: Number(c.qty) || 0
+            qty: Number(c.qty) || 0,
+            technique_enabled: Boolean(c.technique_enabled),
+            technique_name: c.technique_enabled ? (c.technique_name || '') : undefined,
+            technique_mode: c.technique_enabled ? (c.technique_mode || 'fixed') : undefined,
+            technique_value: c.technique_enabled ? Number(c.technique_value || 0) : undefined,
         })).filter(c => {
             const list = c.type === 'flower' ? flowers : goods
             return c.qty > 0 && list.some(x => String(x.id) === String(c.id))
@@ -550,20 +587,73 @@ export default function Products() {
                                     // Use loose comparison or string conversion for safety
                                     const item = list.find(x => String(x.id) === String(comp.id))
                                     if (!item) return null
+                                    const unitPrice = Number(item.price || 0)
+                                    const techniqueExtra = getTechniqueUnitExtra(comp, unitPrice)
+                                    const qty = Number(comp.qty || 0)
+                                    const linePrice = (unitPrice + techniqueExtra) * qty
                                     return (
-                                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 92px 90px 28px', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 0.5rem', borderBottom: '1px solid var(--border)' }}>
-                                            <span style={{ fontWeight: 700 }}>{item.name}</span>
-                                            <input
-                                                type="number"
-                                                className="input"
-                                                min="0"
-                                                step="any"
-                                                value={comp.qty}
-                                                onChange={e => updateCompositionQty(idx, e.target.value)}
-                                                style={{ height: 38, textAlign: 'center', fontWeight: 800 }}
-                                            />
-                                            <span style={{ fontWeight: 900, textAlign: isMobile ? 'left' : 'right' }}>{(item.price * (Number(comp.qty) || 0)).toFixed(0)} lei</span>
-                                            <button onClick={() => removeItemFromComposition(idx)} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
+                                        <div key={idx} style={{ padding: '0.75rem 0.5rem', borderBottom: '1px solid var(--border)' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(180px, 1fr) 92px 110px 28px', alignItems: 'center', gap: '0.75rem' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 800 }}>{item.name}</div>
+                                                    {comp.technique_enabled && (
+                                                        <div style={{ marginTop: 4, color: '#7c3aed', fontWeight: 800, fontSize: '0.78rem' }}>
+                                                            Техника: {comp.technique_name || 'без названия'} · +{Number(comp.technique_value || 0)}{comp.technique_mode === 'percent' ? '%' : ' lei/шт'}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <input
+                                                    type="number"
+                                                    className="input"
+                                                    min="0"
+                                                    step="any"
+                                                    value={comp.qty}
+                                                    onChange={e => updateCompositionQty(idx, e.target.value)}
+                                                    style={{ height: 38, textAlign: 'center', fontWeight: 800 }}
+                                                />
+                                                <span style={{ fontWeight: 900, textAlign: isMobile ? 'left' : 'right' }}>{linePrice.toFixed(0)} lei</span>
+                                                <button onClick={() => removeItemFromComposition(idx)} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
+                                            </div>
+
+                                            <label style={{ marginTop: '0.6rem', display: 'inline-flex', alignItems: 'center', gap: '0.45rem', color: comp.technique_enabled ? '#7c3aed' : 'var(--text-muted)', fontWeight: 850, fontSize: '0.82rem', cursor: 'pointer' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={Boolean(comp.technique_enabled)}
+                                                    onChange={e => updateCompositionTechnique(idx, { technique_enabled: e.target.checked })}
+                                                />
+                                                Техника сборки
+                                            </label>
+
+                                            {comp.technique_enabled && (
+                                                <div style={{ marginTop: '0.6rem', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.5fr 120px 130px', gap: '0.55rem', padding: '0.7rem', borderRadius: 14, background: '#faf5ff', border: '1px solid #e9d5ff' }}>
+                                                    <input
+                                                        className="input"
+                                                        placeholder="Напр.: французская роза"
+                                                        value={comp.technique_name || ''}
+                                                        onChange={e => updateCompositionTechnique(idx, { technique_name: e.target.value })}
+                                                        style={{ height: 40, fontWeight: 750 }}
+                                                    />
+                                                    <select
+                                                        className="input"
+                                                        value={comp.technique_mode || 'fixed'}
+                                                        onChange={e => updateCompositionTechnique(idx, { technique_mode: e.target.value })}
+                                                        style={{ height: 40, fontWeight: 800 }}
+                                                    >
+                                                        <option value="fixed">+ lei/шт</option>
+                                                        <option value="percent">+ %</option>
+                                                    </select>
+                                                    <input
+                                                        type="number"
+                                                        className="input"
+                                                        min="0"
+                                                        step="any"
+                                                        placeholder={comp.technique_mode === 'percent' ? '30' : '40'}
+                                                        value={comp.technique_value ?? ''}
+                                                        onChange={e => updateCompositionTechnique(idx, { technique_value: e.target.value })}
+                                                        style={{ height: 40, fontWeight: 900 }}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     )
                                 })}
@@ -989,7 +1079,8 @@ export default function Products() {
                                     {p.composition.slice(0, 3).map(c => {
                                         const list = c.type === 'flower' ? flowers : goods
                                         const item = list.find(x => String(x.id) === String(c.id))
-                                        return item ? item.name : null
+                                        if (!item) return null
+                                        return c.technique_enabled ? `${item.name} + техника` : item.name
                                     }).filter(Boolean).join(', ') || 'Пустой состав'}
                                     {p.composition.length > 3 && '...'}
                                 </div>
@@ -1184,6 +1275,9 @@ export default function Products() {
                                             const list = comp.type === 'flower' ? flowers : goods
                                             const item = list.find(x => String(x.id) === String(comp.id))
                                             if (!item) return null
+                                            const unitPrice = Number(item.price || 0)
+                                            const techniqueExtra = getTechniqueUnitExtra(comp, unitPrice)
+                                            const linePrice = (unitPrice + techniqueExtra) * Number(comp.qty || 0)
                                             return (
                                                 <div key={idx} style={{
                                                     display: 'flex',
@@ -1200,7 +1294,14 @@ export default function Products() {
                                                         ) : (
                                                             <Package size={16} style={{ color: '#f59e0b' }} />
                                                         )}
-                                                        <span style={{ fontWeight: 500 }}>{item.name}</span>
+                                                        <span style={{ fontWeight: 500 }}>
+                                                            {item.name}
+                                                            {comp.technique_enabled && (
+                                                                <span style={{ display: 'block', marginTop: 2, color: '#7c3aed', fontSize: '0.75rem', fontWeight: 800 }}>
+                                                                    {comp.technique_name || 'Техника'} +{Number(comp.technique_value || 0)}{comp.technique_mode === 'percent' ? '%' : ' lei/шт'}
+                                                                </span>
+                                                            )}
+                                                        </span>
                                                     </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                                         <span style={{
@@ -1214,7 +1315,7 @@ export default function Products() {
                                                             x{comp.qty}
                                                         </span>
                                                         <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                                                            {item.price * comp.qty} lei
+                                                            {linePrice.toFixed(0)} lei
                                                         </span>
                                                     </div>
                                                 </div>
@@ -1242,7 +1343,9 @@ export default function Products() {
                                         {viewingProduct.composition?.reduce((acc, comp) => {
                                             const list = comp.type === 'flower' ? flowers : goods
                                             const item = list.find(x => String(x.id) === String(comp.id))
-                                            return acc + (item ? item.price * comp.qty : 0)
+                                            if (!item) return acc
+                                            const unitPrice = Number(item.price || 0)
+                                            return acc + ((unitPrice + getTechniqueUnitExtra(comp, unitPrice)) * Number(comp.qty || 0))
                                         }, 0)} lei
                                     </span>
                                 </div>

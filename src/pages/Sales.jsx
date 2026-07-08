@@ -634,13 +634,22 @@ export default function Sales() {
         return composition.map(c => {
             const list = c.type === 'flower' ? flowers : goods
             const item = list.find(x => x.id === c.id)
+            const basePrice = Number(item?.price ?? 0)
+            const techniqueValue = Number(c.technique_value || 0)
+            const techniqueExtra = c.technique_enabled
+                ? (c.technique_mode === 'percent' ? basePrice * (techniqueValue / 100) : techniqueValue)
+                : 0
             return {
                 type: c.type,
                 item_id: c.id,
-                name: item?.name || '?',
+                name: c.technique_enabled ? `${item?.name || '?'} (${c.technique_name || 'техника'})` : (item?.name || '?'),
                 quantity: c.qty || 1,
                 cost: item?.cost ?? item?.purchase_price ?? 0,
-                price: item?.price ?? 0
+                price: basePrice + techniqueExtra,
+                technique_enabled: Boolean(c.technique_enabled),
+                technique_name: c.technique_name || '',
+                technique_mode: c.technique_mode || 'fixed',
+                technique_value: c.technique_value ?? ''
             }
         })
     }
