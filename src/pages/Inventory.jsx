@@ -14,12 +14,15 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [modalMode, setModalMode] = useState('add') // 'add' | 'edit'
     const [currentItem, setCurrentItem] = useState(null)
-    const [formData, setFormData] = useState({ name: '', price: '', category: '', cost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+    const [formData, setFormData] = useState({ name: '', price: '', category: '', cost: '', purchaseCost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
     const [searchQuery, setSearchQuery] = useState('')
     const [sortMode, setSortMode] = useState('name_asc')
     const [page, setPage] = useState(1)
-    const costValue = parseFloat(formData.cost) || 0
-    const priceValue = parseFloat(formData.price) || 0
+    const parseAmount = (value) => parseFloat(String(value ?? '').replace(',', '.')) || 0
+    const unitsPerPurchaseValue = Math.max(parseAmount(formData.unitsPerPurchase), 1)
+    const purchaseCostValue = parseAmount(formData.purchaseCost || formData.cost)
+    const costValue = isFlowers ? parseAmount(formData.cost) : (purchaseCostValue / unitsPerPurchaseValue)
+    const priceValue = parseAmount(formData.price)
     const profitValue = priceValue - costValue
     const marginPercent = costValue > 0 ? (profitValue / costValue) * 100 : 0
     const effectiveMarkup = costValue > 0 && priceValue > 0 ? priceValue / costValue : 0
@@ -103,39 +106,43 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
 
     const openAddModal = () => {
         setModalMode('add')
-        setFormData({ name: '', price: '', category: '', cost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+        setFormData({ name: '', price: '', category: '', cost: '', purchaseCost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
         setIsModalOpen(true)
     }
 
     const openEditModal = (item) => {
         setModalMode('edit')
         setCurrentItem(item)
+        const unitsPerPurchase = item.units_per_purchase || 1
         setFormData({
             name: item.name,
             price: item.price,
             category: item.category || '',
             cost: item.cost || '',
+            purchaseCost: isFlowers ? (item.cost || '') : ((Number(item.cost || 0) * Number(unitsPerPurchase || 1)) || ''),
             markup: item.markup_factor || (isFlowers ? 2 : 1.5),
             purchaseUnit: item.purchase_unit || 'шт',
             stockUnit: item.stock_unit || 'шт',
-            unitsPerPurchase: item.units_per_purchase || 1
+            unitsPerPurchase
         })
         setIsModalOpen(true)
     }
 
     const handleSubmit = (e) => {
         e.preventDefault()
+        const unitsPerPurchase = Math.max(parseAmount(formData.unitsPerPurchase), 1)
+        const unitCost = isFlowers ? parseAmount(formData.cost) : (parseAmount(formData.purchaseCost || formData.cost) / unitsPerPurchase)
         const itemData = {
             name: formData.name,
-            price: parseFloat(formData.price),
+            price: parseAmount(formData.price),
             ...(!isFlowers && { category: formData.category }),
-            cost: parseFloat(formData.cost) || 0,
-            markup_factor: parseFloat(formData.markup) || (isFlowers ? 2 : 1.5)
+            cost: unitCost,
+            markup_factor: parseAmount(formData.markup) || (isFlowers ? 2 : 1.5)
         }
         if (!isFlowers) {
             itemData.purchase_unit = formData.purchaseUnit || 'шт'
             itemData.stock_unit = formData.stockUnit || 'шт'
-            itemData.units_per_purchase = parseFloat(String(formData.unitsPerPurchase).replace(',', '.')) || 1
+            itemData.units_per_purchase = unitsPerPurchase
         }
 
         if (modalMode === 'add') {
@@ -333,22 +340,34 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                                {isFlowers ? 'Закупка' : `Закупка за 1 ${formData.stockUnit || 'шт'}`}
+                                {isFlowers ? 'Закупка' : `Закупка за 1 ${formData.purchaseUnit || 'шт'}`}
                             </label>
                             <input
                                 type="number"
                                 placeholder="0"
                                 className="input"
                                 style={{ width: '100%' }}
-                                value={formData.cost}
+                                value={isFlowers ? formData.cost : formData.purchaseCost}
                                 onChange={e => {
                                     const newCost = e.target.value
-                                    const costVal = parseFloat(newCost) || 0
+                                    const unitCostVal = isFlowers
+                                        ? parseAmount(newCost)
+                                        : (parseAmount(newCost) / Math.max(parseAmount(formData.unitsPerPurchase), 1))
                                     const markupVal = parseFloat(formData.markup) || (isFlowers ? 2 : 1.5)
-                                    const priceVal = costVal * markupVal
-                                    setFormData({ ...formData, cost: newCost, price: priceVal ? priceVal.toFixed(2) : '' })
+                                    const priceVal = unitCostVal * markupVal
+                                    setFormData({
+                                        ...formData,
+                                        cost: isFlowers ? newCost : unitCostVal,
+                                        purchaseCost: isFlowers ? formData.purchaseCost : newCost,
+                                        price: priceVal ? priceVal.toFixed(2) : ''
+                                    })
                                 }}
                             />
+                            {!isFlowers && (
+                                <div style={{ marginTop: '0.45rem', color: '#64748b', fontWeight: 700, fontSize: '0.85rem' }}>
+                                    Себест. 1 {formData.stockUnit || 'шт'}: {costValue.toFixed(2)} lei
+                                </div>
+                            )}
                         </div>
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Наценка (x)</label>
@@ -361,7 +380,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                 value={formData.markup}
                                 onChange={e => {
                                     const newMarkup = e.target.value
-                                    const costVal = parseFloat(formData.cost) || 0
+                                    const costVal = costValue
                                     const markupVal = parseFloat(newMarkup) || 0
                                     const priceVal = costVal * markupVal
                                     setFormData({ ...formData, markup: newMarkup, price: priceVal ? priceVal.toFixed(2) : '' })
@@ -421,7 +440,17 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                         inputMode="decimal"
                                         className="input"
                                         value={formData.unitsPerPurchase}
-                                        onChange={e => setFormData({ ...formData, unitsPerPurchase: e.target.value })}
+                                        onChange={e => {
+                                            const nextUnits = e.target.value
+                                            const nextUnitCost = parseAmount(formData.purchaseCost || formData.cost) / Math.max(parseAmount(nextUnits), 1)
+                                            const markupVal = parseAmount(formData.markup) || 1.5
+                                            setFormData({
+                                                ...formData,
+                                                unitsPerPurchase: nextUnits,
+                                                cost: nextUnitCost,
+                                                price: nextUnitCost ? (nextUnitCost * markupVal).toFixed(2) : ''
+                                            })
+                                        }}
                                         placeholder="100"
                                     />
                                 </div>
@@ -456,7 +485,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             onChange={e => {
                                 const newPrice = e.target.value
                                 const priceVal = parseFloat(newPrice) || 0
-                                const costVal = parseFloat(formData.cost) || 0
+                                const costVal = costValue
                                 const nextMarkup = costVal > 0 && priceVal > 0 ? (priceVal / costVal).toFixed(2) : formData.markup
                                 setFormData({ ...formData, price: newPrice, markup: nextMarkup })
                             }}
