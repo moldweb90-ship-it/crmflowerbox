@@ -55,6 +55,8 @@ services:
     depends_on:
       - postgrest
       - events
+    environment:
+      CRM_SYNC_TOKEN: ${CRM_SYNC_TOKEN}
     ports:
       - "80:80"
 

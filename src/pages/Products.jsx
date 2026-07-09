@@ -100,11 +100,6 @@ export default function Products() {
         setSearchParams(nextParams, { replace: true })
     }, [openProductId, products, searchParams, setSearchParams])
 
-    const setVmSyncCookie = (token) => {
-        const secure = window.location.protocol === 'https:' ? '; Secure' : ''
-        document.cookie = `vm_sync_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=2592000${secure}`
-    }
-
     const handleRecalculate = async () => {
         if (!window.confirm('Пересчитать цены всех товаров на основе текущих цен цветов?')) return
         setRecalcMsg('Пересчет...')
@@ -123,15 +118,6 @@ export default function Products() {
             setTimeout(() => setSiteSyncMsg(''), 5000)
             return
         }
-
-        let token = localStorage.getItem('vm_sync_token') || ''
-        if (!token) {
-            token = window.prompt('\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043b\u044e\u0447 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438 flowerbox.md') || ''
-            token = token.trim()
-            if (!token) return
-            localStorage.setItem('vm_sync_token', token)
-        }
-        setVmSyncCookie(token)
 
         const normalizedSearchTerm = searchTerm.trim().toLowerCase()
         const hasActiveListFilter = filterCat !== 'all' || Boolean(normalizedSearchTerm)
@@ -174,8 +160,7 @@ export default function Products() {
                 response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'X-CRM-Sync-Token': token
+                        'Content-Type': 'application/json'
                     },
                     body: requestBody
                 })
@@ -201,9 +186,6 @@ export default function Products() {
             const errorText = result.errors?.length ? ` \u041e\u0448\u0438\u0431\u043a\u0438: ${result.errors.length}` : ''
             setSiteSyncMsg(`\u0421\u0430\u0439\u0442 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d: ${result.updated || 0}. \u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e \u0438\u0437 ${syncScopeLabel}: ${syncProducts.length}.${missingText}${errorText}`)
         } catch (error) {
-            if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-                localStorage.removeItem('vm_sync_token')
-            }
             const friendlyMessage = error instanceof TypeError
                 ? `\u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u0441\u043c\u043e\u0433 \u0434\u043e\u0441\u0442\u0443\u0447\u0430\u0442\u044c\u0441\u044f \u0434\u043e \u0441\u0430\u0439\u0442\u0430 (${endpoint}). \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0435 \u0440\u0430\u0437, \u0430 \u0435\u0441\u043b\u0438 \u043d\u0435 \u043f\u043e\u043c\u043e\u0436\u0435\u0442 - \u043f\u0440\u043e\u0432\u0435\u0440\u044c \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442 \u043d\u0430 \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0435.`
                 : error.message
