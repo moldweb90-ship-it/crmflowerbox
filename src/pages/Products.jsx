@@ -63,6 +63,7 @@ export default function Products() {
         composition: [], // { type, id, qty }
         manualPrice: '',
     })
+    const [formError, setFormError] = useState('')
 
     // Composition Helper State
     const [compType, setCompType] = useState('flower') // 'flower' | 'good'
@@ -200,6 +201,7 @@ export default function Products() {
     const handleEdit = (product) => {
         setEditorMode('edit')
         setEditId(product.id)
+        setFormError('')
         setFormData({
             name: product.name,
             sku: product.sku || '',
@@ -213,9 +215,10 @@ export default function Products() {
     const handleDuplicate = (product) => {
         setEditorMode('create')
         setEditId(null)
+        setFormError('')
         setFormData({
             name: product.name,
-            sku: product.sku || '',
+            sku: '',
             categoryIds: [...(product.categoryIds || [])],
             composition: product.composition ? product.composition.map(c => ({ ...c })) : [],
             manualPrice: product.manualPrice ?? product.manual_price ?? ''
@@ -226,6 +229,7 @@ export default function Products() {
     const handleCreate = () => {
         setEditorMode('create')
         setEditId(null)
+        setFormError('')
         setFormData({ name: '', sku: '', categoryIds: [], composition: [], manualPrice: '' })
         setView('editor')
     }
@@ -358,6 +362,18 @@ export default function Products() {
     }
 
     const handleSave = () => {
+        const normalizedSku = String(formData.sku || '').trim().toLowerCase()
+        const duplicateSkuProduct = normalizedSku
+            ? products.find(product => String(product.id) !== String(editId) && String(product.sku || '').trim().toLowerCase() === normalizedSku)
+            : null
+
+        if (duplicateSkuProduct) {
+            const message = `Букет с артикулом "${formData.sku.trim()}" уже есть: ${duplicateSkuProduct.name || 'без названия'}. Укажи другой артикул.`
+            setFormError(message)
+            window.alert(message)
+            return
+        }
+
         // Clean composition: remove items that no longer exist in flowers/goods
         const cleanedComposition = formData.composition.map(c => ({
             ...c,
@@ -374,6 +390,7 @@ export default function Products() {
 
         const productData = {
             ...formData,
+            sku: formData.sku.trim(),
             composition: cleanedComposition,
             manualPrice: formData.manualPrice === '' || formData.manualPrice == null ? '' : Number(formData.manualPrice),
             price: finalPrice // Save the calculated price
@@ -450,6 +467,13 @@ export default function Products() {
         return String(item.name || '').toLowerCase().includes(term)
     })
     const selectedCompItem = compCatalogItems.find(item => String(item.id) === String(compId))
+    const normalizedSkuInput = String(formData.sku || '').trim().toLowerCase()
+    const duplicateSkuProduct = normalizedSkuInput
+        ? products.find(product => String(product.id) !== String(editId) && String(product.sku || '').trim().toLowerCase() === normalizedSkuInput)
+        : null
+    const skuDuplicateMessage = duplicateSkuProduct
+        ? `Букет с таким артикулом уже есть: ${duplicateSkuProduct.name || 'без названия'}`
+        : ''
 
     if (view === 'editor') {
         return (
@@ -474,9 +498,27 @@ export default function Products() {
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Артикул / SKU</label>
-                                    <input className="input" value={formData.sku} onChange={e => setFormData({ ...formData, sku: e.target.value })} />
+                                    <input
+                                        className="input"
+                                        value={formData.sku}
+                                        onChange={e => {
+                                            setFormData({ ...formData, sku: e.target.value })
+                                            setFormError('')
+                                        }}
+                                        style={duplicateSkuProduct ? { borderColor: '#ef4444', boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.12)' } : undefined}
+                                    />
+                                    {skuDuplicateMessage && (
+                                        <div style={{ marginTop: '0.45rem', color: '#dc2626', fontSize: '0.82rem', fontWeight: 800, lineHeight: 1.35 }}>
+                                            {skuDuplicateMessage}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
+                            {formError && (
+                                <div style={{ marginTop: '1rem', padding: '0.75rem 0.9rem', borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontWeight: 800, lineHeight: 1.4 }}>
+                                    {formError}
+                                </div>
+                            )}
                             <div style={{ marginTop: '1rem' }}>
                                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Категории</label>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -768,7 +810,7 @@ export default function Products() {
                         </div>
 
                         <div style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleSave}>
+                            <button className="btn btn-primary" style={{ width: '100%', opacity: duplicateSkuProduct ? 0.6 : 1 }} onClick={handleSave} disabled={Boolean(duplicateSkuProduct)}>
                                 <Save size={18} style={{ marginRight: '0.5rem' }} /> Сохранить
                             </button>
                             <button className="btn" style={{ width: '100%', border: '1px solid var(--border)' }} onClick={() => setView('list')}>
