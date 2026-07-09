@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', closeOnOverlayClick = true }) {
+export default function Modal({ isOpen, onClose, title, children, maxWidth = '500px', closeOnOverlayClick = true, className = '' }) {
     const panelRef = useRef(null)
 
     useEffect(() => {
@@ -39,7 +39,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = '50
                         animate={{ y: 0, scale: 1, opacity: 1 }}
                         exit={{ y: 18, scale: 0.98, opacity: 0 }}
                         transition={{ type: 'spring', stiffness: 360, damping: 32 }}
-                        className="card app-modal-panel"
+                        className={`card app-modal-panel ${className}`.trim()}
                         style={{
                             position: 'relative',
                             width: '100%',

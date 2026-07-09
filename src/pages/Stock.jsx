@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
 import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck } from 'lucide-react'
@@ -8,7 +9,7 @@ import { supabase } from '../supabase'
 
 const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 
-function StockItemPicker({ options, value, onChange, placeholder }) {
+function StockItemPickerLegacy({ options, value, onChange, placeholder }) {
     const [open, setOpen] = useState(false)
     const [query, setQuery] = useState('')
     const selected = options.find(item => item.id === value)
@@ -76,6 +77,127 @@ function StockItemPicker({ options, value, onChange, placeholder }) {
                     </div>
                 </div>
             )}
+        </div>
+    )
+}
+
+function StockItemPicker({ options, value, onChange, placeholder }) {
+    const [open, setOpen] = useState(false)
+    const [query, setQuery] = useState('')
+    const [menuStyle, setMenuStyle] = useState(null)
+    const pickerRef = useRef(null)
+    const menuRef = useRef(null)
+    const selected = options.find(item => item.id === value)
+    const normalizedQuery = query.trim().toLowerCase()
+    const filteredOptions = normalizedQuery
+        ? options.filter(item => item.name.toLowerCase().includes(normalizedQuery))
+        : options
+
+    useEffect(() => {
+        setQuery('')
+        setOpen(false)
+    }, [options, value])
+
+    useEffect(() => {
+        if (!open) return
+
+        const positionMenu = () => {
+            const rect = pickerRef.current?.getBoundingClientRect()
+            if (!rect) return
+
+            const padding = 12
+            const gap = 8
+            const availableBelow = window.innerHeight - rect.bottom - padding
+            const availableAbove = rect.top - padding
+            const openUp = availableBelow < 260 && availableAbove > availableBelow
+            const availableHeight = openUp ? availableAbove : availableBelow
+            const maxHeight = Math.max(180, Math.min(360, availableHeight - gap))
+
+            setMenuStyle({
+                left: `${Math.max(padding, rect.left)}px`,
+                top: openUp ? 'auto' : `${rect.bottom + gap}px`,
+                bottom: openUp ? `${window.innerHeight - rect.top + gap}px` : 'auto',
+                width: `${Math.min(rect.width, window.innerWidth - padding * 2)}px`,
+                maxHeight: `${maxHeight}px`
+            })
+        }
+
+        positionMenu()
+        window.addEventListener('resize', positionMenu)
+        window.addEventListener('scroll', positionMenu, true)
+
+        return () => {
+            window.removeEventListener('resize', positionMenu)
+            window.removeEventListener('scroll', positionMenu, true)
+        }
+    }, [open])
+
+    useEffect(() => {
+        if (!open) return
+
+        const closeOnOutside = (event) => {
+            const target = event.target
+            if (pickerRef.current?.contains(target) || menuRef.current?.contains(target)) return
+            setOpen(false)
+        }
+
+        document.addEventListener('mousedown', closeOnOutside)
+        document.addEventListener('touchstart', closeOnOutside)
+
+        return () => {
+            document.removeEventListener('mousedown', closeOnOutside)
+            document.removeEventListener('touchstart', closeOnOutside)
+        }
+    }, [open])
+
+    const menu = open && menuStyle ? (
+        <div ref={menuRef} className="stock-item-menu stock-item-menu-floating" style={menuStyle}>
+            <div className="stock-item-search">
+                <Search size={16} />
+                <input
+                    autoFocus
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                        if (event.key === 'Escape') setOpen(false)
+                    }}
+                    placeholder="Быстрый поиск..."
+                />
+            </div>
+            <div className="stock-item-options">
+                {filteredOptions.length > 0 ? (
+                    filteredOptions.map(item => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            className={`stock-item-option ${item.id === value ? 'selected' : ''}`}
+                            onClick={() => {
+                                onChange(item.id)
+                                setOpen(false)
+                            }}
+                        >
+                            {item.name}
+                        </button>
+                    ))
+                ) : (
+                    <div className="stock-item-empty">Ничего не найдено</div>
+                )}
+            </div>
+        </div>
+    ) : null
+
+    return (
+        <div ref={pickerRef} className="stock-item-picker">
+            <button
+                type="button"
+                className={`stock-item-trigger ${selected ? 'has-value' : ''}`}
+                onClick={() => setOpen(current => !current)}
+            >
+                <span>{selected?.name || placeholder}</span>
+                <span className="stock-item-trigger-arrow">⌄</span>
+            </button>
+
+            {menu ? createPortal(menu, document.body) : null}
         </div>
     )
 }
@@ -1133,7 +1255,7 @@ export default function Stock() {
             </Modal>
 
             {/* Add Stock Modal */}
-            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Пополнить склад" maxWidth="620px">
+            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Пополнить склад" maxWidth="620px" className="stock-add-modal-panel">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
                         <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Тип</label>
