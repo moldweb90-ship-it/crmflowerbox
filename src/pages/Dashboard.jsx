@@ -1487,7 +1487,7 @@ export default function Dashboard() {
                                     {block.items.length > 0 ? block.items.map((item, idx) => (
                                         <Link
                                             key={item.id}
-                                            to={`/products?search=${encodeURIComponent(item.sku || item.name)}`}
+                                            to={`/products?openProduct=${encodeURIComponent(item.id)}`}
                                             style={{
                                                 display: 'grid',
                                                 gridTemplateColumns: '34px minmax(0, 1fr) auto',
@@ -1499,7 +1499,8 @@ export default function Dashboard() {
                                                 border: '1px solid rgba(255,255,255,0.9)',
                                                 textDecoration: 'none',
                                                 color: 'inherit',
-                                                boxShadow: '0 8px 20px rgba(15, 23, 42, 0.04)'
+                                                boxShadow: '0 8px 20px rgba(15, 23, 42, 0.04)',
+                                                transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease'
                                             }}
                                         >
                                             <div style={{
@@ -1516,8 +1517,17 @@ export default function Dashboard() {
                                                 {idx + 1}
                                             </div>
                                             <div style={{ minWidth: 0 }}>
-                                                <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                                                <div style={{ marginTop: 2, fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>
+                                                <div style={{
+                                                    fontWeight: 650,
+                                                    fontSize: '0.92rem',
+                                                    color: '#1f2937',
+                                                    letterSpacing: 0,
+                                                    lineHeight: 1.25,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap'
+                                                }}>{item.name}</div>
+                                                <div style={{ marginTop: 3, fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
                                                     Цена {Math.round(item.price).toLocaleString()} lei · Себест. {Math.round(item.cost).toLocaleString()} lei
                                                 </div>
                                             </div>

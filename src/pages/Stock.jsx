@@ -8,6 +8,78 @@ import { supabase } from '../supabase'
 
 const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 
+function StockItemPicker({ options, value, onChange, placeholder }) {
+    const [open, setOpen] = useState(false)
+    const [query, setQuery] = useState('')
+    const selected = options.find(item => item.id === value)
+    const normalizedQuery = query.trim().toLowerCase()
+    const filteredOptions = normalizedQuery
+        ? options.filter(item => item.name.toLowerCase().includes(normalizedQuery))
+        : options
+
+    useEffect(() => {
+        setQuery('')
+        setOpen(false)
+    }, [options, value])
+
+    return (
+        <div
+            className="stock-item-picker"
+            onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                    setOpen(false)
+                }
+            }}
+        >
+            <button
+                type="button"
+                className={`stock-item-trigger ${selected ? 'has-value' : ''}`}
+                onClick={() => setOpen(current => !current)}
+            >
+                <span>{selected?.name || placeholder}</span>
+                <span className="stock-item-trigger-arrow">⌄</span>
+            </button>
+
+            {open && (
+                <div className="stock-item-menu">
+                    <div className="stock-item-search">
+                        <Search size={16} />
+                        <input
+                            autoFocus
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Escape') setOpen(false)
+                            }}
+                            placeholder="Быстрый поиск..."
+                        />
+                    </div>
+                    <div className="stock-item-options">
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map(item => (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    className={`stock-item-option ${item.id === value ? 'selected' : ''}`}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => {
+                                        onChange(item.id)
+                                        setOpen(false)
+                                    }}
+                                >
+                                    {item.name}
+                                </button>
+                            ))
+                        ) : (
+                            <div className="stock-item-empty">Ничего не найдено</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
 export default function Stock() {
     const {
         stock, stockTransactions, flowers, goods, suppliers, showcaseBouquets,
@@ -109,6 +181,11 @@ export default function Stock() {
         const outOfStockCount = inventoryList.filter(i => i.quantity === 0).length
         return { totalItems, totalValue, lowStockCount, outOfStockCount }
     }, [inventoryList])
+
+    const addStockOptions = useMemo(() => {
+        const source = itemType === 'flower' ? flowers : goods
+        return [...source].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    }, [itemType, flowers, goods])
 
     const recentTransactions = useMemo(() => {
         const start = (currentPage - 1) * ITEMS_PER_PAGE
@@ -1056,7 +1133,7 @@ export default function Stock() {
             </Modal>
 
             {/* Add Stock Modal */}
-            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Пополнить склад" maxWidth="500px">
+            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Пополнить склад" maxWidth="620px">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
                         <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Тип</label>
@@ -1092,28 +1169,27 @@ export default function Stock() {
                         </div>
                     </div>
 
-                    <div>
-                        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Выберите {itemType === 'flower' ? 'цветок' : 'товар'}</label>
-                        <select
-                            className="input"
-                            value={itemId}
-                            onChange={(e) => setItemId(e.target.value)}
-                        >
-                            <option value="">-- Выберите --</option>
-                            {(itemType === 'flower' ? flowers : goods).map(item => (
-                                <option key={item.id} value={item.id}>{item.name}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <div className="stock-add-row">
+                        <div className="stock-add-item-field">
+                            <label className="stock-add-label">Выберите {itemType === 'flower' ? 'цветок' : 'товар'}</label>
+                            <StockItemPicker
+                                options={addStockOptions}
+                                value={itemId}
+                                onChange={setItemId}
+                                placeholder={`-- Выберите ${itemType === 'flower' ? 'цветок' : 'товар'} --`}
+                            />
+                        </div>
 
-                    <div>
-                        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Количество</label>
-                        <QuantityStepper
-                            value={qty}
-                            onChange={setQty}
-                            min={0.01}
-                            step={1}
-                        />
+                        <div className="stock-add-qty-field">
+                            <label className="stock-add-label">Количество</label>
+                            <QuantityStepper
+                                className="stock-add-qty-stepper"
+                                value={qty}
+                                onChange={setQty}
+                                min={0.01}
+                                step={1}
+                            />
+                        </div>
                     </div>
 
                     <div>

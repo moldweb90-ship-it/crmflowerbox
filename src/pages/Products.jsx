@@ -12,6 +12,7 @@ export default function Products() {
     const [searchParams, setSearchParams] = useSearchParams()
     const searchTerm = searchParams.get('q') || ''
     const categoryParam = searchParams.get('category')
+    const openProductId = searchParams.get('openProduct')
 
     const [view, setView] = useState('list') // 'list' | 'editor'
     const [filterCat, setFilterCat] = useState('all')
@@ -84,6 +85,20 @@ export default function Products() {
 
     // View Product State
     const [viewingProduct, setViewingProduct] = useState(null)
+
+    useEffect(() => {
+        if (!openProductId || products.length === 0) return
+
+        const productToOpen = products.find(product => String(product.id) === String(openProductId))
+        if (productToOpen) {
+            setView('list')
+            setViewingProduct(productToOpen)
+        }
+
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('openProduct')
+        setSearchParams(nextParams, { replace: true })
+    }, [openProductId, products, searchParams, setSearchParams])
 
     const setVmSyncCookie = (token) => {
         const secure = window.location.protocol === 'https:' ? '; Secure' : ''
