@@ -25,6 +25,12 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [createMode, setCreateMode] = useState('single')
     const [seriesVariants, setSeriesVariants] = useState([])
     const [expandedGroups, setExpandedGroups] = useState(() => new Set())
+    const [isGroupModalOpen, setIsGroupModalOpen] = useState(false)
+    const [currentGroup, setCurrentGroup] = useState(null)
+    const [groupFormData, setGroupFormData] = useState({ familyName: '', category: '', material: '', color: '', feature: '', imageUrl: '' })
+    const [groupTouched, setGroupTouched] = useState({ material: false, color: false, feature: false, image: false })
+    const [groupSaving, setGroupSaving] = useState(false)
+    const [groupError, setGroupError] = useState('')
     const [isMigrationModalOpen, setIsMigrationModalOpen] = useState(false)
     const [migrationLoading, setMigrationLoading] = useState(false)
     const [imageUploading, setImageUploading] = useState(false)
@@ -162,6 +168,82 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         setImageError('')
         setFormError('')
         setIsModalOpen(true)
+    }
+
+    const getSharedGroupValue = (group, key) => {
+        const values = [...new Set(group.items.map(item => normalizeGoodsAttributes(item.attributes)[key] || ''))]
+        return values.length === 1 ? values[0] : ''
+    }
+
+    const openGroupEditModal = (group) => {
+        const preview = group.items.find(item => item.image_url)?.image_url || ''
+        setCurrentGroup(group)
+        setGroupFormData({
+            familyName: group.familyName,
+            category: group.category === 'Без категории' ? '' : group.category,
+            material: getSharedGroupValue(group, 'material'),
+            color: getSharedGroupValue(group, 'color'),
+            feature: getSharedGroupValue(group, 'feature'),
+            imageUrl: preview
+        })
+        setGroupTouched({ material: false, color: false, feature: false, image: false })
+        setGroupError('')
+        setIsGroupModalOpen(true)
+    }
+
+    const handleGroupImageUpload = async (event) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+
+        setImageUploading(true)
+        setGroupError('')
+        try {
+            const imageUrl = await compressProductImage(file)
+            setGroupFormData(current => ({ ...current, imageUrl }))
+            setGroupTouched(current => ({ ...current, image: true }))
+        } catch (error) {
+            setGroupError(error?.message || 'Не удалось загрузить фотографию.')
+        } finally {
+            setImageUploading(false)
+        }
+    }
+
+    const saveGroup = async (event) => {
+        event.preventDefault()
+        if (!currentGroup || !groupFormData.familyName.trim() || !groupFormData.category) {
+            setGroupError('Укажите название модели и категорию.')
+            return
+        }
+
+        setGroupSaving(true)
+        setGroupError('')
+        try {
+            for (const item of currentGroup.items) {
+                const attributes = { ...normalizeGoodsAttributes(item.attributes) }
+                ;['material', 'color', 'feature'].forEach(key => {
+                    if (!groupTouched[key]) return
+                    const value = groupFormData[key].trim()
+                    if (value) attributes[key] = value
+                    else delete attributes[key]
+                })
+                const updates = {
+                    family_name: groupFormData.familyName.trim(),
+                    category: groupFormData.category,
+                    attributes,
+                    variant_name: getGoodsVariantLabel(attributes),
+                    name: buildGoodsName(groupFormData.familyName, attributes)
+                }
+                if (groupTouched.image) updates.image_url = groupFormData.imageUrl || null
+                const result = await updateGood(item.id, updates)
+                if (result?.success === false) throw result.error
+            }
+            setIsGroupModalOpen(false)
+        } catch (error) {
+            setGroupError(error?.message || 'Не удалось сохранить модель.')
+        } finally {
+            setGroupSaving(false)
+        }
     }
 
     const handleImageUpload = async (event) => {
@@ -425,7 +507,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         const preview = group.items.find(item => item.image_url)?.image_url
                         return (
                             <div key={group.key} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                                <button type="button" onClick={() => toggleGroup(group.key)} style={{ width: '100%', padding: isMobile ? '0.8rem' : '0.9rem 1rem', display: 'grid', gridTemplateColumns: isMobile ? '48px minmax(0,1fr) auto' : '58px minmax(220px,1fr) 130px 150px 36px', gap: '0.8rem', alignItems: 'center', textAlign: 'left', background: '#fff' }}>
+                                <div style={{ width: '100%', padding: isMobile ? '0.8rem' : '0.9rem 1rem', display: 'grid', gridTemplateColumns: isMobile ? '48px minmax(0,1fr) 38px 28px' : '58px minmax(220px,1fr) 130px 150px 38px 28px', gap: '0.8rem', alignItems: 'center', textAlign: 'left', background: '#fff' }}>
                                     <span style={{ width: isMobile ? 48 : 58, height: isMobile ? 48 : 58, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', display: 'grid', placeItems: 'center' }}>
                                         {preview ? <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Boxes size={22} color="#94a3b8" />}
                                     </span>
@@ -436,8 +518,9 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                     </span>
                                     {!isMobile && <span style={{ textAlign: 'center' }}><b style={{ display: 'block', color: totalStock > 0 ? '#059669' : '#dc2626', fontSize: '1.05rem' }}>{totalStock.toLocaleString('ru-RU')}</b><small style={{ color: '#94a3b8' }}>всего на складе</small></span>}
                                     {!isMobile && <span style={{ textAlign: 'right', fontWeight: 850 }}>{prices.length ? `${Math.min(...prices)}–${Math.max(...prices)} lei` : '0 lei'}</span>}
-                                    <ChevronDown size={20} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s', color: '#64748b' }} />
-                                </button>
+                                    <button type="button" onClick={() => openGroupEditModal(group)} title="Редактировать модель" style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid #dbe4ee', background: '#f8fafc', color: '#475569', display: 'grid', placeItems: 'center' }}><Edit2 size={17} /></button>
+                                    <button type="button" onClick={() => toggleGroup(group.key)} title={expanded ? 'Свернуть модификации' : 'Показать модификации'} style={{ width: 28, height: 38, display: 'grid', placeItems: 'center', color: '#64748b' }}><ChevronDown size={20} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} /></button>
+                                </div>
                                 {expanded && (
                                     <div style={{ borderTop: '1px solid var(--border)', background: '#f8fafc' }}>
                                         {group.items.map(item => {
@@ -781,6 +864,94 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal isOpen={isGroupModalOpen} onClose={() => !groupSaving && setIsGroupModalOpen(false)} title="Редактировать модель">
+                {currentGroup && (
+                    <form onSubmit={saveGroup} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 800 }}>Название модели / серии</label>
+                            <input className="input" value={groupFormData.familyName} onChange={event => setGroupFormData(current => ({ ...current, familyName: event.target.value }))} required />
+                            <div style={{ marginTop: '0.35rem', color: '#64748b', fontSize: '0.78rem', fontWeight: 700 }}>Название изменится у всех модификаций этой модели.</div>
+                        </div>
+
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 800 }}>Категория</label>
+                            <select className="input" value={groupFormData.category} onChange={event => setGroupFormData(current => ({ ...current, category: event.target.value }))} required>
+                                <option value="">Выберите категорию</option>
+                                {GOODS_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+                            </select>
+                        </div>
+
+                        <div style={{ padding: '0.9rem', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontWeight: 900, marginBottom: '0.65rem' }}>Общие свойства</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '0.7rem' }}>
+                                {[
+                                    { key: 'material', label: 'Материал / исполнение', placeholder: 'Например: бархат' },
+                                    { key: 'color', label: 'Цвет', placeholder: 'Например: белый' },
+                                    { key: 'feature', label: 'Особенность', placeholder: 'Например: с логотипом' }
+                                ].map(field => (
+                                    <div key={field.key}>
+                                        <label style={{ display: 'block', marginBottom: '0.3rem', color: '#64748b', fontSize: '0.78rem', fontWeight: 800 }}>{field.label}</label>
+                                        <input
+                                            className="input"
+                                            value={groupFormData[field.key]}
+                                            placeholder={field.placeholder}
+                                            onChange={event => {
+                                                const value = event.target.value
+                                                setGroupFormData(current => ({ ...current, [field.key]: value }))
+                                                setGroupTouched(current => ({ ...current, [field.key]: true }))
+                                            }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{ marginTop: '0.5rem', color: '#94a3b8', fontSize: '0.75rem', fontWeight: 700 }}>Если внутри серии свойства различаются, пустое поле не изменит существующие данные.</div>
+                        </div>
+
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 800 }}>Общее фото модели</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' }}>
+                                <div style={{ width: 104, height: 104, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center' }}>
+                                    {groupFormData.imageUrl ? <img src={groupFormData.imageUrl} alt="Фото модели" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ImageIcon size={32} color="#94a3b8" />}
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', minHeight: 40, padding: '0.55rem 0.8rem', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#475569', fontSize: '0.85rem', fontWeight: 800, cursor: imageUploading ? 'wait' : 'pointer' }}>
+                                        <input type="file" accept="image/jpeg,image/png,image/webp,image/*" onChange={handleGroupImageUpload} disabled={imageUploading} style={{ display: 'none' }} />
+                                        <Upload size={17} /> {imageUploading ? 'Обработка...' : (groupFormData.imageUrl ? 'Заменить' : 'Загрузить')}
+                                    </label>
+                                    {groupFormData.imageUrl && <button type="button" onClick={() => { setGroupFormData(current => ({ ...current, imageUrl: '' })); setGroupTouched(current => ({ ...current, image: true })) }} title="Удалить общее фото" style={{ width: 40, height: 40, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', display: 'grid', placeItems: 'center' }}><X size={18} /></button>}
+                                </div>
+                            </div>
+                            <div style={{ marginTop: '0.4rem', color: '#64748b', fontSize: '0.78rem', fontWeight: 700 }}>Новое фото будет установлено для всех размеров этой модели.</div>
+                        </div>
+
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                <b>Модификации</b>
+                                <span style={{ color: '#64748b', fontSize: '0.8rem', fontWeight: 800 }}>{currentGroup.items.length} шт.</span>
+                            </div>
+                            <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                                {currentGroup.items.map(item => {
+                                    const quantity = Number(getStockQty('good', item.id) || 0)
+                                    return (
+                                        <div key={item.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto', alignItems: 'center', gap: '0.65rem', padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+                                            <span style={{ minWidth: 0 }}><b style={{ display: 'block' }}>{getGoodsVariantLabel(item) || 'Базовая модификация'}</b><small style={{ color: '#94a3b8' }}>{item.name}</small></span>
+                                            <span style={{ color: quantity > 0 ? '#059669' : '#dc2626', fontWeight: 900 }}>{quantity} {item.stock_unit || 'шт'}</span>
+                                            <button type="button" onClick={() => { setIsGroupModalOpen(false); openEditModal(item) }} title="Редактировать эту модификацию" style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #dbe4ee', background: '#f8fafc', display: 'grid', placeItems: 'center' }}><Edit2 size={16} /></button>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        {groupError && <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>{groupError}</div>}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                            <button type="button" className="btn" onClick={() => setIsGroupModalOpen(false)} disabled={groupSaving}>Отмена</button>
+                            <button type="submit" className="btn btn-primary" disabled={groupSaving || imageUploading}>{groupSaving ? 'Сохраняем...' : 'Сохранить модель'}</button>
+                        </div>
+                    </form>
+                )}
             </Modal>
 
             <Modal isOpen={isMigrationModalOpen} onClose={() => !migrationLoading && setIsMigrationModalOpen(false)} title="Распределить старую номенклатуру">
