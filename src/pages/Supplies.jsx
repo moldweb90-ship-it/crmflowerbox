@@ -58,6 +58,7 @@ export default function Supplies() {
     const [goodsEntryMode, setGoodsEntryMode] = useState('single')
     const [bundleLines, setBundleLines] = useState([])
     const [bundleTotalCost, setBundleTotalCost] = useState('')
+    const [bundleAllocationMode, setBundleAllocationMode] = useState('auto')
 
     // --- Filters & Analytics State ---
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'month' }) // presets: 'week', 'month', '30days', 'custom', 'all'
@@ -170,6 +171,34 @@ export default function Supplies() {
         const totalCost = parseAmount(bundleTotalCost)
         if (!bundleLines.length || totalCost <= 0) return []
 
+        if (bundleAllocationMode === 'manual') {
+            const manualLines = bundleLines.map(line => {
+                const item = goods.find(good => String(good.id) === String(line.id))
+                return { ...line, item, quantity: parseAmount(line.quantity), unitCost: parseAmount(line.unitCost) }
+            }).filter(line => line.item && line.quantity > 0 && line.unitCost > 0)
+            const allocatedTotal = manualLines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0)
+            if (manualLines.length !== bundleLines.length || Math.abs(allocatedTotal - totalCost) > 0.01) return []
+
+            return manualLines.map(line => {
+                const stockUnit = line.item.stock_unit || 'шт'
+                return {
+                    type: 'good',
+                    id: line.item.id,
+                    name: line.item.name,
+                    quantity: line.quantity,
+                    unitCost: line.unitCost,
+                    purchaseQuantity: line.quantity,
+                    purchaseUnitCost: line.unitCost,
+                    purchaseUnit: stockUnit,
+                    stockQuantity: line.quantity,
+                    stockUnitCost: line.unitCost,
+                    stockUnit,
+                    unitsPerPurchase: 1,
+                    bundleAllocation: true
+                }
+            })
+        }
+
         const weightedLines = bundleLines.map(line => {
             const item = goods.find(good => String(good.id) === String(line.id))
             const quantity = parseAmount(line.quantity)
@@ -209,7 +238,7 @@ export default function Supplies() {
                 const existing = current.find(line => String(line.id) === String(selected.id))
                 return existing
                     ? current.map(line => String(line.id) === String(selected.id) ? { ...line, quantity: parseAmount(line.quantity) + quantity } : line)
-                    : [...current, { id: selected.id, name: selected.name, quantity }]
+                    : [...current, { id: selected.id, name: selected.name, quantity, unitCost: '' }]
             })
             setCurrentItem({ id: '', quantity: '', unitCost: '' })
             setItemSearch('')
@@ -232,6 +261,7 @@ export default function Supplies() {
         setSupplyItems(current => [...current, ...bundleItems])
         setBundleLines([])
         setBundleTotalCost('')
+        setBundleAllocationMode('auto')
         setCurrentItem({ id: '', quantity: '', unitCost: '' })
     }
 
@@ -243,7 +273,14 @@ export default function Supplies() {
         // If there are unsaved items in the form, add them first
         let finalItems = [...supplyItems]
         if (goodsEntryMode === 'mixed' && bundleLines.length && parseAmount(bundleTotalCost) > 0) {
-            finalItems.push(...buildMixedBundleItems())
+            const mixedItems = buildMixedBundleItems()
+            if (!mixedItems.length) {
+                alert(bundleAllocationMode === 'manual'
+                    ? 'Распределите закупочные цены так, чтобы сумма позиций совпала с общей ценой комплекта.'
+                    : 'Не удалось распределить стоимость смешанного комплекта.')
+                return
+            }
+            finalItems.push(...mixedItems)
         } else if (currentItem.id && currentItem.quantity && currentItem.unitCost) {
             const itemData = buildSupplyItem()
             if (itemData) finalItems.push(itemData)
@@ -272,6 +309,7 @@ export default function Supplies() {
             setGoodsEntryMode('single')
             setBundleLines([])
             setBundleTotalCost('')
+            setBundleAllocationMode('auto')
             setEditingSupplyId(null)
         } else {
             alert('Ошибка при сохранении поставки: ' + (result.error?.message || ''))
@@ -327,6 +365,7 @@ export default function Supplies() {
         setGoodsEntryMode('single')
         setBundleLines([])
         setBundleTotalCost('')
+        setBundleAllocationMode('auto')
         setIsModalOpen(true)
     }
 
@@ -339,6 +378,13 @@ export default function Supplies() {
         return itemType === 'good' ? getGoodsSearchText(item).includes(term) : item.name?.toLowerCase().includes(term)
     }).sort((a, b) => itemType === 'good' ? compareGoodsVariants(a, b) : String(a.name || '').localeCompare(String(b.name || ''), 'ru'))
 
+    const manualBundleAllocated = bundleLines.reduce((sum, line) => sum + parseAmount(line.quantity) * parseAmount(line.unitCost), 0)
+    const manualBundleRemaining = parseAmount(bundleTotalCost) - manualBundleAllocated
+    const isManualBundleValid = bundleAllocationMode !== 'manual' || (
+        bundleLines.length > 0
+        && bundleLines.every(line => parseAmount(line.unitCost) > 0)
+        && Math.abs(manualBundleRemaining) <= 0.01
+    )
     const pendingBundleItems = buildMixedBundleItems()
     const pendingBundleTotal = pendingBundleItems.reduce((sum, item) => sum + getSupplyItemAmount(item), 0)
     const currentItemSum = goodsEntryMode === 'mixed' ? 0 : (parseAmount(currentItem.quantity) || 0) * (parseAmount(currentItem.unitCost) || 0)
@@ -1003,6 +1049,10 @@ export default function Supplies() {
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 750, fontSize: '0.82rem' }}>Общая цена смешанного комплекта</label>
                                     <input className="input" type="text" inputMode="decimal" value={bundleTotalCost} onChange={e => setBundleTotalCost(e.target.value)} placeholder="Например: 1200 lei за весь набор" />
                                     <div style={{ marginTop: '0.35rem', color: '#92400e', fontSize: '0.75rem', lineHeight: 1.35 }}>Укажите сумму за весь набор. После выбора состава CRM распределит её между позициями.</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: 4, marginTop: '0.65rem', borderRadius: 8, background: '#f1f5f9' }}>
+                                        <button type="button" onClick={() => setBundleAllocationMode('auto')} style={{ padding: '0.55rem', borderRadius: 6, background: bundleAllocationMode === 'auto' ? '#fff' : 'transparent', color: bundleAllocationMode === 'auto' ? '#111827' : '#64748b', fontWeight: 850, boxShadow: bundleAllocationMode === 'auto' ? '0 2px 8px rgba(15,23,42,0.08)' : 'none' }}>Распределить автоматически</button>
+                                        <button type="button" onClick={() => setBundleAllocationMode('manual')} style={{ padding: '0.55rem', borderRadius: 6, background: bundleAllocationMode === 'manual' ? '#fff' : 'transparent', color: bundleAllocationMode === 'manual' ? '#111827' : '#64748b', fontWeight: 850, boxShadow: bundleAllocationMode === 'manual' ? '0 2px 8px rgba(15,23,42,0.08)' : 'none' }}>Указать цены вручную</button>
+                                    </div>
                                 </div>
                             )}
 
@@ -1073,22 +1123,42 @@ export default function Supplies() {
                                 <div style={{ fontWeight: 900, marginBottom: '0.65rem' }}>Состав комплекта</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
                                     {bundleLines.map(line => (
-                                        <div key={line.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', gap: '0.65rem', alignItems: 'center' }}>
-                                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 750 }}>{line.name}</span>
-                                            <span style={{ color: '#64748b', fontWeight: 850 }}>{line.quantity} {goods.find(item => String(item.id) === String(line.id))?.stock_unit || 'шт'}</span>
-                                            <button type="button" onClick={() => setBundleLines(current => current.filter(item => String(item.id) !== String(line.id)))} title="Убрать из комплекта" style={{ color: '#dc2626' }}><X size={17} /></button>
+                                        <div key={line.id} style={{ padding: '0.55rem 0', borderBottom: '1px solid #fde68a' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', gap: '0.65rem', alignItems: 'center' }}>
+                                                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 750 }}>{line.name}</span>
+                                                <span style={{ color: '#64748b', fontWeight: 850 }}>{line.quantity} {goods.find(item => String(item.id) === String(line.id))?.stock_unit || 'шт'}</span>
+                                                <button type="button" onClick={() => setBundleLines(current => current.filter(item => String(item.id) !== String(line.id)))} title="Убрать из комплекта" style={{ color: '#dc2626' }}><X size={17} /></button>
+                                            </div>
+                                            {bundleAllocationMode === 'manual' && (
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 1fr) auto', gap: '0.65rem', alignItems: 'end', marginTop: '0.5rem' }}>
+                                                    <div>
+                                                        <label style={{ display: 'block', marginBottom: '0.25rem', color: '#92400e', fontSize: '0.72rem', fontWeight: 800 }}>Закупочная цена за 1 шт.</label>
+                                                        <input className="input" type="text" inputMode="decimal" value={line.unitCost || ''} onChange={event => setBundleLines(current => current.map(item => String(item.id) === String(line.id) ? { ...item, unitCost: event.target.value } : item))} placeholder="0 lei" style={{ height: 40 }} />
+                                                    </div>
+                                                    <div style={{ minWidth: 100, textAlign: 'right', paddingBottom: '0.55rem', color: '#78350f', fontWeight: 900 }}>{(parseAmount(line.quantity) * parseAmount(line.unitCost)).toFixed(2)} lei</div>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
+                                {bundleAllocationMode === 'manual' && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.55rem', marginTop: '0.75rem', padding: '0.7rem', borderRadius: 8, background: '#fff' }}>
+                                        <div><small style={{ display: 'block', color: '#94a3b8', fontWeight: 800 }}>Распределено</small><b>{manualBundleAllocated.toFixed(2)} lei</b></div>
+                                        <div style={{ textAlign: 'right' }}><small style={{ display: 'block', color: '#94a3b8', fontWeight: 800 }}>Осталось</small><b style={{ color: Math.abs(manualBundleRemaining) <= 0.01 ? '#059669' : '#dc2626' }}>{manualBundleRemaining.toFixed(2)} lei</b></div>
+                                    </div>
+                                )}
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.65rem', alignItems: 'end', marginTop: '0.8rem' }}>
-                                    <button type="button" className="btn" onClick={handleCommitMixedBundle} disabled={parseAmount(bundleTotalCost) <= 0} style={{ minHeight: 44, background: '#f59e0b', color: '#fff', justifyContent: 'center' }}>
+                                    <button type="button" className="btn" onClick={handleCommitMixedBundle} disabled={parseAmount(bundleTotalCost) <= 0 || !isManualBundleValid} style={{ minHeight: 44, background: '#f59e0b', color: '#fff', justifyContent: 'center' }}>
                                         <Check size={17} /> Добавить комплект
                                     </button>
                                 </div>
-                                {parseAmount(bundleTotalCost) > 0 && (
+                                {parseAmount(bundleTotalCost) > 0 && bundleAllocationMode === 'auto' && (
                                     <div style={{ marginTop: '0.55rem', color: '#92400e', fontSize: '0.78rem', lineHeight: 1.4 }}>
                                         CRM распределит {parseAmount(bundleTotalCost).toFixed(2)} lei между позициями пропорционально их текущей себестоимости. Если цены еще нет, распределит по количеству.
                                     </div>
+                                )}
+                                {bundleAllocationMode === 'manual' && !isManualBundleValid && (
+                                    <div style={{ marginTop: '0.55rem', color: '#dc2626', fontSize: '0.78rem', lineHeight: 1.4, fontWeight: 750 }}>Укажите цену каждой позиции так, чтобы распределённая сумма совпала с общей ценой комплекта.</div>
                                 )}
                             </div>
                         )}
