@@ -90,7 +90,7 @@ def main():
     parser.add_argument("--app-dir", default=DEFAULT_APP_DIR)
     parser.add_argument("--branch", default=DEFAULT_BRANCH)
     parser.add_argument("--service", default=DEFAULT_SERVICE)
-    parser.add_argument("--check-sync", action="store_true", default=True)
+    parser.add_argument("--check-sync", action="store_true")
     args = parser.parse_args()
 
     password = os.environ.get("VPS_PASS")
