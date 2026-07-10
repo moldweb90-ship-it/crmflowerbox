@@ -193,7 +193,18 @@ export function StoreProvider({ children }) {
     }
     const deleteGood = async (id) => {
         const { error } = await supabase.from('goods').delete().eq('id', id)
-        if (!error) setGoods(goods.filter(g => g.id !== id))
+        if (error) return { success: false, error }
+        setGoods(currentGoods => currentGoods.filter(g => g.id !== id))
+        return { success: true }
+    }
+    const deleteGoods = async (ids) => {
+        const uniqueIds = [...new Set((ids || []).filter(Boolean))]
+        if (!uniqueIds.length) return { success: true }
+        const { error } = await supabase.from('goods').delete().in('id', uniqueIds)
+        if (error) return { success: false, error }
+        const deletedIds = new Set(uniqueIds.map(String))
+        setGoods(currentGoods => currentGoods.filter(g => !deletedIds.has(String(g.id))))
+        return { success: true }
     }
 
     // Categories
@@ -2574,7 +2585,7 @@ export function StoreProvider({ children }) {
     return (
         <StoreContext.Provider value={{
             flowers, addFlower, updateFlower, deleteFlower,
-            goods, addGood, updateGood, deleteGood,
+            goods, addGood, updateGood, deleteGood, deleteGoods,
             categories, addCategory, updateCategory, deleteCategory,
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
             suppliers, supplies, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,

@@ -11,7 +11,7 @@ const EMPTY_GOODS_ATTRIBUTES = { size: '', material: '', color: '', feature: '' 
 const STANDARD_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
-    const { flowers, addFlower, updateFlower, deleteFlower, goods, addGood, updateGood, deleteGood, getStockQty, addToStock } = useStore()
+    const { flowers, addFlower, updateFlower, deleteFlower, goods, addGood, updateGood, deleteGood, deleteGoods, getStockQty, addToStock } = useStore()
 
     const isFlowers = mode === 'flowers'
     const items = isFlowers ? flowers : goods
@@ -405,6 +405,18 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         }
     }
 
+    const handleDeleteGroup = async (group) => {
+        const confirmed = confirm(`Удалить модель «${group.familyName}» и все её модификации (${group.items.length})?\n\nЭто действие нельзя отменить.`)
+        if (!confirmed) return
+        const result = await deleteGoods(group.items.map(item => item.id))
+        if (result?.success === false) {
+            alert(`Не удалось удалить модель. Возможно, её позиции используются в поставках, букетах или продажах.\n\n${result.error?.message || ''}`)
+            return
+        }
+        setIsGroupModalOpen(false)
+        setCurrentGroup(null)
+    }
+
     const togglePublish = (item) => {
         if (isFlowers) updateFlower(item.id, { is_published: !item.is_published })
         else updateGood(item.id, { is_published: !item.is_published })
@@ -507,7 +519,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         const preview = group.items.find(item => item.image_url)?.image_url
                         return (
                             <div key={group.key} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                                <div style={{ width: '100%', padding: isMobile ? '0.8rem' : '0.9rem 1rem', display: 'grid', gridTemplateColumns: isMobile ? '48px minmax(0,1fr) 38px 28px' : '58px minmax(220px,1fr) 130px 150px 38px 28px', gap: '0.8rem', alignItems: 'center', textAlign: 'left', background: '#fff' }}>
+                                <div style={{ width: '100%', padding: isMobile ? '0.8rem' : '0.9rem 1rem', display: 'grid', gridTemplateColumns: isMobile ? '48px minmax(0,1fr) 36px 36px 28px' : '58px minmax(220px,1fr) 130px 150px 38px 38px 28px', gap: isMobile ? '0.4rem' : '0.8rem', alignItems: 'center', textAlign: 'left', background: '#fff' }}>
                                     <span style={{ width: isMobile ? 48 : 58, height: isMobile ? 48 : 58, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', display: 'grid', placeItems: 'center' }}>
                                         {preview ? <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Boxes size={22} color="#94a3b8" />}
                                     </span>
@@ -519,6 +531,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                     {!isMobile && <span style={{ textAlign: 'center' }}><b style={{ display: 'block', color: totalStock > 0 ? '#059669' : '#dc2626', fontSize: '1.05rem' }}>{totalStock.toLocaleString('ru-RU')}</b><small style={{ color: '#94a3b8' }}>всего на складе</small></span>}
                                     {!isMobile && <span style={{ textAlign: 'right', fontWeight: 850 }}>{prices.length ? `${Math.min(...prices)}–${Math.max(...prices)} lei` : '0 lei'}</span>}
                                     <button type="button" onClick={() => openGroupEditModal(group)} title="Редактировать модель" style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid #dbe4ee', background: '#f8fafc', color: '#475569', display: 'grid', placeItems: 'center' }}><Edit2 size={17} /></button>
+                                    <button type="button" onClick={() => handleDeleteGroup(group)} title="Удалить модель со всеми модификациями" style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', display: 'grid', placeItems: 'center' }}><Trash2 size={17} /></button>
                                     <button type="button" onClick={() => toggleGroup(group.key)} title={expanded ? 'Свернуть модификации' : 'Показать модификации'} style={{ width: 28, height: 38, display: 'grid', placeItems: 'center', color: '#64748b' }}><ChevronDown size={20} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} /></button>
                                 </div>
                                 {expanded && (
@@ -946,9 +959,12 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         </div>
 
                         {groupError && <div style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.85rem' }}>{groupError}</div>}
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                            <button type="button" className="btn" onClick={() => setIsGroupModalOpen(false)} disabled={groupSaving}>Отмена</button>
-                            <button type="submit" className="btn btn-primary" disabled={groupSaving || imageUploading}>{groupSaving ? 'Сохраняем...' : 'Сохранить модель'}</button>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button type="button" onClick={() => handleDeleteGroup(currentGroup)} disabled={groupSaving} style={{ minHeight: 40, padding: '0.55rem 0.8rem', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 850 }}><Trash2 size={17} /> Удалить модель</button>
+                            <span style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button type="button" className="btn" onClick={() => setIsGroupModalOpen(false)} disabled={groupSaving}>Отмена</button>
+                                <button type="submit" className="btn btn-primary" disabled={groupSaving || imageUploading}>{groupSaving ? 'Сохраняем...' : 'Сохранить модель'}</button>
+                            </span>
                         </div>
                     </form>
                 )}
