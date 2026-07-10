@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS public.goods (
   name text NOT NULL,
   price numeric DEFAULT 0,
   category text,
+  image_url text,
   cost numeric DEFAULT 0,
   markup_factor numeric,
   is_published boolean DEFAULT true,

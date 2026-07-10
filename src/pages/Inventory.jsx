@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown, ChevronLeft, ChevronRight, Upload, ImageIcon, X } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { GOODS_CATEGORIES } from '../constants/goodsCategories'
+import { compressProductImage } from '../lib/imageCompression'
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
     const { flowers, addFlower, updateFlower, deleteFlower, goods, addGood, updateGood, deleteGood } = useStore()
@@ -16,7 +17,9 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [modalMode, setModalMode] = useState('add') // 'add' | 'edit'
     const [currentItem, setCurrentItem] = useState(null)
-    const [formData, setFormData] = useState({ name: '', price: '', category: '', cost: '', purchaseCost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+    const [formData, setFormData] = useState({ name: '', price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+    const [imageUploading, setImageUploading] = useState(false)
+    const [imageError, setImageError] = useState('')
     const [searchQuery, setSearchQuery] = useState('')
     const [sortMode, setSortMode] = useState('name_asc')
     const [page, setPage] = useState(1)
@@ -108,7 +111,8 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
 
     const openAddModal = () => {
         setModalMode('add')
-        setFormData({ name: '', price: '', category: '', cost: '', purchaseCost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+        setFormData({ name: '', price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+        setImageError('')
         setIsModalOpen(true)
     }
 
@@ -120,6 +124,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             name: item.name,
             price: item.price,
             category: item.category || '',
+            imageUrl: item.image_url || '',
             cost: item.cost || '',
             purchaseCost: isFlowers ? (item.cost || '') : ((Number(item.cost || 0) * Number(unitsPerPurchase || 1)) || ''),
             markup: item.markup_factor || (isFlowers ? 2 : 1.5),
@@ -127,7 +132,25 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             stockUnit: item.stock_unit || 'шт',
             unitsPerPurchase
         })
+        setImageError('')
         setIsModalOpen(true)
+    }
+
+    const handleImageUpload = async (event) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+
+        setImageUploading(true)
+        setImageError('')
+        try {
+            const imageUrl = await compressProductImage(file)
+            setFormData(current => ({ ...current, imageUrl }))
+        } catch (error) {
+            setImageError(error?.message || 'Не удалось загрузить фотографию.')
+        } finally {
+            setImageUploading(false)
+        }
     }
 
     const handleSubmit = (e) => {
@@ -145,6 +168,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             itemData.purchase_unit = formData.purchaseUnit || 'шт'
             itemData.stock_unit = formData.stockUnit || 'шт'
             itemData.units_per_purchase = unitsPerPurchase
+            itemData.image_url = formData.imageUrl || null
         }
 
         if (modalMode === 'add') {
@@ -250,14 +274,23 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                 opacity: isPublished ? 1 : 0.6,
                                 padding: '0.75rem'
                             }}>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0 }}>
-                                        {item.name}
-                                        {!isPublished && <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 700, marginLeft: '0.5rem' }}>Скрыт</span>}
-                                    </h3>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
-                                        {!isFlowers && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.category}</span>}
-                                        <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.9rem' }}>{item.price} lei</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flex: 1, minWidth: 0 }}>
+                                    {!isFlowers && (
+                                        <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', flexShrink: 0, display: 'grid', placeItems: 'center' }}>
+                                            {item.image_url
+                                                ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                : <ImageIcon size={22} color="#94a3b8" />}
+                                        </div>
+                                    )}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0 }}>
+                                            {item.name}
+                                            {!isPublished && <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 700, marginLeft: '0.5rem' }}>Скрыт</span>}
+                                        </h3>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                            {!isFlowers && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.category}</span>}
+                                            <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.9rem' }}>{item.price} lei</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
@@ -293,9 +326,20 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                 const isPublished = item.is_published !== false
                                 return (
                                     <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
-                                        <td style={{ padding: '1rem' }}>
-                                            {item.name}
-                                            {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Скрыт</div>}
+                                        <td style={{ padding: '0.75rem 1rem' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                {!isFlowers && (
+                                                    <div style={{ width: 58, height: 58, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', flexShrink: 0, display: 'grid', placeItems: 'center' }}>
+                                                        {item.image_url
+                                                            ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                            : <ImageIcon size={24} color="#94a3b8" />}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <div style={{ fontWeight: 700 }}>{item.name}</div>
+                                                    {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Скрыт</div>}
+                                                </div>
+                                            </div>
                                         </td>
                                         {!isFlowers && <td style={{ padding: '1rem' }}>{item.category}</td>}
                                         <td style={{ textAlign: 'right', padding: '1rem' }}>{item.price} lei</td>
@@ -338,6 +382,53 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             required
                         />
                     </div>
+
+                    {!isFlowers && (
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Фото товара</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                                <div style={{
+                                    width: 112,
+                                    height: 112,
+                                    borderRadius: 8,
+                                    overflow: 'hidden',
+                                    background: '#f1f5f9',
+                                    border: '1px solid #e2e8f0',
+                                    display: 'grid',
+                                    placeItems: 'center',
+                                    flexShrink: 0
+                                }}>
+                                    {formData.imageUrl
+                                        ? <img src={formData.imageUrl} alt="Превью товара" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        : <ImageIcon size={34} color="#94a3b8" />}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', minHeight: 40, padding: '0.55rem 0.8rem', border: '1px solid #cbd5e1', borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: '0.85rem', fontWeight: 800, cursor: imageUploading ? 'wait' : 'pointer', opacity: imageUploading ? 0.65 : 1 }}>
+                                        <input
+                                            type="file"
+                                            accept="image/jpeg,image/png,image/webp,image/*"
+                                            onChange={handleImageUpload}
+                                            disabled={imageUploading}
+                                            style={{ display: 'none' }}
+                                        />
+                                        <Upload size={17} />
+                                        {imageUploading ? 'Обработка...' : (formData.imageUrl ? 'Заменить' : 'Загрузить')}
+                                    </label>
+                                    {formData.imageUrl && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(current => ({ ...current, imageUrl: '' }))}
+                                            title="Удалить фотографию"
+                                            style={{ width: 40, height: 40, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                            {imageError && <div style={{ color: '#dc2626', fontSize: '0.8rem', fontWeight: 700, marginTop: '0.45rem' }}>{imageError}</div>}
+                        </div>
+                    )}
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                         <div>
@@ -518,7 +609,9 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
                         <button type="button" className="btn" onClick={() => setIsModalOpen(false)}>Отмена</button>
-                        <button type="submit" className="btn btn-primary">Сохранить</button>
+                        <button type="submit" className="btn btn-primary" disabled={imageUploading}>
+                            {imageUploading ? 'Обработка фото...' : 'Сохранить'}
+                        </button>
                     </div>
                 </form>
             </Modal>

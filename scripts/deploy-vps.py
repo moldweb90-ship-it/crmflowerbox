@@ -74,6 +74,14 @@ git rev-parse --short HEAD
 {token_block}
 cd deploy
 docker compose up -d --build {service}
+printf "DB_MIGRATIONS\\n"
+if [ -d db/migrations ]; then
+  for migration in db/migrations/*.sql; do
+    [ -f "$migration" ] || continue
+    printf "APPLY_MIGRATION=%s\\n" "$migration"
+    docker compose exec -T db psql -v ON_ERROR_STOP=1 -U flowerbox -d flowerbox < "$migration"
+  done
+fi
 printf "NGINX_TEST\\n"
 docker compose exec -T {service} nginx -t
 HTTP_PRODUCTS=000

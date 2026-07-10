@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
-import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck, ArrowUpDown, ChevronLeft, ChevronRight, ImageIcon, Upload, X } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { supabase } from '../supabase'
 import { GOODS_CATEGORIES, getGoodsCategory } from '../constants/goodsCategories'
+import { compressProductImage } from '../lib/imageCompression'
 
 const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 
@@ -221,6 +222,7 @@ export default function Stock() {
     const [isWasteModalOpen, setIsWasteModalOpen] = useState(false)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [supplierBreakdownItem, setSupplierBreakdownItem] = useState(null)
+    const [imagePreview, setImagePreview] = useState(null)
     const [activeTab, setActiveTab] = useState('inventory') // 'inventory' | 'waste'
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [selectedItem, setSelectedItem] = useState(null)
@@ -231,6 +233,9 @@ export default function Stock() {
     const [editQty, setEditQty] = useState(0)
     const [editMinQty, setEditMinQty] = useState(5)
     const [editCategory, setEditCategory] = useState('')
+    const [editImageUrl, setEditImageUrl] = useState('')
+    const [editImageUploading, setEditImageUploading] = useState(false)
+    const [editImageError, setEditImageError] = useState('')
     const [isAutoCategorizing, setIsAutoCategorizing] = useState(false)
     const [wasteReason, setWasteReason] = useState('Вялость')
     const [wasteSupplierId, setWasteSupplierId] = useState('') // New state for supplier selection
@@ -244,7 +249,7 @@ export default function Stock() {
 
     // Pagination for transactions
     const [currentPage, setCurrentPage] = useState(1)
-    const ITEMS_PER_PAGE = 10
+    const MOVEMENTS_PER_PAGE = isMobile ? 6 : 9
     const INVENTORY_PAGE_SIZE = 50
 
     // Waste Filters
@@ -279,6 +284,7 @@ export default function Stock() {
                 min_quantity: Number(s.min_quantity || 0),
                 stock_id: s.id,
                 cost: Number(itemDef.cost || 0),
+                image_url: s.item_type === 'good' ? (itemDef.image_url || '') : '',
                 stock_unit: itemDef.stock_unit || 'шт',
                 updated_at: s.updated_at || s.created_at || '',
                 is_low: Number(s.quantity || 0) > 0 && Number(s.quantity || 0) <= Number(s.min_quantity || 0)
@@ -405,11 +411,26 @@ export default function Stock() {
     }, [itemType, flowers, goods])
 
     const recentTransactions = useMemo(() => {
-        const start = (currentPage - 1) * ITEMS_PER_PAGE
-        return stockTransactions.slice(start, start + ITEMS_PER_PAGE)
-    }, [stockTransactions, currentPage])
+        const start = (currentPage - 1) * MOVEMENTS_PER_PAGE
+        return stockTransactions.slice(start, start + MOVEMENTS_PER_PAGE)
+    }, [stockTransactions, currentPage, MOVEMENTS_PER_PAGE])
 
-    const totalPages = Math.ceil(stockTransactions.length / ITEMS_PER_PAGE)
+    const totalPages = Math.max(1, Math.ceil(stockTransactions.length / MOVEMENTS_PER_PAGE))
+
+    const movementStats = useMemo(() => recentTransactions.reduce((result, transaction) => {
+        const quantity = Number(transaction.quantity || 0)
+        const item = transaction.item_type === 'flower'
+            ? flowers.find(flower => flower.id === transaction.item_id)
+            : goods.find(good => good.id === transaction.item_id)
+        const unit = transaction.item_type === 'flower' ? 'шт' : (item?.stock_unit || 'шт')
+        const target = quantity > 0 ? result.incoming : result.outgoing
+        target[unit] = (target[unit] || 0) + Math.abs(quantity)
+        return result
+    }, { incoming: {}, outgoing: {} }), [recentTransactions, flowers, goods])
+
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(totalPages)
+    }, [currentPage, totalPages])
 
     const getItemSupplierRows = (item) => getStockSupplierBreakdown(item.type, item.id)
 
@@ -517,7 +538,25 @@ export default function Stock() {
         setEditQty(item.quantity)
         setEditMinQty(item.min_quantity)
         setEditCategory(item.category || '')
+        setEditImageUrl(item.image_url || '')
+        setEditImageError('')
         setIsEditModalOpen(true)
+    }
+
+    const handleEditImageUpload = async (event) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+
+        setEditImageUploading(true)
+        setEditImageError('')
+        try {
+            setEditImageUrl(await compressProductImage(file))
+        } catch (error) {
+            setEditImageError(error?.message || 'Не удалось загрузить фотографию.')
+        } finally {
+            setEditImageUploading(false)
+        }
     }
 
     const handleAutoCategorize = async () => {
@@ -549,8 +588,11 @@ export default function Stock() {
         if (selectedItem.stock_id && editMinQty !== selectedItem.min_quantity) {
             await updateMinQuantity(selectedItem.stock_id, editMinQty)
         }
-        if (selectedItem.type === 'good' && editCategory && editCategory !== selectedItem.source_category) {
-            await updateGood(selectedItem.id, { category: editCategory })
+        if (selectedItem.type === 'good') {
+            const goodUpdates = {}
+            if (editCategory && editCategory !== selectedItem.source_category) goodUpdates.category = editCategory
+            if (editImageUrl !== selectedItem.image_url) goodUpdates.image_url = editImageUrl || null
+            if (Object.keys(goodUpdates).length > 0) await updateGood(selectedItem.id, goodUpdates)
         }
         setIsEditModalOpen(false)
         setSelectedItem(null)
@@ -1004,18 +1046,39 @@ export default function Stock() {
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                        <span style={{
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '8px',
-                                            background: item.type === 'flower' ? '#f0fdf4' : '#fef3c7',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '1rem'
-                                        }}>
-                                            {item.type === 'flower' ? '🌸' : '📦'}
-                                        </span>
+                                        {item.type === 'good' && item.image_url ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setImagePreview(item)}
+                                                title="Открыть фотографию"
+                                                style={{
+                                                    width: isMobile ? 48 : 58,
+                                                    height: isMobile ? 48 : 58,
+                                                    borderRadius: 8,
+                                                    overflow: 'hidden',
+                                                    padding: 0,
+                                                    border: '1px solid #e2e8f0',
+                                                    background: '#f1f5f9',
+                                                    flexShrink: 0,
+                                                    cursor: 'zoom-in'
+                                                }}
+                                            >
+                                                <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                            </button>
+                                        ) : (
+                                            <span style={{
+                                                width: isMobile ? 40 : 48,
+                                                height: isMobile ? 40 : 48,
+                                                borderRadius: 8,
+                                                background: item.type === 'flower' ? '#f0fdf4' : '#fef3c7',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                flexShrink: 0
+                                            }}>
+                                                {item.type === 'flower' ? '🌸' : <ImageIcon size={21} color="#a16207" />}
+                                            </span>
+                                        )}
                                         <div>
                                             <div style={{ fontWeight: 600 }}>{item.name}</div>
                                             {item.type === 'good' && (
@@ -1219,99 +1282,117 @@ export default function Stock() {
                     )}
 
                     {/* Recent Transactions */}
-                    <div style={{ marginBottom: '2rem' }}>
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <TrendingUp size={20} /> Последние движения
-                        </h3>
+                    <div style={{ marginBottom: isMobile ? '5.5rem' : '1.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
+                            <h3 style={{ fontSize: '1rem', fontWeight: 850, margin: 0, display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                <TrendingUp size={18} /> Последние движения
+                            </h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 28, padding: '0.25rem 0.5rem', borderRadius: 6, background: '#ecfdf5', color: '#047857', fontSize: '0.75rem', fontWeight: 900 }}>
+                                    Пришло +{formatCategoryQuantity(movementStats.incoming)}
+                                </span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 28, padding: '0.25rem 0.5rem', borderRadius: 6, background: '#fef2f2', color: '#dc2626', fontSize: '0.75rem', fontWeight: 900 }}>
+                                    Ушло −{formatCategoryQuantity(movementStats.outgoing)}
+                                </span>
+                                {totalPages > 1 && (
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.2rem' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCurrentPage(page => Math.max(1, page - 1))}
+                                            disabled={currentPage === 1}
+                                            title="Предыдущие движения"
+                                            style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', display: 'grid', placeItems: 'center', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.45 : 1 }}
+                                        >
+                                            <ChevronLeft size={15} />
+                                        </button>
+                                        <span style={{ minWidth: 42, textAlign: 'center', color: '#64748b', fontSize: '0.75rem', fontWeight: 850 }}>
+                                            {currentPage}/{totalPages}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))}
+                                            disabled={currentPage === totalPages}
+                                            title="Следующие движения"
+                                            style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', display: 'grid', placeItems: 'center', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.45 : 1 }}
+                                        >
+                                            <ChevronRight size={15} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                         <div style={{
-                            background: 'white',
-                            borderRadius: '16px',
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+                            gap: '1px',
+                            background: '#e2e8f0',
+                            borderRadius: 8,
                             border: '1px solid var(--border)',
                             overflow: 'hidden'
                         }}>
                             {recentTransactions.length === 0 ? (
-                                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                <div style={{ gridColumn: '1 / -1', padding: '1.25rem', textAlign: 'center', color: 'var(--text-muted)', background: 'white', fontSize: '0.85rem' }}>
                                     Пока нет транзакций
                                 </div>
                             ) : (
                                 recentTransactions.map(tx => {
                                     const typeInfo = transactionTypeLabels[tx.transaction_type] || { label: tx.transaction_type, color: '#6b7280', icon: '📝' }
                                     const itemName = getItemName(tx.item_type, tx.item_id)
+                                    const quantity = Number(tx.quantity || 0)
+                                    const itemDefinition = tx.item_type === 'flower'
+                                        ? flowers.find(flower => flower.id === tx.item_id)
+                                        : goods.find(good => good.id === tx.item_id)
+                                    const movementUnit = tx.item_type === 'flower' ? 'шт' : (itemDefinition?.stock_unit || 'шт')
                                     return (
                                         <div
                                             key={tx.id}
                                             style={{
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '1rem',
-                                                padding: '0.75rem 1rem',
-                                                borderBottom: '1px solid var(--border)'
+                                                gap: '0.55rem',
+                                                minWidth: 0,
+                                                minHeight: isMobile ? 54 : 62,
+                                                padding: isMobile ? '0.55rem 0.65rem' : '0.65rem 0.75rem',
+                                                background: 'white'
                                             }}
                                         >
                                             <span style={{
-                                                width: '32px',
-                                                height: '32px',
-                                                borderRadius: '50%',
-                                                background: `${typeInfo.color} 15`,
+                                                width: 30,
+                                                height: 30,
+                                                borderRadius: 7,
+                                                background: `${typeInfo.color}15`,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
-                                                fontSize: '1rem'
+                                                fontSize: '0.85rem',
+                                                flexShrink: 0
                                             }}>
                                                 {typeInfo.icon}
                                             </span>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontWeight: 500 }}>{itemName}</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                    {typeInfo.label} • {new Date(tx.created_at).toLocaleDateString('ru-RU')}
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontWeight: 750, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={itemName}>{itemName}</div>
+                                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {typeInfo.label} · {new Date(tx.created_at).toLocaleDateString('ru-RU')}
                                                 </div>
                                             </div>
-                                            <div style={{
-                                                fontWeight: 700,
-                                                color: tx.quantity > 0 ? '#10b981' : '#ef4444'
+                                            <span style={{
+                                                flexShrink: 0,
+                                                minWidth: 32,
+                                                textAlign: 'center',
+                                                padding: '0.2rem 0.4rem',
+                                                borderRadius: 6,
+                                                background: quantity > 0 ? '#ecfdf5' : '#fef2f2',
+                                                color: quantity > 0 ? '#047857' : '#dc2626',
+                                                fontSize: '0.78rem',
+                                                fontWeight: 950
                                             }}>
-                                                {tx.quantity > 0 ? '+' : ''}{tx.quantity}
-                                            </div>
+                                                {quantity > 0 ? '+' : ''}{quantity.toLocaleString('ru-RU')} {movementUnit}
+                                            </span>
                                         </div>
                                     )
                                 })
                             )}
                         </div>
-                        {totalPages > 1 && (
-                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
-                                    style={{
-                                        padding: '0.5rem',
-                                        borderRadius: '8px',
-                                        border: '1px solid var(--border)',
-                                        background: 'white',
-                                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                                        opacity: currentPage === 1 ? 0.5 : 1
-                                    }}
-                                >
-                                    ←
-                                </button>
-                                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                                    Страница {currentPage} из {totalPages}
-                                </span>
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages}
-                                    style={{
-                                        padding: '0.5rem',
-                                        borderRadius: '8px',
-                                        border: '1px solid var(--border)',
-                                        background: 'white',
-                                        cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                                        opacity: currentPage === totalPages ? 0.5 : 1
-                                    }}
-                                >
-                                    →
-                                </button>
-                            </div>
-                        )}
                     </div>
                 </>
             )}
@@ -1782,7 +1863,20 @@ export default function Stock() {
                                 alignItems: 'center',
                                 gap: '0.75rem'
                             }}>
-                                <span style={{ fontSize: '1.5rem' }}>{selectedItem.type === 'flower' ? '🌸' : '📦'}</span>
+                                {selectedItem.type === 'good' && editImageUrl ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setImagePreview({ ...selectedItem, image_url: editImageUrl })}
+                                        title="Открыть фотографию"
+                                        style={{ width: 72, height: 72, borderRadius: 8, overflow: 'hidden', padding: 0, border: '1px solid #d1fae5', background: 'white', flexShrink: 0, cursor: 'zoom-in' }}
+                                    >
+                                        <img src={editImageUrl} alt={selectedItem.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                    </button>
+                                ) : (
+                                    <span style={{ width: 48, height: 48, borderRadius: 8, background: 'white', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                                        {selectedItem.type === 'flower' ? '🌸' : <ImageIcon size={22} color="#64748b" />}
+                                    </span>
+                                )}
                                 <div>
                                     <div style={{ fontWeight: 600 }}>{selectedItem.name}</div>
                                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -1790,6 +1884,36 @@ export default function Stock() {
                                     </div>
                                 </div>
                             </div>
+
+                            {selectedItem.type === 'good' && (
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 700 }}>Фото товара</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', minHeight: 40, padding: '0.55rem 0.8rem', border: '1px solid #cbd5e1', borderRadius: 8, background: '#f8fafc', color: '#475569', fontSize: '0.85rem', fontWeight: 800, cursor: editImageUploading ? 'wait' : 'pointer', opacity: editImageUploading ? 0.65 : 1 }}>
+                                            <input
+                                                type="file"
+                                                accept="image/jpeg,image/png,image/webp,image/*"
+                                                onChange={handleEditImageUpload}
+                                                disabled={editImageUploading}
+                                                style={{ display: 'none' }}
+                                            />
+                                            <Upload size={16} />
+                                            {editImageUploading ? 'Обработка...' : (editImageUrl ? 'Заменить фото' : 'Добавить фото')}
+                                        </label>
+                                        {editImageUrl && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditImageUrl('')}
+                                                title="Удалить фотографию"
+                                                style={{ width: 40, height: 40, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                                            >
+                                                <X size={17} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    {editImageError && <div style={{ color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, marginTop: '0.4rem' }}>{editImageError}</div>}
+                                </div>
+                            )}
 
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Количество на складе</label>
@@ -1836,6 +1960,7 @@ export default function Stock() {
 
                             <button
                                 onClick={handleEditStock}
+                                disabled={editImageUploading}
                                 style={{
                                     padding: '1rem',
                                     background: 'var(--primary)',
@@ -1844,18 +1969,36 @@ export default function Stock() {
                                     borderRadius: '12px',
                                     fontWeight: 700,
                                     fontSize: '1rem',
-                                    cursor: 'pointer',
+                                    cursor: editImageUploading ? 'wait' : 'pointer',
+                                    opacity: editImageUploading ? 0.65 : 1,
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     gap: '0.5rem'
                                 }}
                             >
-                                <Edit2 size={18} /> Сохранить
+                                <Edit2 size={18} /> {editImageUploading ? 'Обработка фото...' : 'Сохранить'}
                             </button>
                         </>
                     )}
                 </div>
+            </Modal>
+
+            <Modal
+                isOpen={Boolean(imagePreview)}
+                onClose={() => setImagePreview(null)}
+                title={imagePreview?.name || 'Фото товара'}
+                maxWidth="720px"
+            >
+                {imagePreview?.image_url && (
+                    <div style={{ width: '100%', maxHeight: '72vh', display: 'grid', placeItems: 'center', background: '#f8fafc', borderRadius: 8, overflow: 'hidden' }}>
+                        <img
+                            src={imagePreview.image_url}
+                            alt={imagePreview.name}
+                            style={{ maxWidth: '100%', maxHeight: '72vh', objectFit: 'contain', display: 'block' }}
+                        />
+                    </div>
+                )}
             </Modal>
         </div>
     )
