@@ -5,7 +5,7 @@ import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapP
 import Modal from '../components/ui/Modal'
 import ClaimModal from '../components/claims/ClaimModal'
 import QuantityStepper from '../components/ui/QuantityStepper'
-import { compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, inferGoodsFamily } from '../lib/goodsVariants'
+import CompositionPicker from '../components/sales/CompositionPicker'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -198,7 +198,6 @@ export default function Sales() {
     const [salonFormData, setSalonFormData] = useState(emptySalonForm)
     const [editingSalonSaleId, setEditingSalonSaleId] = useState(null)
     const [selectedShowcaseId, setSelectedShowcaseId] = useState('')
-    const [salonItemSearch, setSalonItemSearch] = useState('')
     const [showSalonItemDropdown, setShowSalonItemDropdown] = useState(false)
 
     // Date filter
@@ -1701,15 +1700,15 @@ export default function Sales() {
                                 {siteComposition.length > 0 ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
                                         {siteComposition.map((item, idx) => (
-                                            <div key={`${item.type}-${item.item_id}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: '#f9fafb', borderRadius: '8px' }}>
-                                                <span style={{ flex: 1, fontWeight: 500 }}>{item.type === 'flower' ? '🌸' : '📦'} {item.name}</span>
+                                            <div key={`${item.type}-${item.item_id}-${idx}`} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: '0.5rem', padding: '0.55rem', background: '#f9fafb', borderRadius: 8 }}>
+                                                <span style={{ flex: isMobile ? '1 0 calc(100% - 38px)' : 1, minWidth: 0, fontWeight: 650 }}>{item.type === 'flower' ? '🌸' : '📦'} {item.name}</span>
                                                 <QuantityStepper value={item.quantity} onChange={(val) => {
                                                     const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: val } : c)
                                                     setSiteComposition(newComp)
                                                     const withMarkup = calculateSiteCompositionPrice(newComp)
                                                     setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
-                                                }} step={1} min={0.01} style={{ width: '148px' }} inputStyle={{ minWidth: '54px', height: '34px' }} buttonStyle={{ width: '30px', height: '30px' }} />
-                                                <span style={{ minWidth: '50px', fontWeight: 600 }}>{parseDecimal(item.price) * parseDecimal(item.quantity)} L</span>
+                                                }} step={1} min={0.01} unit={item.type === 'good' ? (goods.find(good => String(good.id) === String(item.item_id))?.stock_unit || 'шт') : 'шт'} style={{ width: isMobile ? '148px' : '154px' }} inputStyle={{ height: '36px' }} buttonStyle={{ height: '36px' }} />
+                                                <span style={{ minWidth: 58, marginLeft: isMobile ? 'auto' : 0, textAlign: 'right', fontWeight: 750 }}>{parseDecimal(item.price) * parseDecimal(item.quantity)} L</span>
                                                 <button type="button" onClick={() => {
                                                     const newComp = siteComposition.filter((_, i) => i !== idx)
                                                     setSiteComposition(newComp)
@@ -1722,40 +1721,7 @@ export default function Sales() {
                                         ))}
                                     </div>
                                 ) : null}
-                                <div style={{ position: 'relative' }}>
-                                    <input className="input" placeholder="Добавить цветок или товар..." value={siteItemSearch} onChange={(e) => { setSiteItemSearch(e.target.value); setShowSiteItemDropdown(true) }} onFocus={() => setShowSiteItemDropdown(true)} style={{ width: '100%', fontSize: '0.9rem' }} />
-                                    {showSiteItemDropdown && siteItemSearch && (
-                                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: '0 8px 25px rgba(0,0,0,0.1)', zIndex: 20, maxHeight: '200px', overflowY: 'auto' }}>
-                                            {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).map(flower => (
-                                                <div key={`f-${flower.id}`} onClick={() => {
-                                                    const ex = siteComposition.findIndex(c => c.type === 'flower' && c.item_id === flower.id)
-                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: parseDecimal(c.quantity) + 1 } : c) : [...siteComposition, { type: 'flower', item_id: flower.id, name: flower.name, quantity: 1, cost: flower.cost || 0, price: flower.price || 0 }]
-                                                    setSiteComposition(newComp)
-                                                    const withMarkup = calculateSiteCompositionPrice(newComp)
-                                                    setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
-                                                    setSiteItemSearch(''); setShowSiteItemDropdown(false)
-                                                }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>🌸 {flower.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{flower.price} L</span></div>
-                                            ))}
-                                            {goods.filter(g => getGoodsSearchText(g).includes(siteItemSearch.toLowerCase())).sort(compareGoodsVariants).map((good, index, filteredGoods) => (
-                                                <React.Fragment key={`g-${good.id}`}>
-                                                {(index === 0 || inferGoodsFamily(filteredGoods[index - 1]) !== inferGoodsFamily(good)) && <div style={{ padding: '0.45rem 0.8rem 0.25rem', background: '#f8fafc', color: '#64748b', fontSize: '0.7rem', fontWeight: 950, textTransform: 'uppercase' }}>{inferGoodsFamily(good)}</div>}
-                                                <div onClick={() => {
-                                                    const ex = siteComposition.findIndex(c => c.type === 'good' && c.item_id === good.id)
-                                                    const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: parseDecimal(c.quantity) + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
-                                                    setSiteComposition(newComp)
-                                                    const withMarkup = calculateSiteCompositionPrice(newComp)
-                                                    setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
-                                                    setSiteItemSearch(''); setShowSiteItemDropdown(false)
-                                                }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', borderBottom: '1px solid #f3f4f6' }}>
-                                                    <span style={{ minWidth: 0 }}><span style={{ display: 'block' }}>📦 {good.name}</span><small style={{ color: '#94a3b8' }}>{getGoodsVariantLabel(good) || good.category || 'Доп. товар'} · остаток {getStockQty('good', good.id)} {good.stock_unit || 'шт'}</small></span>
-                                                    <span style={{ color: '#6366f1', fontWeight: 600, whiteSpace: 'nowrap' }}>{good.price} L</span>
-                                                </div>
-                                                </React.Fragment>
-                                            ))}
-                                            {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).length === 0 && goods.filter(g => getGoodsSearchText(g).includes(siteItemSearch.toLowerCase())).length === 0 && <div style={{ padding: '1rem', color: '#9ca3af', textAlign: 'center' }}>Ничего не найдено</div>}
-                                        </div>
-                                    )}
-                                </div>
+                                <button type="button" className="input" onClick={() => setShowSiteItemDropdown(true)} style={{ width: '100%', minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem', color: '#475569', background: '#fff', fontWeight: 800 }}><Plus size={18} /> Добавить цветок или товар</button>
                             </div>
                         )}
                     </div>
@@ -2089,6 +2055,20 @@ export default function Sales() {
                     </div >
                 </div >
             </Modal >
+
+            <CompositionPicker
+                isOpen={isModalOpen && showSiteItemDropdown}
+                onClose={() => { setShowSiteItemDropdown(false); setSiteItemSearch('') }}
+                flowers={flowers}
+                goods={goods}
+                getStockQty={getStockQty}
+                composition={siteComposition}
+                onChange={nextComposition => {
+                    setSiteComposition(nextComposition)
+                    const withMarkup = calculateSiteCompositionPrice(nextComposition)
+                    setFormData(current => ({ ...current, sale_price: String(withMarkup + currentDeliveryFee) }))
+                }}
+            />
 
             {/* Loyal Customers Modal */}
             < Modal isOpen={isLoyalCustomersOpen} onClose={() => setIsLoyalCustomersOpen(false)} title="👑 ТОП Постоянных клиентов" maxWidth={isMobile ? '100%' : '600px'} >
@@ -2611,7 +2591,7 @@ export default function Sales() {
             {/* Salon Sale Modal */}
             < Modal
                 isOpen={isSalonModalOpen}
-                onClose={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch(''); setSelectedShowcaseId('') }}
+                onClose={() => { setIsSalonModalOpen(false); setShowSalonItemDropdown(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSelectedShowcaseId('') }}
                 title={editingSalonSaleId ? '✏️ Редактирование продажи' : '🏪 Продажа в Салоне'}
                 maxWidth="700px"
                 closeOnOverlayClick={false}
@@ -2784,111 +2764,7 @@ export default function Sales() {
                                 Букет выбран с витрины: склад уже был списан при сборке, повторного списания при продаже не будет.
                             </div>
                         )}
-                        {!selectedShowcaseId && <div style={{ position: 'relative' }}>
-                            <input
-                                type="text"
-                                value={salonItemSearch}
-                                onChange={(e) => { setSalonItemSearch(e.target.value); setShowSalonItemDropdown(true) }}
-                                onFocus={() => setShowSalonItemDropdown(true)}
-                                placeholder="Поиск: введите название цветка или товара..."
-                                className="input"
-                                style={{ width: '100%' }}
-                            />
-                            {showSalonItemDropdown && salonItemSearch && (
-                                <div style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    left: 0,
-                                    right: 0,
-                                    background: 'white',
-                                    border: '1px solid #e5e7eb',
-                                    borderRadius: '12px',
-                                    boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-                                    maxHeight: '200px',
-                                    overflowY: 'auto',
-                                    zIndex: 100
-                                }}>
-                                    {/* Search in flowers */}
-                                    {flowers.filter(f => f.name.toLowerCase().includes(salonItemSearch.toLowerCase())).map(flower => (
-                                        <div
-                                            key={`flower-${flower.id}`}
-                                            onClick={() => {
-                                                const existingIdx = salonFormData.composition.findIndex(c => c.type === 'flower' && c.item_id === flower.id)
-                                                if (existingIdx >= 0) {
-                                                    const newComp = [...salonFormData.composition]
-                                                    newComp[existingIdx].quantity = parseDecimal(newComp[existingIdx].quantity) + 1
-                                                    setSalonFormData({ ...salonFormData, composition: newComp })
-                                                } else {
-                                                    setSalonFormData({
-                                                        ...salonFormData,
-                                                        composition: [...salonFormData.composition, {
-                                                            type: 'flower',
-                                                            item_id: flower.id,
-                                                            name: flower.name,
-                                                            quantity: 1,
-                                                            cost: flower.cost || 0,
-                                                            price: flower.price || 0
-                                                        }]
-                                                    })
-                                                }
-                                                setSalonItemSearch('')
-                                                setShowSalonItemDropdown(false)
-                                            }}
-                                            style={{ padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid #f3f4f6' }}
-                                            onMouseEnter={(e) => e.currentTarget.style.background = '#faf5ff'}
-                                            onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
-                                        >
-                                            <span>🌸</span>
-                                            <span style={{ flex: 1 }}>{flower.name}</span>
-                                            <span style={{ color: '#7c3aed', fontWeight: 600 }}>{flower.price || 0} lei</span>
-                                        </div>
-                                    ))}
-                                    {/* Search in goods */}
-                                    {goods.filter(g => getGoodsSearchText(g).includes(salonItemSearch.toLowerCase())).sort(compareGoodsVariants).map((good, index, filteredGoods) => (
-                                        <React.Fragment key={`good-${good.id}`}>
-                                        {(index === 0 || inferGoodsFamily(filteredGoods[index - 1]) !== inferGoodsFamily(good)) && <div style={{ padding: '0.45rem 0.8rem 0.25rem', background: '#f8fafc', color: '#64748b', fontSize: '0.7rem', fontWeight: 950, textTransform: 'uppercase' }}>{inferGoodsFamily(good)}</div>}
-                                        <div
-                                            key={`good-${good.id}`}
-                                            onClick={() => {
-                                                const existingIdx = salonFormData.composition.findIndex(c => c.type === 'good' && c.item_id === good.id)
-                                                if (existingIdx >= 0) {
-                                                    const newComp = [...salonFormData.composition]
-                                                    newComp[existingIdx].quantity = parseDecimal(newComp[existingIdx].quantity) + 1
-                                                    setSalonFormData({ ...salonFormData, composition: newComp })
-                                                } else {
-                                                    setSalonFormData({
-                                                        ...salonFormData,
-                                                        composition: [...salonFormData.composition, {
-                                                            type: 'good',
-                                                            item_id: good.id,
-                                                            name: good.name,
-                                                            quantity: 1,
-                                                            cost: good.cost || 0,
-                                                            price: good.price || 0
-                                                        }]
-                                                    })
-                                                }
-                                                setSalonItemSearch('')
-                                                setShowSalonItemDropdown(false)
-                                            }}
-                                            style={{ padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid #f3f4f6' }}
-                                            onMouseEnter={(e) => e.currentTarget.style.background = '#faf5ff'}
-                                            onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
-                                        >
-                                            <span>📦</span>
-                                            <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: 'block' }}>{good.name}</span><small style={{ color: '#94a3b8' }}>{getGoodsVariantLabel(good) || good.category || 'Доп. товар'} · остаток {getStockQty('good', good.id)} {good.stock_unit || 'шт'}</small></span>
-                                            <span style={{ color: '#7c3aed', fontWeight: 600 }}>{good.price || 0} lei</span>
-                                        </div>
-                                        </React.Fragment>
-                                    ))}
-                                    {flowers.filter(f => f.name.toLowerCase().includes(salonItemSearch.toLowerCase())).length === 0 &&
-                                        goods.filter(g => getGoodsSearchText(g).includes(salonItemSearch.toLowerCase())).length === 0 && (
-                                            <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af' }}>Ничего не найдено</div>
-                                        )}
-                                </div>
-                            )}
-                        </div>}
-
+                        {!selectedShowcaseId && <button type="button" className="input" onClick={() => setShowSalonItemDropdown(true)} style={{ width: '100%', minHeight: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem', color: '#475569', background: '#fff', fontWeight: 850 }}><Plus size={18} /> Добавить цветок или товар</button>}
                         {/* Price Summary */}
                         {salonFormData.composition.length > 0 && (() => {
                             const costPrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.cost) * parseDecimal(item.quantity)), 0)
@@ -3178,7 +3054,7 @@ export default function Sales() {
                     }}>
                         <button
                             className="btn"
-                            onClick={() => { setIsSalonModalOpen(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSalonItemSearch(''); setSelectedShowcaseId('') }}
+                            onClick={() => { setIsSalonModalOpen(false); setShowSalonItemDropdown(false); setSalonFormData(emptySalonForm); setEditingSalonSaleId(null); setSelectedShowcaseId('') }}
                             style={{ padding: isMobile ? '0.875rem 1rem' : '0.75rem 1.5rem', flex: isMobile ? 1 : 'initial' }}
                         >
                             Отмена
@@ -3236,9 +3112,9 @@ export default function Sales() {
                                     }
 
                                     setIsSalonModalOpen(false)
+                                    setShowSalonItemDropdown(false)
                                     setSalonFormData(emptySalonForm)
                                     setEditingSalonSaleId(null)
-                                    setSalonItemSearch('')
                                     setSelectedShowcaseId('')
                                 } catch (error) {
                                     console.error('Error saving salon sale:', error)
@@ -3254,6 +3130,15 @@ export default function Sales() {
                     </div>
                 </div>
             </Modal >
+            <CompositionPicker
+                isOpen={isSalonModalOpen && showSalonItemDropdown && !selectedShowcaseId}
+                onClose={() => setShowSalonItemDropdown(false)}
+                flowers={flowers}
+                goods={goods}
+                getStockQty={getStockQty}
+                composition={salonFormData.composition}
+                onChange={nextComposition => setSalonFormData(current => ({ ...current, composition: nextComposition }))}
+            />
             <ClaimModal
                 isOpen={Boolean(claimSale)}
                 sale={claimSale}

@@ -1,4 +1,5 @@
 import React from 'react'
+import { Minus, Plus } from 'lucide-react'
 
 const parseAmount = (value, fallback = 0) => {
     if (value === '' || value === null || value === undefined) return fallback
@@ -42,7 +43,17 @@ export default function QuantityStepper({
 
     return (
         <div className={`qty-stepper ${className}`.trim()} style={style}>
-            <span className="qty-stepper-field">
+            <span className="qty-stepper-control">
+                <button
+                    type="button"
+                    className="qty-stepper-button"
+                    disabled={disabled || parseAmount(currentText, 0) <= min}
+                    onClick={() => bump(-1)}
+                    style={buttonStyle}
+                    aria-label="Уменьшить количество"
+                >
+                    <Minus size={15} />
+                </button>
                 <input
                     type="text"
                     inputMode="decimal"
@@ -53,28 +64,16 @@ export default function QuantityStepper({
                     onChange={e => onChange(cleanInput(e.target.value))}
                     style={inputStyle}
                 />
-                <span className="qty-stepper-arrows">
-                    <button
-                        type="button"
-                        className="qty-stepper-arrow qty-stepper-arrow-up"
-                        disabled={disabled}
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => bump(1)}
-                        style={buttonStyle}
-                        tabIndex={-1}
-                        aria-label="Increase quantity"
-                    />
-                    <button
-                        type="button"
-                        className="qty-stepper-arrow qty-stepper-arrow-down"
-                        disabled={disabled}
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={() => bump(-1)}
-                        style={buttonStyle}
-                        tabIndex={-1}
-                        aria-label="Decrease quantity"
-                    />
-                </span>
+                <button
+                    type="button"
+                    className="qty-stepper-button"
+                    disabled={disabled || (max !== null && max !== undefined && parseAmount(currentText, 0) >= max)}
+                    onClick={() => bump(1)}
+                    style={buttonStyle}
+                    aria-label="Увеличить количество"
+                >
+                    <Plus size={15} />
+                </button>
             </span>
             {unit ? <span className="qty-stepper-unit">{unit}</span> : null}
         </div>
