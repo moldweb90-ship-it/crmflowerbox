@@ -606,7 +606,11 @@ export default function Products() {
                                                 {filteredCompItems.length === 0 && (
                                                     <div style={{ padding: '0.85rem', color: '#ef4444', fontWeight: 700 }}>Ничего не найдено</div>
                                                 )}
-                                                {filteredCompItems.map(item => (
+                                                {filteredCompItems.map((item, index) => (
+                                                    <React.Fragment key={item.id}>
+                                                    {compType === 'good' && (index === 0 || inferGoodsFamily(filteredCompItems[index - 1]) !== inferGoodsFamily(item)) && (
+                                                        <div style={{ padding: '0.5rem 0.7rem 0.3rem', color: '#64748b', fontSize: '0.72rem', fontWeight: 950, textTransform: 'uppercase', background: '#f8fafc' }}>{inferGoodsFamily(item)}</div>
+                                                    )}
                                                     <button
                                                         key={item.id}
                                                         type="button"
@@ -648,6 +652,7 @@ export default function Products() {
                                                         </span>
                                                         <span style={{ color: String(item.id) === String(compId) ? 'var(--primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>{item.price} lei</span>
                                                     </button>
+                                                    </React.Fragment>
                                                 ))}
                                             </div>
                                         </div>

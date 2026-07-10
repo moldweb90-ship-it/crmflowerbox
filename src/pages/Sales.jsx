@@ -5,7 +5,7 @@ import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapP
 import Modal from '../components/ui/Modal'
 import ClaimModal from '../components/claims/ClaimModal'
 import QuantityStepper from '../components/ui/QuantityStepper'
-import { compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel } from '../lib/goodsVariants'
+import { compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, inferGoodsFamily } from '../lib/goodsVariants'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -1736,8 +1736,10 @@ export default function Sales() {
                                                     setSiteItemSearch(''); setShowSiteItemDropdown(false)
                                                 }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>🌸 {flower.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{flower.price} L</span></div>
                                             ))}
-                                            {goods.filter(g => getGoodsSearchText(g).includes(siteItemSearch.toLowerCase())).sort(compareGoodsVariants).map(good => (
-                                                <div key={`g-${good.id}`} onClick={() => {
+                                            {goods.filter(g => getGoodsSearchText(g).includes(siteItemSearch.toLowerCase())).sort(compareGoodsVariants).map((good, index, filteredGoods) => (
+                                                <React.Fragment key={`g-${good.id}`}>
+                                                {(index === 0 || inferGoodsFamily(filteredGoods[index - 1]) !== inferGoodsFamily(good)) && <div style={{ padding: '0.45rem 0.8rem 0.25rem', background: '#f8fafc', color: '#64748b', fontSize: '0.7rem', fontWeight: 950, textTransform: 'uppercase' }}>{inferGoodsFamily(good)}</div>}
+                                                <div onClick={() => {
                                                     const ex = siteComposition.findIndex(c => c.type === 'good' && c.item_id === good.id)
                                                     const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: parseDecimal(c.quantity) + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
                                                     setSiteComposition(newComp)
@@ -1748,6 +1750,7 @@ export default function Sales() {
                                                     <span style={{ minWidth: 0 }}><span style={{ display: 'block' }}>📦 {good.name}</span><small style={{ color: '#94a3b8' }}>{getGoodsVariantLabel(good) || good.category || 'Доп. товар'} · остаток {getStockQty('good', good.id)} {good.stock_unit || 'шт'}</small></span>
                                                     <span style={{ color: '#6366f1', fontWeight: 600, whiteSpace: 'nowrap' }}>{good.price} L</span>
                                                 </div>
+                                                </React.Fragment>
                                             ))}
                                             {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).length === 0 && goods.filter(g => getGoodsSearchText(g).includes(siteItemSearch.toLowerCase())).length === 0 && <div style={{ padding: '1rem', color: '#9ca3af', textAlign: 'center' }}>Ничего не найдено</div>}
                                         </div>
@@ -2841,7 +2844,9 @@ export default function Sales() {
                                         </div>
                                     ))}
                                     {/* Search in goods */}
-                                    {goods.filter(g => getGoodsSearchText(g).includes(salonItemSearch.toLowerCase())).sort(compareGoodsVariants).map(good => (
+                                    {goods.filter(g => getGoodsSearchText(g).includes(salonItemSearch.toLowerCase())).sort(compareGoodsVariants).map((good, index, filteredGoods) => (
+                                        <React.Fragment key={`good-${good.id}`}>
+                                        {(index === 0 || inferGoodsFamily(filteredGoods[index - 1]) !== inferGoodsFamily(good)) && <div style={{ padding: '0.45rem 0.8rem 0.25rem', background: '#f8fafc', color: '#64748b', fontSize: '0.7rem', fontWeight: 950, textTransform: 'uppercase' }}>{inferGoodsFamily(good)}</div>}
                                         <div
                                             key={`good-${good.id}`}
                                             onClick={() => {
@@ -2874,6 +2879,7 @@ export default function Sales() {
                                             <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: 'block' }}>{good.name}</span><small style={{ color: '#94a3b8' }}>{getGoodsVariantLabel(good) || good.category || 'Доп. товар'} · остаток {getStockQty('good', good.id)} {good.stock_unit || 'шт'}</small></span>
                                             <span style={{ color: '#7c3aed', fontWeight: 600 }}>{good.price || 0} lei</span>
                                         </div>
+                                        </React.Fragment>
                                     ))}
                                     {flowers.filter(f => f.name.toLowerCase().includes(salonItemSearch.toLowerCase())).length === 0 &&
                                         goods.filter(g => getGoodsSearchText(g).includes(salonItemSearch.toLowerCase())).length === 0 && (

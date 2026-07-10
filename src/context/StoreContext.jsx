@@ -181,7 +181,9 @@ export function StoreProvider({ children }) {
     const addGood = async (good) => {
         const payload = { ...good, is_published: true }
         const { data, error } = await supabase.from('goods').insert([payload]).select()
-        if (data) setGoods([...goods, data[0]])
+        if (error) return { success: false, error }
+        if (data?.[0]) setGoods(currentGoods => [...currentGoods, data[0]])
+        return { success: true, data: data?.[0] }
     }
     const updateGood = async (id, updates) => {
         const { error } = await supabase.from('goods').update(updates).eq('id', id)

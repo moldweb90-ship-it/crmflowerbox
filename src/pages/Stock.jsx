@@ -2,12 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
-import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck, ArrowUpDown, ChevronLeft, ChevronRight, ImageIcon, Upload, X } from 'lucide-react'
+import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck, ArrowUpDown, ChevronLeft, ChevronRight, ImageIcon, Upload, X, ChevronDown, Boxes } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { supabase } from '../supabase'
 import { GOODS_CATEGORIES, getGoodsCategory } from '../constants/goodsCategories'
 import { compressProductImage } from '../lib/imageCompression'
+import { getGoodsVariantLabel, groupGoodsByFamily, inferGoodsAttributes } from '../lib/goodsVariants'
 
 const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 
@@ -249,6 +250,8 @@ export default function Stock() {
 
     // Pagination for transactions
     const [currentPage, setCurrentPage] = useState(1)
+    const [groupStockByModel, setGroupStockByModel] = useState(true)
+    const [expandedStockGroups, setExpandedStockGroups] = useState(() => new Set())
     const MOVEMENTS_PER_PAGE = isMobile ? 6 : 9
     const INVENTORY_PAGE_SIZE = 50
 
@@ -285,6 +288,9 @@ export default function Stock() {
                 stock_id: s.id,
                 cost: Number(itemDef.cost || 0),
                 image_url: s.item_type === 'good' ? (itemDef.image_url || '') : '',
+                family_name: s.item_type === 'good' ? (itemDef.family_name || '') : '',
+                variant_name: s.item_type === 'good' ? (itemDef.variant_name || '') : '',
+                attributes: s.item_type === 'good' ? (itemDef.attributes || {}) : {},
                 stock_unit: itemDef.stock_unit || 'шт',
                 updated_at: s.updated_at || s.created_at || '',
                 is_low: Number(s.quantity || 0) > 0 && Number(s.quantity || 0) <= Number(s.min_quantity || 0)
@@ -377,6 +383,17 @@ export default function Stock() {
             return b.quantity - a.quantity || nameComparison
         })
     }, [scopedInventory, stockStatus, sortMode])
+
+    const groupedStockModels = useMemo(() => groupGoodsByFamily(filteredInventory.filter(item => item.type === 'good')), [filteredInventory])
+
+    const toggleStockGroup = key => {
+        setExpandedStockGroups(current => {
+            const next = new Set(current)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
+    }
 
     // Statistics follow the selected type/category/search section.
     const stats = useMemo(() => {
@@ -984,8 +1001,49 @@ export default function Stock() {
                         </section>
                     )}
 
+                    {filter === 'goods' && (
+                        <section style={{ marginBottom: '1rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.65rem' }}>
+                                <div><h3 style={{ margin: 0, fontSize: '1rem' }}>Модели и модификации</h3><div style={{ color: '#94a3b8', fontSize: '0.76rem', marginTop: 2 }}>{groupedStockModels.length} моделей · {filteredInventory.length} позиций</div></div>
+                                <div style={{ display: 'flex', padding: 3, background: '#e2e8f0', borderRadius: 8 }}>
+                                    <button type="button" onClick={() => setGroupStockByModel(true)} style={{ padding: '0.45rem 0.65rem', borderRadius: 6, background: groupStockByModel ? '#fff' : 'transparent', fontWeight: 850, color: groupStockByModel ? '#111827' : '#64748b' }}>Модели</button>
+                                    <button type="button" onClick={() => setGroupStockByModel(false)} style={{ padding: '0.45rem 0.65rem', borderRadius: 6, background: !groupStockByModel ? '#fff' : 'transparent', fontWeight: 850, color: !groupStockByModel ? '#111827' : '#64748b' }}>Список</button>
+                                </div>
+                            </div>
+                            {groupStockByModel && <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                                {groupedStockModels.map(group => {
+                                    const expanded = expandedStockGroups.has(group.key) || Boolean(search.trim())
+                                    const totalQuantity = group.items.reduce((sum, item) => sum + item.quantity, 0)
+                                    const totalValue = group.items.reduce((sum, item) => sum + item.quantity * item.cost, 0)
+                                    const preview = group.items.find(item => item.image_url)?.image_url
+                                    return <div key={group.key} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                                        <button type="button" onClick={() => toggleStockGroup(group.key)} style={{ width: '100%', display: 'grid', gridTemplateColumns: isMobile ? '44px minmax(0,1fr) auto' : '50px minmax(220px,1fr) 120px 150px 30px', gap: '0.7rem', alignItems: 'center', padding: '0.75rem', textAlign: 'left', background: '#fff' }}>
+                                            <span style={{ width: isMobile ? 44 : 50, height: isMobile ? 44 : 50, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', display: 'grid', placeItems: 'center' }}>{preview ? <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Boxes size={20} color="#94a3b8" />}</span>
+                                            <span><b style={{ display: 'block' }}>{group.familyName}</b><small style={{ color: '#64748b' }}>{group.items.length} модификаций{isMobile ? ` · ${totalQuantity} шт` : ''}</small></span>
+                                            {!isMobile && <span style={{ textAlign: 'center', fontWeight: 950, color: totalQuantity > 0 ? '#059669' : '#dc2626' }}>{totalQuantity.toLocaleString('ru-RU')} шт</span>}
+                                            {!isMobile && <span style={{ textAlign: 'right', fontWeight: 850 }}>{totalValue.toLocaleString('ru-RU')} lei</span>}
+                                            <ChevronDown size={18} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                                        </button>
+                                        {expanded && <div style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                                            {group.items.map(item => {
+                                                const variant = getGoodsVariantLabel(item) || getGoodsVariantLabel(inferGoodsAttributes(item)) || 'Базовая модификация'
+                                                return <div key={item.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0,1fr) auto' : 'minmax(220px,1fr) 110px 120px 120px 100px', gap: '0.65rem', alignItems: 'center', padding: '0.65rem 0.8rem', borderBottom: '1px solid #e2e8f0', background: item.quantity <= 0 ? '#fef2f2' : item.is_low ? '#fffbeb' : '#f8fafc' }}>
+                                                    <span><b style={{ display: 'block' }}>{variant}</b><small style={{ color: '#94a3b8' }}>{item.name}</small>{isMobile && <small style={{ display: 'block' }}>{item.quantity} {item.stock_unit} · {item.cost} lei</small>}</span>
+                                                    {!isMobile && <span style={{ textAlign: 'center', fontWeight: 950, color: item.quantity > 0 ? '#059669' : '#dc2626' }}>{item.quantity} {item.stock_unit}</span>}
+                                                    {!isMobile && <span style={{ textAlign: 'right', color: '#64748b' }}>{item.cost} lei</span>}
+                                                    {!isMobile && <span style={{ textAlign: 'right', fontWeight: 850 }}>{(item.quantity * item.cost).toLocaleString('ru-RU')} lei</span>}
+                                                    <span style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.35rem' }}><button onClick={() => openEditModal(item)} title="Изменить остаток"><Edit2 size={15} /></button><button onClick={() => openWasteModal(item)} title="Списать" style={{ color: '#ef4444' }}><Minus size={16} /></button></span>
+                                                </div>
+                                            })}
+                                        </div>}
+                                    </div>
+                                })}
+                            </div>}
+                        </section>
+                    )}
+
                     {/* Inventory Table */}
-                    <div style={{
+                    {!(filter === 'goods' && groupStockByModel) && <div style={{
                         background: 'white',
                         borderRadius: '16px',
                         border: '1px solid var(--border)',
@@ -1241,9 +1299,9 @@ export default function Stock() {
                                 </div>
                             ))
                         )}
-                    </div>
+                    </div>}
 
-                    {filteredInventory.length > 0 && (
+                    {filteredInventory.length > 0 && !(filter === 'goods' && groupStockByModel) && (
                         <div style={{
                             display: 'flex',
                             justifyContent: 'space-between',

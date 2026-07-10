@@ -1034,7 +1034,11 @@ export default function Supplies() {
                                                         Ничего не найдено
                                                     </div>
                                                 ) : (
-                                                    filteredSupplyItems.map(item => (
+                                                    filteredSupplyItems.map((item, index) => (
+                                                        <React.Fragment key={item.id}>
+                                                        {itemType === 'good' && (index === 0 || inferGoodsFamily(filteredSupplyItems[index - 1]) !== inferGoodsFamily(item)) && (
+                                                            <div style={{ padding: '0.5rem 0.75rem 0.3rem', color: '#64748b', fontSize: '0.72rem', fontWeight: 950, textTransform: 'uppercase', background: '#f8fafc' }}>{inferGoodsFamily(item)}</div>
+                                                        )}
                                                         <button
                                                             key={item.id}
                                                             type="button"
@@ -1069,6 +1073,7 @@ export default function Supplies() {
                                                                 </span>
                                                             )}
                                                         </button>
+                                                        </React.Fragment>
                                                     ))
                                                 )}
                                             </div>

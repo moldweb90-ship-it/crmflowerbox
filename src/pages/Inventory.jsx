@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown, ChevronLeft, ChevronRight, Upload, ImageIcon, X } from 'lucide-react'
+import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown, ChevronLeft, ChevronRight, Upload, ImageIcon, X, ChevronDown, Boxes, WandSparkles } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { GOODS_CATEGORIES } from '../constants/goodsCategories'
 import { compressProductImage } from '../lib/imageCompression'
-import { GOODS_ATTRIBUTE_FIELDS, buildGoodsName, compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, inferGoodsAttributes, inferGoodsFamily, normalizeGoodsAttributes } from '../lib/goodsVariants'
+import { GOODS_ATTRIBUTE_FIELDS, buildGoodsName, compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, groupGoodsByFamily, inferGoodsAttributes, inferGoodsFamily, normalizeGoodsAttributes, suggestGoodsStructure } from '../lib/goodsVariants'
 
 const EMPTY_GOODS_ATTRIBUTES = { size: '', material: '', color: '', feature: '' }
+const STANDARD_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
-    const { flowers, addFlower, updateFlower, deleteFlower, goods, addGood, updateGood, deleteGood } = useStore()
+    const { flowers, addFlower, updateFlower, deleteFlower, goods, addGood, updateGood, deleteGood, getStockQty, addToStock } = useStore()
 
     const isFlowers = mode === 'flowers'
     const items = isFlowers ? flowers : goods
@@ -20,7 +21,12 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [modalMode, setModalMode] = useState('add') // 'add' | 'edit'
     const [currentItem, setCurrentItem] = useState(null)
-    const [formData, setFormData] = useState({ name: '', familyName: '', attributes: EMPTY_GOODS_ATTRIBUTES, price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+    const [formData, setFormData] = useState({ name: '', familyName: '', attributes: EMPTY_GOODS_ATTRIBUTES, price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1, openingQuantity: '' })
+    const [createMode, setCreateMode] = useState('single')
+    const [seriesVariants, setSeriesVariants] = useState([])
+    const [expandedGroups, setExpandedGroups] = useState(() => new Set())
+    const [isMigrationModalOpen, setIsMigrationModalOpen] = useState(false)
+    const [migrationLoading, setMigrationLoading] = useState(false)
     const [imageUploading, setImageUploading] = useState(false)
     const [imageError, setImageError] = useState('')
     const [formError, setFormError] = useState('')
@@ -64,9 +70,16 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         })
     }, [items, searchQuery, sortMode])
 
-    const pageSize = 50
-    const totalPages = Math.max(1, Math.ceil(visibleItems.length / pageSize))
+    const goodsGroups = useMemo(() => isFlowers ? [] : groupGoodsByFamily(visibleItems), [isFlowers, visibleItems])
+    const pageSize = isFlowers ? 50 : 20
+    const paginationCount = isFlowers ? visibleItems.length : goodsGroups.length
+    const totalPages = Math.max(1, Math.ceil(paginationCount / pageSize))
     const paginatedItems = visibleItems.slice((page - 1) * pageSize, page * pageSize)
+    const paginatedGroups = goodsGroups.slice((page - 1) * pageSize, page * pageSize)
+
+    const legacySuggestions = useMemo(() => isFlowers ? [] : goods
+        .filter(item => !String(item.family_name || '').trim())
+        .map(item => ({ item, suggestion: suggestGoodsStructure(item) })), [isFlowers, goods])
 
     useEffect(() => {
         setPage(1)
@@ -84,9 +97,9 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         : 'Показаны все'
 
     const Pagination = () => {
-        if (visibleItems.length <= pageSize) return null
+        if (paginationCount <= pageSize) return null
         const start = (page - 1) * pageSize + 1
-        const end = Math.min(page * pageSize, visibleItems.length)
+        const end = Math.min(page * pageSize, paginationCount)
         return (
             <div style={{
                 display: 'flex',
@@ -98,7 +111,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                 padding: isMobile ? '0 0.25rem 5.5rem' : '0'
             }}>
                 <div style={{ color: '#94a3b8', fontWeight: 800, fontSize: '0.9rem' }}>
-                    {start}-{end} из {visibleItems.length}
+                    {start}-{end} из {paginationCount} {isFlowers ? 'позиций' : 'моделей'}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <button className="btn" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>
@@ -116,7 +129,9 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const openAddModal = () => {
         setModalMode('add')
         setCurrentItem(null)
-        setFormData({ name: '', familyName: '', attributes: { ...EMPTY_GOODS_ATTRIBUTES }, price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+        setFormData({ name: '', familyName: '', attributes: { ...EMPTY_GOODS_ATTRIBUTES }, price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1, openingQuantity: '' })
+        setCreateMode('single')
+        setSeriesVariants([])
         setImageError('')
         setFormError('')
         setIsModalOpen(true)
@@ -139,8 +154,11 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             markup: item.markup_factor || (isFlowers ? 2 : 1.5),
             purchaseUnit: item.purchase_unit || 'шт',
             stockUnit: item.stock_unit || 'шт',
-            unitsPerPurchase
+            unitsPerPurchase,
+            openingQuantity: ''
         })
+        setCreateMode('single')
+        setSeriesVariants([])
         setImageError('')
         setFormError('')
         setIsModalOpen(true)
@@ -163,8 +181,70 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         }
     }
 
-    const handleSubmit = (e) => {
+    const toggleSeriesSize = size => {
+        setSeriesVariants(current => current.some(variant => variant.size === size)
+            ? current.filter(variant => variant.size !== size)
+            : [...current, { size, purchaseCost: formData.purchaseCost || '', price: formData.price || '', quantity: '' }]
+                .sort((a, b) => STANDARD_SIZES.indexOf(a.size) - STANDARD_SIZES.indexOf(b.size)))
+        setFormError('')
+    }
+
+    const updateSeriesVariant = (size, updates) => {
+        setSeriesVariants(current => current.map(variant => variant.size === size ? { ...variant, ...updates } : variant))
+    }
+
+    const makeGoodPayload = (attributes, purchaseCost, price) => {
+        const unitsPerPurchase = Math.max(parseAmount(formData.unitsPerPurchase), 1)
+        const unitCost = parseAmount(purchaseCost) / unitsPerPurchase
+        const normalizedAttributes = normalizeGoodsAttributes(attributes)
+        return {
+            name: buildGoodsName(formData.familyName, normalizedAttributes),
+            family_name: formData.familyName.trim(),
+            variant_name: getGoodsVariantLabel(normalizedAttributes),
+            attributes: normalizedAttributes,
+            category: formData.category,
+            image_url: formData.imageUrl || null,
+            cost: unitCost,
+            price: parseAmount(price),
+            markup_factor: unitCost > 0 && parseAmount(price) > 0 ? parseAmount(price) / unitCost : (parseAmount(formData.markup) || 1.5),
+            purchase_unit: formData.purchaseUnit || 'шт',
+            stock_unit: formData.stockUnit || 'шт',
+            units_per_purchase: unitsPerPurchase
+        }
+    }
+
+    const handleSubmit = async (e) => {
         e.preventDefault()
+        if (!isFlowers && modalMode === 'add' && createMode === 'series') {
+            if (!seriesVariants.length) {
+                setFormError('Выберите хотя бы один размер.')
+                return
+            }
+
+            const payloads = seriesVariants.map(variant => ({
+                payload: makeGoodPayload({ ...formData.attributes, size: variant.size }, variant.purchaseCost, variant.price),
+                quantity: parseAmount(variant.quantity)
+            }))
+            const duplicate = payloads.find(entry => goods.some(item => String(item.name || '').trim().toLowerCase() === entry.payload.name.toLowerCase()))
+            if (duplicate) {
+                setFormError(`Такая модификация уже есть: ${duplicate.payload.name}`)
+                return
+            }
+
+            for (const entry of payloads) {
+                const result = await addGood(entry.payload)
+                if (!result?.success || !result.data) {
+                    setFormError(result?.error?.message || `Не удалось создать ${entry.payload.name}`)
+                    return
+                }
+                if (entry.quantity > 0) {
+                    await addToStock('good', result.data.id, entry.quantity, 'opening_balance', null, entry.payload.cost, 'Начальный остаток при создании серии')
+                }
+            }
+            setIsModalOpen(false)
+            return
+        }
+
         const unitsPerPurchase = Math.max(parseAmount(formData.unitsPerPurchase), 1)
         const unitCost = isFlowers ? parseAmount(formData.cost) : (parseAmount(formData.purchaseCost || formData.cost) / unitsPerPurchase)
         const attributes = normalizeGoodsAttributes(formData.attributes)
@@ -195,12 +275,45 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
 
         if (modalMode === 'add') {
             if (isFlowers) addFlower(itemData)
-            else addGood(itemData)
+            else {
+                const result = await addGood(itemData)
+                if (!result?.success) {
+                    setFormError(result?.error?.message || 'Не удалось создать товар.')
+                    return
+                }
+                const openingQuantity = parseAmount(formData.openingQuantity)
+                if (openingQuantity > 0 && result.data) {
+                    await addToStock('good', result.data.id, openingQuantity, 'opening_balance', null, itemData.cost, 'Начальный остаток при создании товара')
+                }
+            }
         } else {
             if (isFlowers) updateFlower(currentItem.id, itemData)
             else updateGood(currentItem.id, itemData)
         }
         setIsModalOpen(false)
+    }
+
+    const toggleGroup = key => {
+        setExpandedGroups(current => {
+            const next = new Set(current)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
+    }
+
+    const applyLegacySuggestions = async () => {
+        setMigrationLoading(true)
+        for (const { item, suggestion } of legacySuggestions) {
+            await updateGood(item.id, {
+                name: suggestion.name,
+                family_name: suggestion.familyName,
+                variant_name: suggestion.variantName,
+                attributes: suggestion.attributes
+            })
+        }
+        setMigrationLoading(false)
+        setIsMigrationModalOpen(false)
     }
 
     const handleDelete = (id) => {
@@ -230,11 +343,17 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                     <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold' }}>{title}</h1>
                     <p style={{ color: 'var(--text-muted)' }}>Управление списком: {title.toLowerCase()}.</p>
                 </div>
-                <button className="btn btn-primary" onClick={openAddModal}>
-                    <Plus size={20} style={{ marginRight: '0.5rem' }} />
-                    <span style={{ display: isMobile ? 'none' : 'inline' }}>Добавить {itemName}</span>
-                    {isMobile && <span>+</span>}
-                </button>
+                <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center' }}>
+                    {!isFlowers && legacySuggestions.length > 0 && (
+                        <button className="btn" onClick={() => setIsMigrationModalOpen(true)} title="Распределить старые товары по моделям" style={{ border: '1px solid #c4b5fd', color: '#6d28d9', background: '#f5f3ff' }}>
+                            <WandSparkles size={18} /> {!isMobile && `Навести порядок (${legacySuggestions.length})`}
+                        </button>
+                    )}
+                    <button className="btn btn-primary" onClick={openAddModal}>
+                        <Plus size={20} style={{ marginRight: isMobile ? 0 : '0.5rem' }} />
+                        <span style={{ display: isMobile ? 'none' : 'inline' }}>Добавить {itemName}</span>
+                    </button>
+                </div>
             </div>
 
             <div className="card" style={{
@@ -283,107 +402,68 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                 </div>
             </div>
 
-            {isMobile ? (
-                // Mobile Card View - Compact
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {paginatedItems.map(item => {
-                        const isPublished = item.is_published !== false
+            {isFlowers ? (
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                    {paginatedItems.map(item => (
+                        <div key={item.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : '1fr 150px 120px', gap: '0.75rem', alignItems: 'center', padding: '0.9rem 1rem', borderBottom: '1px solid var(--border)', opacity: item.is_published === false ? 0.6 : 1 }}>
+                            <div style={{ fontWeight: 750 }}>{item.name}</div>
+                            {!isMobile && <div style={{ textAlign: 'right', fontWeight: 750 }}>{item.price} lei</div>}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                                <button onClick={() => togglePublish(item)} title="Публикация">{item.is_published !== false ? <Eye size={17} /> : <EyeOff size={17} />}</button>
+                                <button onClick={() => openEditModal(item)} title="Редактировать"><Edit2 size={17} /></button>
+                                <button onClick={() => handleDelete(item.id)} title="Удалить" style={{ color: '#ef4444' }}><Trash2 size={17} /></button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {paginatedGroups.map(group => {
+                        const expanded = expandedGroups.has(group.key) || Boolean(searchQuery.trim())
+                        const totalStock = group.items.reduce((sum, item) => sum + Number(getStockQty('good', item.id) || 0), 0)
+                        const prices = group.items.map(item => Number(item.price || 0)).filter(Number.isFinite)
+                        const preview = group.items.find(item => item.image_url)?.image_url
                         return (
-                            <div key={item.id} className="card" style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                opacity: isPublished ? 1 : 0.6,
-                                padding: '0.75rem'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flex: 1, minWidth: 0 }}>
-                                    {!isFlowers && (
-                                        <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', flexShrink: 0, display: 'grid', placeItems: 'center' }}>
-                                            {item.image_url
-                                                ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                : <ImageIcon size={22} color="#94a3b8" />}
-                                        </div>
-                                    )}
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0 }}>
-                                            {item.name}
-                                            {!isPublished && <span style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 700, marginLeft: '0.5rem' }}>Скрыт</span>}
-                                        </h3>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
-                                            {!isFlowers && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.category}</span>}
-                                            <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.9rem' }}>{item.price} lei</span>
-                                        </div>
+                            <div key={group.key} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                                <button type="button" onClick={() => toggleGroup(group.key)} style={{ width: '100%', padding: isMobile ? '0.8rem' : '0.9rem 1rem', display: 'grid', gridTemplateColumns: isMobile ? '48px minmax(0,1fr) auto' : '58px minmax(220px,1fr) 130px 150px 36px', gap: '0.8rem', alignItems: 'center', textAlign: 'left', background: '#fff' }}>
+                                    <span style={{ width: isMobile ? 48 : 58, height: isMobile ? 48 : 58, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', display: 'grid', placeItems: 'center' }}>
+                                        {preview ? <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Boxes size={22} color="#94a3b8" />}
+                                    </span>
+                                    <span style={{ minWidth: 0 }}>
+                                        <span style={{ display: 'block', fontWeight: 950, fontSize: isMobile ? '0.95rem' : '1.05rem' }}>{group.familyName}</span>
+                                        <span style={{ display: 'block', marginTop: 3, color: '#64748b', fontSize: '0.76rem', fontWeight: 750 }}>{group.category} · {group.items.length} модификаций</span>
+                                        {isMobile && <span style={{ display: 'block', marginTop: 3, color: totalStock > 0 ? '#059669' : '#dc2626', fontSize: '0.76rem', fontWeight: 850 }}>На складе: {totalStock.toLocaleString('ru-RU')}</span>}
+                                    </span>
+                                    {!isMobile && <span style={{ textAlign: 'center' }}><b style={{ display: 'block', color: totalStock > 0 ? '#059669' : '#dc2626', fontSize: '1.05rem' }}>{totalStock.toLocaleString('ru-RU')}</b><small style={{ color: '#94a3b8' }}>всего на складе</small></span>}
+                                    {!isMobile && <span style={{ textAlign: 'right', fontWeight: 850 }}>{prices.length ? `${Math.min(...prices)}–${Math.max(...prices)} lei` : '0 lei'}</span>}
+                                    <ChevronDown size={20} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s', color: '#64748b' }} />
+                                </button>
+                                {expanded && (
+                                    <div style={{ borderTop: '1px solid var(--border)', background: '#f8fafc' }}>
+                                        {group.items.map(item => {
+                                            const quantity = Number(getStockQty('good', item.id) || 0)
+                                            const variantLabel = getGoodsVariantLabel(item) || getGoodsVariantLabel(inferGoodsAttributes(item)) || 'Базовая модификация'
+                                            return (
+                                                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '42px minmax(0,1fr) auto' : '48px minmax(220px,1fr) 110px 130px 130px 110px', gap: '0.7rem', alignItems: 'center', padding: '0.72rem 1rem', borderBottom: '1px solid #e2e8f0', opacity: item.is_published === false ? 0.55 : 1 }}>
+                                                    <span style={{ width: isMobile ? 42 : 48, height: isMobile ? 42 : 48, borderRadius: 8, overflow: 'hidden', background: '#fff', display: 'grid', placeItems: 'center' }}>{item.image_url ? <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ImageIcon size={19} color="#94a3b8" />}</span>
+                                                    <span style={{ minWidth: 0 }}><b style={{ display: 'block' }}>{variantLabel}</b><small style={{ color: '#94a3b8' }}>{item.name}</small>{isMobile && <small style={{ display: 'block', marginTop: 2 }}>{item.price} lei · остаток {quantity} {item.stock_unit || 'шт'}</small>}</span>
+                                                    {!isMobile && <span style={{ textAlign: 'center', fontWeight: 950, color: quantity > 0 ? '#059669' : '#dc2626' }}>{quantity} {item.stock_unit || 'шт'}</span>}
+                                                    {!isMobile && <span style={{ textAlign: 'right', color: '#64748b' }}>закупка {item.cost || 0} lei</span>}
+                                                    {!isMobile && <span style={{ textAlign: 'right', fontWeight: 900 }}>{item.price || 0} lei</span>}
+                                                    <span style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                                                        <button onClick={() => togglePublish(item)} title="Публикация">{item.is_published !== false ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+                                                        <button onClick={() => openEditModal(item)} title="Редактировать"><Edit2 size={16} /></button>
+                                                        <button onClick={() => handleDelete(item.id)} title="Удалить" style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
+                                                    </span>
+                                                </div>
+                                            )
+                                        })}
                                     </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
-                                    <button onClick={() => togglePublish(item)} style={{ padding: '0.4rem', border: 'none', background: '#f3f4f6', borderRadius: '6px', cursor: 'pointer' }}>
-                                        {isPublished ? <Eye size={16} color="var(--text-muted)" /> : <EyeOff size={16} color="var(--primary)" />}
-                                    </button>
-                                    <button onClick={() => openEditModal(item)} style={{ padding: '0.4rem', border: 'none', background: '#f3f4f6', borderRadius: '6px', cursor: 'pointer' }}>
-                                        <Edit2 size={16} color="var(--text-muted)" />
-                                    </button>
-                                    <button onClick={() => handleDelete(item.id)} style={{ padding: '0.4rem', border: 'none', background: '#fee2e2', borderRadius: '6px', cursor: 'pointer' }}>
-                                        <Trash2 size={16} color="#ef4444" />
-                                    </button>
-                                </div>
+                                )}
                             </div>
                         )
                     })}
-                    {visibleItems.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>{items.length === 0 ? 'Список пуст.' : 'Ничего не найдено.'}</p>}
-                </div>
-            ) : (
-                // Desktop Table View
-                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                    <table style={{ width: '100%' }}>
-                        <thead style={{ backgroundColor: '#f9fafb' }}>
-                            <tr>
-                                <th style={{ textAlign: 'left', padding: '1rem' }}>Название</th>
-                                {!isFlowers && <th style={{ textAlign: 'left', padding: '1rem' }}>Категория</th>}
-                                <th style={{ textAlign: 'right', padding: '1rem' }}>Цена</th>
-                                <th style={{ textAlign: 'right', padding: '1rem' }}>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {paginatedItems.map(item => {
-                                const isPublished = item.is_published !== false
-                                return (
-                                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', opacity: isPublished ? 1 : 0.6 }}>
-                                        <td style={{ padding: '0.75rem 1rem' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                                {!isFlowers && (
-                                                    <div style={{ width: 58, height: 58, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', flexShrink: 0, display: 'grid', placeItems: 'center' }}>
-                                                        {item.image_url
-                                                            ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                            : <ImageIcon size={24} color="#94a3b8" />}
-                                                    </div>
-                                                )}
-                                                <div>
-                                                    <div style={{ fontWeight: 700 }}>{item.name}</div>
-                                                    {!isPublished && <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600 }}>Скрыт</div>}
-                                                </div>
-                                            </div>
-                                        </td>
-                                        {!isFlowers && <td style={{ padding: '1rem' }}>{item.category}</td>}
-                                        <td style={{ textAlign: 'right', padding: '1rem' }}>{item.price} lei</td>
-                                        <td style={{ textAlign: 'right', padding: '1rem' }}>
-                                            <button onClick={() => togglePublish(item)} style={{ marginRight: '0.5rem', color: isPublished ? 'var(--text-muted)' : 'var(--primary)' }} title={isPublished ? "Снять раздачу" : "Опубликовать"}>
-                                                {isPublished ? <Eye size={18} /> : <EyeOff size={18} />}
-                                            </button>
-                                            <button onClick={() => openEditModal(item)} style={{ marginRight: '0.5rem', color: 'var(--text-muted)' }}><Edit2 size={18} /></button>
-                                            <button onClick={() => handleDelete(item.id)} style={{ color: '#ef4444' }}><Trash2 size={18} /></button>
-                                        </td>
-                                    </tr>
-                                )
-                            })}
-                            {visibleItems.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                                        {items.length === 0 ? 'Список пуст.' : 'Ничего не найдено.'}
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                    {paginatedGroups.length === 0 && <div className="card" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Ничего не найдено</div>}
                 </div>
             )}
 
@@ -406,11 +486,18 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         />
                     </div>
 
+                    {!isFlowers && modalMode === 'add' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: 4, borderRadius: 8, background: '#f1f5f9' }}>
+                            <button type="button" onClick={() => { setCreateMode('single'); setFormError('') }} style={{ padding: '0.65rem', borderRadius: 6, background: createMode === 'single' ? '#fff' : 'transparent', color: createMode === 'single' ? '#111827' : '#64748b', boxShadow: createMode === 'single' ? '0 2px 8px rgba(15,23,42,.08)' : 'none', fontWeight: 850 }}>Одна модификация</button>
+                            <button type="button" onClick={() => { setCreateMode('series'); setFormError('') }} style={{ padding: '0.65rem', borderRadius: 6, background: createMode === 'series' ? '#fff' : 'transparent', color: createMode === 'series' ? '#111827' : '#64748b', boxShadow: createMode === 'series' ? '0 2px 8px rgba(15,23,42,.08)' : 'none', fontWeight: 850 }}>Серия размеров</button>
+                        </div>
+                    )}
+
                     {!isFlowers && (
                         <div style={{ padding: '1rem', border: '1px solid var(--border)', borderRadius: 8, background: '#f8fafc' }}>
                             <div style={{ fontWeight: 900, marginBottom: '0.75rem' }}>Модификация</div>
                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
-                                {GOODS_ATTRIBUTE_FIELDS.map(field => (
+                                {GOODS_ATTRIBUTE_FIELDS.filter(field => createMode !== 'series' || field.key !== 'size').map(field => (
                                     <div key={field.key}>
                                         <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontSize: '0.82rem', fontWeight: 800 }}>{field.label}</label>
                                         <input
@@ -422,10 +509,36 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                     </div>
                                 ))}
                             </div>
-                            <div style={{ marginTop: '0.75rem', padding: '0.7rem 0.8rem', borderRadius: 8, background: '#fff', border: '1px solid #e2e8f0' }}>
-                                <div style={{ color: '#94a3b8', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Название в CRM</div>
-                                <div style={{ marginTop: 3, fontWeight: 900 }}>{buildGoodsName(formData.familyName, formData.attributes) || 'Заполните название модели'}</div>
-                            </div>
+                            {createMode === 'series' && modalMode === 'add' ? (
+                                <div style={{ marginTop: '0.85rem' }}>
+                                    <div style={{ color: '#64748b', fontSize: '0.82rem', fontWeight: 850, marginBottom: '0.45rem' }}>Выберите размеры</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                        {STANDARD_SIZES.map(size => {
+                                            const selected = seriesVariants.some(variant => variant.size === size)
+                                            return <button key={size} type="button" onClick={() => toggleSeriesSize(size)} style={{ minWidth: 48, height: 40, borderRadius: 8, border: selected ? '1px solid #f05a3f' : '1px solid #cbd5e1', background: selected ? '#fff1ed' : '#fff', color: selected ? '#e64b35' : '#475569', fontWeight: 900 }}>{size}</button>
+                                        })}
+                                    </div>
+                                    {seriesVariants.length > 0 && (
+                                        <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                                            {seriesVariants.map(variant => {
+                                                return (
+                                                    <div key={variant.size} style={{ display: 'grid', gridTemplateColumns: isMobile ? '52px 1fr 1fr' : '60px 1fr 1fr 0.8fr', gap: '0.45rem', alignItems: 'end', padding: '0.65rem', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}>
+                                                        <div style={{ fontWeight: 950, fontSize: '1rem', alignSelf: 'center' }}>{variant.size}</div>
+                                                        <div><label style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 800 }}>Закупка</label><input className="input" inputMode="decimal" value={variant.purchaseCost} onChange={e => { const purchaseCost = e.target.value; const nextUnitCost = parseAmount(purchaseCost) / Math.max(parseAmount(formData.unitsPerPurchase), 1); const price = nextUnitCost > 0 ? (nextUnitCost * (parseAmount(formData.markup) || 1.5)).toFixed(2) : variant.price; updateSeriesVariant(variant.size, { purchaseCost, price }) }} placeholder="lei" /></div>
+                                                        <div><label style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 800 }}>Продажа</label><input className="input" inputMode="decimal" value={variant.price} onChange={e => updateSeriesVariant(variant.size, { price: e.target.value })} placeholder="lei" /></div>
+                                                        <div style={{ gridColumn: isMobile ? '2 / -1' : 'auto' }}><label style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 800 }}>Начальный остаток</label><input className="input" inputMode="decimal" value={variant.quantity} onChange={e => updateSeriesVariant(variant.size, { quantity: e.target.value })} placeholder="0" /></div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{ marginTop: '0.75rem', padding: '0.7rem 0.8rem', borderRadius: 8, background: '#fff', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Название в CRM</div>
+                                    <div style={{ marginTop: 3, fontWeight: 900 }}>{buildGoodsName(formData.familyName, formData.attributes) || 'Заполните название модели'}</div>
+                                </div>
+                            )}
                             {formError && <div style={{ marginTop: '0.65rem', color: '#dc2626', fontSize: '0.82rem', fontWeight: 800 }}>{formError}</div>}
                         </div>
                     )}
@@ -477,8 +590,8 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         </div>
                     )}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: (!isFlowers && createMode === 'series' && modalMode === 'add') ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+                        {(isFlowers || createMode !== 'series' || modalMode !== 'add') && <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
                                 {isFlowers ? 'Закупка' : `Закупка за 1 ${formData.purchaseUnit || 'шт'}`}
                             </label>
@@ -508,7 +621,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                     Себест. 1 {formData.stockUnit || 'шт'}: {costValue.toFixed(2)} lei
                                 </div>
                             )}
-                        </div>
+                        </div>}
                         <div>
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Наценка (x)</label>
                             <input
@@ -613,7 +726,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         </div>
                     )}
 
-                    <div>
+                    {(isFlowers || createMode !== 'series' || modalMode !== 'add') && <div>
                         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Цена продажи (lei)</label>
                         <input
                             type="number"
@@ -629,9 +742,16 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             required
                             min="0"
                         />
-                    </div>
+                    </div>}
 
-                    <div style={{
+                    {!isFlowers && createMode === 'single' && modalMode === 'add' && (
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Начальный остаток</label>
+                            <input className="input" type="text" inputMode="decimal" value={formData.openingQuantity} onChange={e => setFormData({ ...formData, openingQuantity: e.target.value })} placeholder="Можно оставить 0 и добавить поставкой" />
+                        </div>
+                    )}
+
+                    {(isFlowers || createMode !== 'series' || modalMode !== 'add') && <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                         gap: '0.65rem',
@@ -652,7 +772,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                             <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase' }}>Маржа %</div>
                             <div style={{ fontSize: '1.05rem', fontWeight: 950, color: marginPercent >= 0 ? '#16a34a' : '#dc2626' }}>{marginPercent.toFixed(0)}%</div>
                         </div>
-                    </div>
+                    </div>}
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
                         <button type="button" className="btn" onClick={() => setIsModalOpen(false)}>Отмена</button>
@@ -661,6 +781,27 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal isOpen={isMigrationModalOpen} onClose={() => !migrationLoading && setIsMigrationModalOpen(false)} title="Распределить старую номенклатуру">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ padding: '0.85rem', borderRadius: 8, background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#5b21b6', lineHeight: 1.45 }}>
+                        CRM распознает модели и размеры в {legacySuggestions.length} старых позициях. Остатки, цены, фотографии, поставки и составы букетов сохранятся, потому что ID товаров не меняются.
+                    </div>
+                    <div style={{ maxHeight: 430, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                        {legacySuggestions.map(({ item, suggestion }) => (
+                            <div key={item.id} style={{ padding: '0.7rem 0.8rem', borderBottom: '1px solid #e2e8f0' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '0.75rem', textDecoration: 'line-through' }}>{item.name}</div>
+                                <div style={{ marginTop: 3, fontWeight: 900 }}>{suggestion.familyName}</div>
+                                <div style={{ marginTop: 2, color: '#64748b', fontSize: '0.78rem' }}>{suggestion.variantName || 'Базовая модификация'}</div>
+                            </div>
+                        ))}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.55rem' }}>
+                        <button className="btn" onClick={() => setIsMigrationModalOpen(false)} disabled={migrationLoading}>Отмена</button>
+                        <button className="btn btn-primary" onClick={applyLegacySuggestions} disabled={migrationLoading}>{migrationLoading ? 'Распределяю...' : `Подтвердить ${legacySuggestions.length} позиций`}</button>
+                    </div>
+                </div>
             </Modal>
         </div>
     )
