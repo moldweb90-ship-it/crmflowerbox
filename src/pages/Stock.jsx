@@ -6,7 +6,7 @@ import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { supabase } from '../supabase'
-import { GOODS_CATEGORIES } from '../constants/goodsCategories'
+import { GOODS_CATEGORIES, getGoodsCategory } from '../constants/goodsCategories'
 
 const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 
@@ -205,7 +205,7 @@ function StockItemPicker({ options, value, onChange, placeholder }) {
 
 export default function Stock() {
     const {
-        stock, stockTransactions, flowers, goods, suppliers, showcaseBouquets,
+        stock, stockTransactions, flowers, goods, suppliers, showcaseBouquets, updateGood,
         addToStock, removeFromStock, recordWaste, updateMinQuantity,
         getStockQty, getLowStockItems, getItemName, deleteShowcaseBouquet, getStockSupplierBreakdown
     } = useStore()
@@ -230,6 +230,8 @@ export default function Stock() {
     const [itemId, setItemId] = useState('')
     const [editQty, setEditQty] = useState(0)
     const [editMinQty, setEditMinQty] = useState(5)
+    const [editCategory, setEditCategory] = useState('')
+    const [isAutoCategorizing, setIsAutoCategorizing] = useState(false)
     const [wasteReason, setWasteReason] = useState('Вялость')
     const [wasteSupplierId, setWasteSupplierId] = useState('') // New state for supplier selection
     const WASTE_REASONS = [
@@ -264,11 +266,15 @@ export default function Stock() {
 
             if (!itemDef) return null
 
+            const resolvedCategory = s.item_type === 'good' ? getGoodsCategory(itemDef) : ''
+
             return {
                 id: itemDef.id,
                 type: s.item_type,
                 name: itemDef.name,
-                category: s.item_type === 'good' ? (itemDef.category || 'Без категории') : '',
+                category: resolvedCategory,
+                source_category: s.item_type === 'good' ? String(itemDef.category || '').trim() : '',
+                is_category_inferred: s.item_type === 'good' && !String(itemDef.category || '').trim() && resolvedCategory !== 'Без категории',
                 quantity: Number(s.quantity || 0),
                 min_quantity: Number(s.min_quantity || 0),
                 stock_id: s.id,
@@ -282,12 +288,48 @@ export default function Stock() {
 
     const availableCategories = useMemo(() => {
         const usedCategories = new Set(inventoryList.filter(item => item.type === 'good').map(item => item.category))
-        const known = GOODS_CATEGORIES.filter(category => usedCategories.has(category))
         const custom = [...usedCategories]
             .filter(category => !GOODS_CATEGORIES.includes(category))
             .sort((a, b) => a.localeCompare(b, 'ru'))
-        return [...known, ...custom]
+        return [...GOODS_CATEGORIES, ...custom]
     }, [inventoryList])
+
+    const categoryStats = useMemo(() => {
+        const summary = new Map()
+
+        inventoryList.filter(item => item.type === 'good').forEach(item => {
+            const current = summary.get(item.category) || {
+                category: item.category,
+                positions: 0,
+                totalValue: 0,
+                lowCount: 0,
+                outCount: 0,
+                quantities: {}
+            }
+            const unit = item.stock_unit || 'шт'
+
+            current.positions += 1
+            current.totalValue += item.quantity * item.cost
+            current.lowCount += item.is_low ? 1 : 0
+            current.outCount += item.quantity <= 0 ? 1 : 0
+            current.quantities[unit] = (current.quantities[unit] || 0) + item.quantity
+            summary.set(item.category, current)
+        })
+
+        return availableCategories
+            .map(category => summary.get(category))
+            .filter(Boolean)
+    }, [inventoryList, availableCategories])
+
+    const formatCategoryQuantity = (quantities) => Object.entries(quantities)
+        .filter(([, quantity]) => quantity !== 0)
+        .map(([unit, quantity]) => `${quantity.toLocaleString('ru-RU')} ${unit}`)
+        .join(' · ') || '0 шт'
+
+    const legacyCategorySuggestions = useMemo(() => goods
+        .filter(item => !String(item.category || '').trim())
+        .map(item => ({ id: item.id, category: getGoodsCategory(item) }))
+        .filter(item => item.category !== 'Без категории'), [goods])
 
     // Type, category and search define the current warehouse section.
     const scopedInventory = useMemo(() => {
@@ -474,7 +516,22 @@ export default function Stock() {
         setSelectedItem(item)
         setEditQty(item.quantity)
         setEditMinQty(item.min_quantity)
+        setEditCategory(item.category || '')
         setIsEditModalOpen(true)
+    }
+
+    const handleAutoCategorize = async () => {
+        if (legacyCategorySuggestions.length === 0 || isAutoCategorizing) return
+        if (!window.confirm(`Закрепить автоматически распознанные категории у ${legacyCategorySuggestions.length} старых товаров?`)) return
+
+        setIsAutoCategorizing(true)
+        try {
+            for (const item of legacyCategorySuggestions) {
+                await updateGood(item.id, { category: item.category })
+            }
+        } finally {
+            setIsAutoCategorizing(false)
+        }
     }
 
     const handleEditStock = async () => {
@@ -491,6 +548,9 @@ export default function Stock() {
         // Update min quantity
         if (selectedItem.stock_id && editMinQty !== selectedItem.min_quantity) {
             await updateMinQuantity(selectedItem.stock_id, editMinQty)
+        }
+        if (selectedItem.type === 'good' && editCategory && editCategory !== selectedItem.source_category) {
+            await updateGood(selectedItem.id, { category: editCategory })
         }
         setIsEditModalOpen(false)
         setSelectedItem(null)
@@ -792,6 +852,95 @@ export default function Stock() {
                             {filteredInventory.length > INVENTORY_PAGE_SIZE && ` · по ${INVENTORY_PAGE_SIZE} на странице`}
                         </div>
                     </div>
+
+                    {filter === 'goods' && categoryStats.length > 0 && (
+                        <section style={{ marginBottom: '1.5rem' }}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.75rem',
+                                flexWrap: 'wrap',
+                                marginBottom: '0.75rem'
+                            }}>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>Остатки по категориям</h3>
+                                    <div style={{ marginTop: '0.2rem', color: '#94a3b8', fontSize: '0.78rem', fontWeight: 700 }}>
+                                        Нажмите на категорию, чтобы отфильтровать таблицу
+                                    </div>
+                                </div>
+                                {legacyCategorySuggestions.length > 0 && (
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        onClick={handleAutoCategorize}
+                                        disabled={isAutoCategorizing}
+                                        style={{ color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff' }}
+                                    >
+                                        <RefreshCw size={16} className={isAutoCategorizing ? 'spin' : ''} />
+                                        {isAutoCategorizing
+                                            ? 'Сохраняем категории...'
+                                            : `Закрепить категории (${legacyCategorySuggestions.length})`}
+                                    </button>
+                                )}
+                            </div>
+
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? '145px' : '185px'}, 1fr))`,
+                                gap: '0.65rem'
+                            }}>
+                                {categoryStats.map(category => {
+                                    const isActive = categoryFilter === category.category
+                                    const attentionCount = category.lowCount + category.outCount
+                                    return (
+                                        <button
+                                            key={category.category}
+                                            type="button"
+                                            onClick={() => {
+                                                setCategoryFilter(isActive ? 'all' : category.category)
+                                                setStockStatus('all')
+                                                setSearch('')
+                                            }}
+                                            style={{
+                                                minHeight: 116,
+                                                padding: '0.85rem',
+                                                borderRadius: 8,
+                                                border: isActive ? '2px solid var(--primary)' : '1px solid #e2e8f0',
+                                                background: isActive ? '#fff7ed' : 'white',
+                                                color: '#0f172a',
+                                                cursor: 'pointer',
+                                                textAlign: 'left',
+                                                display: 'grid',
+                                                gap: '0.55rem',
+                                                alignContent: 'space-between'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                                <span style={{ fontWeight: 900, lineHeight: 1.2 }}>{category.category}</span>
+                                                <span style={{ color: '#94a3b8', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                                    {category.positions} поз.
+                                                </span>
+                                            </div>
+                                            <div style={{ fontSize: '1.15rem', fontWeight: 950, color: isActive ? 'var(--primary)' : '#0f172a' }}>
+                                                {formatCategoryQuantity(category.quantities)}
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                                                <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 800 }}>
+                                                    {category.totalValue.toLocaleString('ru-RU')} lei
+                                                </span>
+                                                {attentionCount > 0 && (
+                                                    <span style={{ color: '#b45309', background: '#fffbeb', padding: '0.15rem 0.35rem', borderRadius: 4, fontSize: '0.68rem', fontWeight: 900 }}>
+                                                        {attentionCount} требуют внимания
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </section>
+                    )}
 
                     {/* Inventory Table */}
                     <div style={{
@@ -1652,6 +1801,27 @@ export default function Stock() {
                                     min="0"
                                 />
                             </div>
+
+                            {selectedItem.type === 'good' && (
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Категория товара</label>
+                                    <select
+                                        className="input"
+                                        value={editCategory}
+                                        onChange={(e) => setEditCategory(e.target.value)}
+                                        required
+                                    >
+                                        {availableCategories.map(category => (
+                                            <option key={category} value={category}>{category}</option>
+                                        ))}
+                                    </select>
+                                    {selectedItem.is_category_inferred && (
+                                        <div style={{ marginTop: '0.35rem', color: '#2563eb', fontSize: '0.75rem', fontWeight: 700 }}>
+                                            Категория распознана по названию. После сохранения она закрепится в карточке товара.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>Минимальный остаток (для алертов)</label>

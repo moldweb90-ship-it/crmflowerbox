@@ -14,3 +14,28 @@ export const GOODS_CATEGORIES = [
     'Инструменты',
     'Прочее'
 ]
+
+const LEGACY_CATEGORY_RULES = [
+    ['Корзины', /корзин/],
+    ['Кашпо', /кашпо/],
+    ['Коробки', /короб|бокс/],
+    ['Игрушки', /игруш|мишк|медвед|зайчик/],
+    ['Конфеты и сладости', /конфет|шоколад|сладост|зефир/],
+    ['Шарики', /шарик|воздушн.*шар/],
+    ['Вазы', /ваз/],
+    ['Открытки', /открытк/],
+    ['Свечи и топперы', /свеч|топпер/],
+    ['Инструменты', /секатор|ножниц|степлер|пистолет/],
+    ['Расходные материалы', /оазис|губк|скотч|кле[йя]|провол|шпажк|резин/],
+    ['Упаковка', /упаков|лент|бумаг|пл[её]н|крафт|тишью|сетк|фетр|органз|целлофан/],
+    ['Декор', /декор|бусин|пер[оья]|бабоч/]
+]
+
+export const getGoodsCategory = (item) => {
+    const explicitCategory = String(item?.category || '').trim()
+    if (explicitCategory) return explicitCategory
+
+    const normalizedName = String(item?.name || '').trim().toLowerCase()
+    const matchedRule = LEGACY_CATEGORY_RULES.find(([, pattern]) => pattern.test(normalizedName))
+    return matchedRule?.[0] || 'Без категории'
+}

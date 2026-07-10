@@ -185,7 +185,7 @@ export function StoreProvider({ children }) {
     }
     const updateGood = async (id, updates) => {
         const { error } = await supabase.from('goods').update(updates).eq('id', id)
-        if (!error) setGoods(goods.map(g => g.id === id ? { ...g, ...updates } : g))
+        if (!error) setGoods(currentGoods => currentGoods.map(g => g.id === id ? { ...g, ...updates } : g))
     }
     const deleteGood = async (id) => {
         const { error } = await supabase.from('goods').delete().eq('id', id)
