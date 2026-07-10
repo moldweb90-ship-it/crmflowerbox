@@ -3,6 +3,7 @@ import { useStore } from '../context/StoreContext'
 import { Plus, Edit2, Trash2, Eye, EyeOff, Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
+import { GOODS_CATEGORIES } from '../constants/goodsCategories'
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
     const { flowers, addFlower, updateFlower, deleteFlower, goods, addGood, updateGood, deleteGood } = useStore()
@@ -397,13 +398,12 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
                                 className="input"
                                 value={formData.category}
                                 onChange={e => setFormData({ ...formData, category: e.target.value })}
+                                required
                             >
                                 <option value="">Выберите категорию</option>
-                                <option value="Упаковка">Упаковка</option>
-                                <option value="Декор">Декор</option>
-                                <option value="Корзины">Корзины</option>
-                                <option value="Инструменты">Инструменты</option>
-                                <option value="Прочее">Прочее</option>
+                                {GOODS_CATEGORIES.map(category => (
+                                    <option key={category} value={category}>{category}</option>
+                                ))}
                             </select>
                         </div>
                     )}

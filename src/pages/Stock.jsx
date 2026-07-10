@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
-import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck } from 'lucide-react'
+import { Package, Plus, Minus, AlertTriangle, TrendingUp, Search, Filter, Trash2, RefreshCw, Flower, Box, Edit2, Truck, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { supabase } from '../supabase'
+import { GOODS_CATEGORIES } from '../constants/goodsCategories'
 
 const parseAmount = (value) => Number(String(value ?? '').replace(',', '.')) || 0
 
@@ -211,7 +212,11 @@ export default function Stock() {
 
     const { user } = useAuth()
     const [search, setSearch] = useState('')
-    const [filter, setFilter] = useState('all') // 'all', 'flowers', 'goods', 'low'
+    const [filter, setFilter] = useState('all') // 'all', 'flowers', 'goods'
+    const [stockStatus, setStockStatus] = useState('all') // 'all', 'available', 'low', 'out'
+    const [categoryFilter, setCategoryFilter] = useState('all')
+    const [sortMode, setSortMode] = useState('quantity_desc')
+    const [inventoryPage, setInventoryPage] = useState(1)
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [isWasteModalOpen, setIsWasteModalOpen] = useState(false)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -238,6 +243,7 @@ export default function Stock() {
     // Pagination for transactions
     const [currentPage, setCurrentPage] = useState(1)
     const ITEMS_PER_PAGE = 10
+    const INVENTORY_PAGE_SIZE = 50
 
     // Waste Filters
     const [wasteFilter, setWasteFilter] = useState('all') // 'all', 'today', 'yesterday', 'week', 'month', 'custom'
@@ -262,47 +268,94 @@ export default function Stock() {
                 id: itemDef.id,
                 type: s.item_type,
                 name: itemDef.name,
-                quantity: s.quantity,
-                min_quantity: s.min_quantity,
+                category: s.item_type === 'good' ? (itemDef.category || 'Без категории') : '',
+                quantity: Number(s.quantity || 0),
+                min_quantity: Number(s.min_quantity || 0),
                 stock_id: s.id,
-                cost: itemDef.cost || 0,
-                is_low: s.quantity <= s.min_quantity
+                cost: Number(itemDef.cost || 0),
+                stock_unit: itemDef.stock_unit || 'шт',
+                updated_at: s.updated_at || s.created_at || '',
+                is_low: Number(s.quantity || 0) > 0 && Number(s.quantity || 0) <= Number(s.min_quantity || 0)
             }
         }).filter(Boolean)
     }, [stock, flowers, goods])
 
-    // Filtered and searched inventory
-    const filteredInventory = useMemo(() => {
+    const availableCategories = useMemo(() => {
+        const usedCategories = new Set(inventoryList.filter(item => item.type === 'good').map(item => item.category))
+        const known = GOODS_CATEGORIES.filter(category => usedCategories.has(category))
+        const custom = [...usedCategories]
+            .filter(category => !GOODS_CATEGORIES.includes(category))
+            .sort((a, b) => a.localeCompare(b, 'ru'))
+        return [...known, ...custom]
+    }, [inventoryList])
+
+    // Type, category and search define the current warehouse section.
+    const scopedInventory = useMemo(() => {
         let result = inventoryList
 
-        // Filter by type
         if (filter === 'flowers') result = result.filter(i => i.type === 'flower')
         if (filter === 'goods') result = result.filter(i => i.type === 'good')
-        if (filter === 'low') result = result.filter(i => i.is_low)
+        if (categoryFilter !== 'all') {
+            result = result.filter(i => i.type === 'good' && i.category === categoryFilter)
+        }
 
-        // Search
-        if (search) {
+        const normalizedSearch = search.trim().toLowerCase()
+        if (normalizedSearch) {
             result = result.filter(i =>
-                i.name.toLowerCase().includes(search.toLowerCase())
+                i.name.toLowerCase().includes(normalizedSearch)
+                || i.category.toLowerCase().includes(normalizedSearch)
             )
         }
 
-        return result.sort((a, b) => {
-            // Low stock first
-            if (a.is_low && !b.is_low) return -1
-            if (!a.is_low && b.is_low) return 1
-            return a.name.localeCompare(b.name)
-        })
-    }, [inventoryList, filter, search])
+        return result
+    }, [inventoryList, filter, categoryFilter, search])
 
-    // Statistics
+    // Stock status and sorting define the rows shown inside the selected section.
+    const filteredInventory = useMemo(() => {
+        let result = scopedInventory
+
+        if (stockStatus === 'available') result = result.filter(i => i.quantity > 0 && !i.is_low)
+        if (stockStatus === 'low') result = result.filter(i => i.is_low)
+        if (stockStatus === 'out') result = result.filter(i => i.quantity <= 0)
+
+        return [...result].sort((a, b) => {
+            const nameComparison = a.name.localeCompare(b.name, 'ru')
+            if (sortMode === 'quantity_asc') return a.quantity - b.quantity || nameComparison
+            if (sortMode === 'name_asc') return nameComparison
+            if (sortMode === 'name_desc') return -nameComparison
+            if (sortMode === 'value_desc') return (b.quantity * b.cost) - (a.quantity * a.cost) || nameComparison
+            if (sortMode === 'value_asc') return (a.quantity * a.cost) - (b.quantity * b.cost) || nameComparison
+            if (sortMode === 'updated_desc') return new Date(b.updated_at || 0) - new Date(a.updated_at || 0) || nameComparison
+            return b.quantity - a.quantity || nameComparison
+        })
+    }, [scopedInventory, stockStatus, sortMode])
+
+    // Statistics follow the selected type/category/search section.
     const stats = useMemo(() => {
-        const totalItems = inventoryList.reduce((sum, i) => sum + i.quantity, 0)
-        const totalValue = inventoryList.reduce((sum, i) => sum + (i.quantity * i.cost), 0)
-        const lowStockCount = inventoryList.filter(i => i.is_low && i.quantity > 0).length
-        const outOfStockCount = inventoryList.filter(i => i.quantity === 0).length
-        return { totalItems, totalValue, lowStockCount, outOfStockCount }
-    }, [inventoryList])
+        const totalUnits = scopedInventory.reduce((sum, i) => sum + i.quantity, 0)
+        const totalValue = scopedInventory.reduce((sum, i) => sum + (i.quantity * i.cost), 0)
+        const lowStockCount = scopedInventory.filter(i => i.is_low).length
+        const outOfStockCount = scopedInventory.filter(i => i.quantity <= 0).length
+        return { totalPositions: scopedInventory.length, totalUnits, totalValue, lowStockCount, outOfStockCount }
+    }, [scopedInventory])
+
+    const inventoryTotalPages = Math.max(1, Math.ceil(filteredInventory.length / INVENTORY_PAGE_SIZE))
+    const paginatedInventory = useMemo(() => {
+        const start = (inventoryPage - 1) * INVENTORY_PAGE_SIZE
+        return filteredInventory.slice(start, start + INVENTORY_PAGE_SIZE)
+    }, [filteredInventory, inventoryPage])
+
+    useEffect(() => {
+        setInventoryPage(1)
+    }, [filter, stockStatus, categoryFilter, sortMode, search])
+
+    useEffect(() => {
+        if (inventoryPage > inventoryTotalPages) setInventoryPage(inventoryTotalPages)
+    }, [inventoryPage, inventoryTotalPages])
+
+    useEffect(() => {
+        if (filter !== 'goods' && categoryFilter !== 'all') setCategoryFilter('all')
+    }, [filter, categoryFilter])
 
     const addStockOptions = useMemo(() => {
         const source = itemType === 'flower' ? flowers : goods
@@ -534,9 +587,11 @@ export default function Stock() {
                     padding: '1.25rem',
                     color: 'white'
                 }}>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '0.25rem' }}>Всего позиций</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800 }}>{stats.totalItems}</div>
-                    <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.25rem' }}>единиц на складе</div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '0.25rem' }}>Позиций на складе</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 800 }}>{stats.totalPositions}</div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.25rem' }}>
+                        {stats.totalUnits.toLocaleString('ru-RU')} единиц в выбранном разделе
+                    </div>
                 </div>
 
                 <div style={{
@@ -617,14 +672,15 @@ export default function Stock() {
                 <>
                     {/* Actions Bar */}
                     <div style={{
-                        display: 'flex',
-                        gap: '1rem',
+                        display: 'grid',
+                        gap: '0.9rem',
                         marginBottom: '1.5rem',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
+                        padding: isMobile ? '0.9rem' : '1rem',
+                        background: 'white',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px'
                     }}>
-                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                             <button
                                 onClick={() => setIsAddModalOpen(true)}
                                 style={{
@@ -644,48 +700,96 @@ export default function Stock() {
                                 <Plus size={18} /> Пополнить склад
                             </button>
 
+                            <div style={{ flex: 1, minWidth: isMobile ? '100%' : '240px', position: 'relative' }}>
+                                <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <input
+                                    className="input"
+                                    placeholder="Поиск по названию или категории..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    style={{ paddingLeft: '40px', width: '100%' }}
+                                />
+                            </div>
 
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                {[
+                                    { id: 'all', label: 'Все', icon: Package },
+                                    { id: 'flowers', label: 'Цветы', icon: Flower },
+                                    { id: 'goods', label: 'Товары', icon: Box }
+                                ].map(item => {
+                                    const Icon = item.icon
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => setFilter(item.id)}
+                                            style={{
+                                                padding: '0.55rem 0.85rem',
+                                                borderRadius: '8px',
+                                                border: filter === item.id ? '2px solid var(--primary)' : '1px solid var(--border)',
+                                                background: filter === item.id ? 'var(--primary-light)' : 'white',
+                                                color: filter === item.id ? 'var(--primary)' : 'var(--text-muted)',
+                                                fontWeight: 700,
+                                                fontSize: '0.82rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.35rem'
+                                            }}
+                                        >
+                                            <Icon size={15} />
+                                            <span>{item.label}</span>
+                                        </button>
+                                    )
+                                })}
+                            </div>
                         </div>
 
-                        <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
-                            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input
-                                className="input"
-                                placeholder="Поиск по названию..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                style={{ paddingLeft: '40px', width: '100%' }}
-                            />
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : (filter === 'goods' ? 'minmax(180px, 1fr) minmax(180px, 1fr) minmax(220px, 1.2fr)' : 'minmax(180px, 1fr) minmax(220px, 1.2fr)'),
+                            gap: '0.75rem',
+                            paddingTop: '0.9rem',
+                            borderTop: '1px solid var(--border)'
+                        }}>
+                            {filter === 'goods' && (
+                                <label style={{ display: 'grid', gap: '0.35rem' }}>
+                                    <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 800 }}>Категория товара</span>
+                                    <select className="input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                                        <option value="all">Все категории ({scopedInventory.length})</option>
+                                        {availableCategories.map(category => (
+                                            <option key={category} value={category}>{category}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            )}
+
+                            <label style={{ display: 'grid', gap: '0.35rem' }}>
+                                <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 800 }}>Состояние остатка</span>
+                                <select className="input" value={stockStatus} onChange={(e) => setStockStatus(e.target.value)}>
+                                    <option value="all">Все остатки</option>
+                                    <option value="available">Достаточно на складе</option>
+                                    <option value="low">Мало осталось</option>
+                                    <option value="out">Нет в наличии</option>
+                                </select>
+                            </label>
+
+                            <label style={{ display: 'grid', gap: '0.35rem' }}>
+                                <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 800 }}>Сортировка</span>
+                                <select className="input" value={sortMode} onChange={(e) => setSortMode(e.target.value)}>
+                                    <option value="quantity_desc">Количество: больше → меньше</option>
+                                    <option value="quantity_asc">Количество: меньше → больше</option>
+                                    <option value="name_asc">Название: А → Я</option>
+                                    <option value="name_desc">Название: Я → А</option>
+                                    <option value="value_desc">Стоимость остатка: больше → меньше</option>
+                                    <option value="value_asc">Стоимость остатка: меньше → больше</option>
+                                    <option value="updated_desc">Недавно обновлённые</option>
+                                </select>
+                            </label>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            {[
-                                { id: 'all', label: 'Все', icon: '📋' },
-                                { id: 'flowers', label: 'Цветы', icon: '🌸' },
-                                { id: 'goods', label: 'Товары', icon: '📦' },
-                                { id: 'low', label: 'Мало', icon: '⚠️' }
-                            ].map(f => (
-                                <button
-                                    key={f.id}
-                                    onClick={() => setFilter(f.id)}
-                                    style={{
-                                        padding: '0.5rem 1rem',
-                                        borderRadius: '99px',
-                                        border: filter === f.id ? '2px solid var(--primary)' : '1px solid var(--border)',
-                                        background: filter === f.id ? 'var(--primary-light)' : 'white',
-                                        color: filter === f.id ? 'var(--primary)' : 'var(--text-muted)',
-                                        fontWeight: 600,
-                                        fontSize: '0.8rem',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.25rem'
-                                    }}
-                                >
-                                    <span>{f.icon}</span>
-                                    {!isMobile && <span>{f.label}</span>}
-                                </button>
-                            ))}
+                        <div style={{ color: '#64748b', fontSize: '0.82rem', fontWeight: 700 }}>
+                            Найдено: {filteredInventory.length} позиций
+                            {filteredInventory.length > INVENTORY_PAGE_SIZE && ` · по ${INVENTORY_PAGE_SIZE} на странице`}
                         </div>
                     </div>
 
@@ -708,7 +812,24 @@ export default function Stock() {
                             borderBottom: '1px solid var(--border)'
                         }}>
                             <div>Наименование</div>
-                            <div style={{ textAlign: 'center' }}>Кол-во</div>
+                            <button
+                                type="button"
+                                onClick={() => setSortMode(current => current === 'quantity_desc' ? 'quantity_asc' : 'quantity_desc')}
+                                title="Изменить направление сортировки по количеству"
+                                style={{
+                                    display: 'inline-flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    border: 0,
+                                    background: 'transparent',
+                                    color: sortMode.startsWith('quantity_') ? 'var(--primary)' : 'var(--text-muted)',
+                                    fontWeight: 800,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Кол-во <ArrowUpDown size={14} />
+                            </button>
                             {!isMobile && <div style={{ textAlign: 'center' }}>Мин.</div>}
                             {!isMobile && <div style={{ textAlign: 'right' }}>Себест.</div>}
                             <div style={{ textAlign: 'right' }}>Сумма</div>
@@ -721,16 +842,16 @@ export default function Stock() {
                                 <div>Товары не найдены</div>
                             </div>
                         ) : (
-                            filteredInventory.map(item => (
+                            paginatedInventory.map(item => (
                                 <div
-                                    key={`${item.type} -${item.id} `}
+                                    key={`${item.type}-${item.id}`}
                                     style={{
                                         display: 'grid',
                                         gridTemplateColumns: isMobile ? '2fr 1fr 1fr' : '3fr 1fr 1fr 1fr 1fr 100px',
                                         padding: '0.875rem 1rem',
                                         borderBottom: '1px solid var(--border)',
                                         alignItems: 'center',
-                                        background: item.is_low ? (item.quantity === 0 ? '#fef2f2' : '#fffbeb') : 'white'
+                                        background: item.quantity <= 0 ? '#fef2f2' : (item.is_low ? '#fffbeb' : 'white')
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -748,7 +869,21 @@ export default function Stock() {
                                         </span>
                                         <div>
                                             <div style={{ fontWeight: 600 }}>{item.name}</div>
-                                            {item.is_low && (
+                                            {item.type === 'good' && (
+                                                <div style={{
+                                                    display: 'inline-flex',
+                                                    marginTop: '0.25rem',
+                                                    padding: '0.15rem 0.4rem',
+                                                    borderRadius: '4px',
+                                                    background: '#f1f5f9',
+                                                    color: '#64748b',
+                                                    fontSize: '0.68rem',
+                                                    fontWeight: 800
+                                                }}>
+                                                    {item.category}
+                                                </div>
+                                            )}
+                                            {(item.is_low || item.quantity <= 0) && (
                                                 <div style={{
                                                     fontSize: '0.7rem',
                                                     color: item.quantity === 0 ? '#ef4444' : '#f59e0b',
@@ -761,6 +896,24 @@ export default function Stock() {
                                                     {item.quantity === 0 ? 'Нет в наличии!' : 'Мало на складе'}
                                                 </div>
                                             )}
+                                            {isMobile && (
+                                                <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.45rem' }}>
+                                                    <button
+                                                        onClick={() => openEditModal(item)}
+                                                        title="Изменить остаток"
+                                                        style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#f8fafc', color: '#64748b', display: 'grid', placeItems: 'center' }}
+                                                    >
+                                                        <Edit2 size={13} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => openWasteModal(item)}
+                                                        title="Списать"
+                                                        style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', color: '#ef4444', display: 'grid', placeItems: 'center' }}
+                                                    >
+                                                        <Minus size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -770,8 +923,9 @@ export default function Stock() {
                                             fontSize: '1.1rem',
                                             color: item.quantity === 0 ? '#ef4444' : item.is_low ? '#f59e0b' : 'var(--text-main)'
                                         }}>
-                                            {item.quantity}
+                                            {item.quantity.toLocaleString('ru-RU')}
                                         </div>
+                                        <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>{item.stock_unit}</div>
                                         {item.type === 'flower' && item.quantity > 0 && (
                                             <button
                                                 onClick={() => setSupplierBreakdownItem(item)}
@@ -876,6 +1030,44 @@ export default function Stock() {
                             ))
                         )}
                     </div>
+
+                    {filteredInventory.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            flexWrap: 'wrap',
+                            margin: '-1rem 0 2rem'
+                        }}>
+                            <div style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 700 }}>
+                                {(inventoryPage - 1) * INVENTORY_PAGE_SIZE + 1}–{Math.min(inventoryPage * INVENTORY_PAGE_SIZE, filteredInventory.length)} из {filteredInventory.length}
+                            </div>
+                            {inventoryTotalPages > 1 && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <button
+                                        className="btn"
+                                        disabled={inventoryPage <= 1}
+                                        onClick={() => setInventoryPage(page => Math.max(1, page - 1))}
+                                        style={{ padding: '0.55rem 0.75rem' }}
+                                    >
+                                        <ChevronLeft size={16} /> Назад
+                                    </button>
+                                    <span style={{ minWidth: 72, textAlign: 'center', color: '#475569', fontWeight: 800 }}>
+                                        {inventoryPage} / {inventoryTotalPages}
+                                    </span>
+                                    <button
+                                        className="btn"
+                                        disabled={inventoryPage >= inventoryTotalPages}
+                                        onClick={() => setInventoryPage(page => Math.min(inventoryTotalPages, page + 1))}
+                                        style={{ padding: '0.55rem 0.75rem' }}
+                                    >
+                                        Вперёд <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Recent Transactions */}
                     <div style={{ marginBottom: '2rem' }}>
