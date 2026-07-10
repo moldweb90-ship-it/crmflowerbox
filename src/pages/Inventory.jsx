@@ -5,6 +5,9 @@ import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { GOODS_CATEGORIES } from '../constants/goodsCategories'
 import { compressProductImage } from '../lib/imageCompression'
+import { GOODS_ATTRIBUTE_FIELDS, buildGoodsName, compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, inferGoodsAttributes, inferGoodsFamily, normalizeGoodsAttributes } from '../lib/goodsVariants'
+
+const EMPTY_GOODS_ATTRIBUTES = { size: '', material: '', color: '', feature: '' }
 
 export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | 'goods'
     const { flowers, addFlower, updateFlower, deleteFlower, goods, addGood, updateGood, deleteGood } = useStore()
@@ -17,9 +20,10 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [modalMode, setModalMode] = useState('add') // 'add' | 'edit'
     const [currentItem, setCurrentItem] = useState(null)
-    const [formData, setFormData] = useState({ name: '', price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+    const [formData, setFormData] = useState({ name: '', familyName: '', attributes: EMPTY_GOODS_ATTRIBUTES, price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: 2, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
     const [imageUploading, setImageUploading] = useState(false)
     const [imageError, setImageError] = useState('')
+    const [formError, setFormError] = useState('')
     const [searchQuery, setSearchQuery] = useState('')
     const [sortMode, setSortMode] = useState('name_asc')
     const [page, setPage] = useState(1)
@@ -36,12 +40,10 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         const query = searchQuery.trim().toLowerCase()
         const filtered = items.filter(item => {
             if (!query) return true
-            return [
-                item.name,
-                item.category,
-                String(item.price || ''),
-                String(item.cost || '')
-            ].some(value => String(value || '').toLowerCase().includes(query))
+            return (isFlowers
+                ? [item.name, String(item.price || ''), String(item.cost || '')].join(' ').toLowerCase()
+                : `${getGoodsSearchText(item)} ${item.price || ''} ${item.cost || ''}`
+            ).includes(query)
         })
 
         return [...filtered].sort((a, b) => {
@@ -56,6 +58,8 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             if (sortMode === 'price_desc') return priceB - priceA || nameA
             if (sortMode === 'cost_asc') return costA - costB || nameA
             if (sortMode === 'cost_desc') return costB - costA || nameA
+            if (!isFlowers && sortMode === 'name_asc') return compareGoodsVariants(a, b)
+            if (!isFlowers && sortMode === 'name_desc') return -compareGoodsVariants(a, b)
             return nameA
         })
     }, [items, searchQuery, sortMode])
@@ -111,8 +115,10 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
 
     const openAddModal = () => {
         setModalMode('add')
-        setFormData({ name: '', price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
+        setCurrentItem(null)
+        setFormData({ name: '', familyName: '', attributes: { ...EMPTY_GOODS_ATTRIBUTES }, price: '', category: '', imageUrl: '', cost: '', purchaseCost: '', markup: isFlowers ? 2 : 1.5, purchaseUnit: 'шт', stockUnit: 'шт', unitsPerPurchase: 1 })
         setImageError('')
+        setFormError('')
         setIsModalOpen(true)
     }
 
@@ -120,8 +126,11 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         setModalMode('edit')
         setCurrentItem(item)
         const unitsPerPurchase = item.units_per_purchase || 1
+        const attributes = { ...EMPTY_GOODS_ATTRIBUTES, ...inferGoodsAttributes(item) }
         setFormData({
             name: item.name,
+            familyName: isFlowers ? '' : inferGoodsFamily(item),
+            attributes,
             price: item.price,
             category: item.category || '',
             imageUrl: item.image_url || '',
@@ -133,6 +142,7 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             unitsPerPurchase
         })
         setImageError('')
+        setFormError('')
         setIsModalOpen(true)
     }
 
@@ -157,14 +167,26 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
         e.preventDefault()
         const unitsPerPurchase = Math.max(parseAmount(formData.unitsPerPurchase), 1)
         const unitCost = isFlowers ? parseAmount(formData.cost) : (parseAmount(formData.purchaseCost || formData.cost) / unitsPerPurchase)
+        const attributes = normalizeGoodsAttributes(formData.attributes)
+        const generatedName = isFlowers ? formData.name.trim() : buildGoodsName(formData.familyName, attributes)
+        if (!isFlowers) {
+            const duplicate = goods.find(item => String(item.id) !== String(currentItem?.id || '') && String(item.name || '').trim().toLowerCase() === generatedName.toLowerCase())
+            if (duplicate) {
+                setFormError(`Такая модификация уже есть: ${duplicate.name}`)
+                return
+            }
+        }
         const itemData = {
-            name: formData.name,
+            name: generatedName,
             price: parseAmount(formData.price),
             ...(!isFlowers && { category: formData.category }),
             cost: unitCost,
             markup_factor: parseAmount(formData.markup) || (isFlowers ? 2 : 1.5)
         }
         if (!isFlowers) {
+            itemData.family_name = formData.familyName.trim()
+            itemData.variant_name = getGoodsVariantLabel(attributes)
+            itemData.attributes = attributes
             itemData.purchase_unit = formData.purchaseUnit || 'шт'
             itemData.stock_unit = formData.stockUnit || 'шт'
             itemData.units_per_purchase = unitsPerPurchase
@@ -374,14 +396,39 @@ export default function Inventory({ mode = 'flowers' }) { // mode: 'flowers' | '
             >
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Название</label>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>{isFlowers ? 'Название' : 'Название модели / серии'}</label>
                         <input
                             className="input"
-                            value={formData.name}
-                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            value={isFlowers ? formData.name : formData.familyName}
+                            onChange={e => setFormData({ ...formData, [isFlowers ? 'name' : 'familyName']: e.target.value })}
+                            placeholder={isFlowers ? '' : 'Например: Коробка сердце или Корзина плетеная'}
                             required
                         />
                     </div>
+
+                    {!isFlowers && (
+                        <div style={{ padding: '1rem', border: '1px solid var(--border)', borderRadius: 8, background: '#f8fafc' }}>
+                            <div style={{ fontWeight: 900, marginBottom: '0.75rem' }}>Модификация</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
+                                {GOODS_ATTRIBUTE_FIELDS.map(field => (
+                                    <div key={field.key}>
+                                        <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontSize: '0.82rem', fontWeight: 800 }}>{field.label}</label>
+                                        <input
+                                            className="input"
+                                            value={formData.attributes?.[field.key] || ''}
+                                            onChange={e => setFormData(current => ({ ...current, attributes: { ...current.attributes, [field.key]: e.target.value } }))}
+                                            placeholder={field.placeholder}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{ marginTop: '0.75rem', padding: '0.7rem 0.8rem', borderRadius: 8, background: '#fff', border: '1px solid #e2e8f0' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Название в CRM</div>
+                                <div style={{ marginTop: 3, fontWeight: 900 }}>{buildGoodsName(formData.familyName, formData.attributes) || 'Заполните название модели'}</div>
+                            </div>
+                            {formError && <div style={{ marginTop: '0.65rem', color: '#dc2626', fontSize: '0.82rem', fontWeight: 800 }}>{formError}</div>}
+                        </div>
+                    )}
 
                     {!isFlowers && (
                         <div>

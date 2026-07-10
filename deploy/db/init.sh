@@ -41,8 +41,14 @@ CREATE TABLE IF NOT EXISTS public.goods (
   price numeric DEFAULT 0,
   category text,
   image_url text,
+  family_name text,
+  variant_name text,
+  attributes jsonb NOT NULL DEFAULT '{}'::jsonb,
   cost numeric DEFAULT 0,
   markup_factor numeric,
+  purchase_unit text DEFAULT 'шт',
+  stock_unit text DEFAULT 'шт',
+  units_per_purchase numeric DEFAULT 1,
   is_published boolean DEFAULT true,
   created_at timestamptz DEFAULT now()
 );
@@ -141,7 +147,12 @@ CREATE TABLE IF NOT EXISTS public.supply_items (
   flower_id uuid REFERENCES public.flowers(id) ON DELETE SET NULL,
   good_id uuid REFERENCES public.goods(id) ON DELETE SET NULL,
   quantity numeric DEFAULT 0,
-  unit_cost numeric DEFAULT 0
+  unit_cost numeric DEFAULT 0,
+  purchase_quantity numeric,
+  purchase_unit_cost numeric,
+  purchase_unit text,
+  stock_unit text,
+  units_per_purchase numeric DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS public.stock (

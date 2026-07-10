@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw, X, Package, Flower, UploadCloud } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, ArrowLeft, Save, Copy, Eye, EyeOff, RefreshCw, X, Package, Flower, UploadCloud, ImageIcon } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
+import { compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, inferGoodsFamily } from '../lib/goodsVariants'
 
 export default function Products() {
-    const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice, calculateCostPrice, recalculateAllProducts } = useStore()
+    const { products, addProduct, updateProduct, deleteProduct, flowers, goods, categories, settings, calculatePrice, calculateCostPrice, recalculateAllProducts, getStockQty } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
     const searchTerm = searchParams.get('q') || ''
@@ -464,8 +465,10 @@ export default function Products() {
     const filteredCompItems = compCatalogItems.filter(item => {
         const term = compSearch.trim().toLowerCase()
         if (!term) return true
-        return String(item.name || '').toLowerCase().includes(term)
-    })
+        return compType === 'good'
+            ? getGoodsSearchText(item).includes(term)
+            : String(item.name || '').toLowerCase().includes(term)
+    }).sort((a, b) => compType === 'good' ? compareGoodsVariants(a, b) : String(a.name || '').localeCompare(String(b.name || ''), 'ru'))
     const selectedCompItem = compCatalogItems.find(item => String(item.id) === String(compId))
     const normalizedSkuInput = String(formData.sku || '').trim().toLowerCase()
     const duplicateSkuProduct = normalizedSkuInput
@@ -626,7 +629,23 @@ export default function Products() {
                                                             textAlign: 'left'
                                                         }}
                                                     >
-                                                        <span>{item.name}</span>
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
+                                                            {compType === 'good' && (
+                                                                <span style={{ width: 38, height: 38, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                                                                    {item.image_url
+                                                                        ? <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                                        : <ImageIcon size={17} color="#94a3b8" />}
+                                                                </span>
+                                                            )}
+                                                            <span style={{ minWidth: 0 }}>
+                                                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                                                                {compType === 'good' && (
+                                                                    <span style={{ display: 'block', marginTop: 2, color: '#94a3b8', fontSize: '0.72rem', fontWeight: 700 }}>
+                                                                        {inferGoodsFamily(item)}{getGoodsVariantLabel(item) ? ` · ${getGoodsVariantLabel(item)}` : ''} · остаток {getStockQty('good', item.id)} {item.stock_unit || 'шт'}
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </span>
                                                         <span style={{ color: String(item.id) === String(compId) ? 'var(--primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>{item.price} lei</span>
                                                     </button>
                                                 ))}

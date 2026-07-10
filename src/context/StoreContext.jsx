@@ -351,6 +351,17 @@ export function StoreProvider({ children }) {
         return normalized.purchaseQuantity * normalized.purchaseUnitCost
     }
 
+    const groupSupplyInventoryItems = items => Object.values(items.reduce((groups, item) => {
+        const key = `${item.type}:${item.id}`
+        const quantity = parseLooseNumber(item.stockQuantity, 0)
+        const value = quantity * parseLooseNumber(item.stockUnitCost, 0)
+        if (!groups[key]) groups[key] = { ...item, stockQuantity: 0, incomingValue: 0 }
+        groups[key].stockQuantity += quantity
+        groups[key].incomingValue += value
+        groups[key].stockUnitCost = groups[key].stockQuantity > 0 ? groups[key].incomingValue / groups[key].stockQuantity : 0
+        return groups
+    }, {}))
+
     const toSupplyItemPayload = (supplyId, item) => {
         const normalized = normalizeSupplyItemUnits(item)
         return {
@@ -372,6 +383,7 @@ export function StoreProvider({ children }) {
         try {
             const shouldUpdateCatalogPrices = options.updateCatalogPrices !== false
             const normalizedItems = items.map(normalizeSupplyItemUnits)
+            const inventoryItems = groupSupplyInventoryItems(normalizedItems)
 
             // 1. Get or Create Supplier
             let supplierId
@@ -410,7 +422,7 @@ export function StoreProvider({ children }) {
 
             // 3.5. Update Stock - auto add to inventory from supply
             const createdLots = []
-            for (const item of normalizedItems) {
+            for (const item of inventoryItems) {
                 const existing = stock.find(s => s.item_type === item.type && s.item_id === item.id)
                 if (existing) {
                     const newQty = existing.quantity + item.stockQuantity
@@ -451,8 +463,17 @@ export function StoreProvider({ children }) {
                 const updatedFlowers = [...flowers]
                 const updatedGoods = [...goods]
 
-                for (const item of normalizedItems) {
-                    const newCost = item.stockUnitCost
+                for (const item of inventoryItems) {
+                    const previousStock = stock.find(row => row.item_type === item.type && String(row.item_id) === String(item.id))
+                    const previousQuantity = Math.max(parseLooseNumber(previousStock?.quantity, 0), 0)
+                    const catalogItem = item.type === 'flower'
+                        ? flowers.find(entry => String(entry.id) === String(item.id))
+                        : goods.find(entry => String(entry.id) === String(item.id))
+                    const previousCost = parseLooseNumber(catalogItem?.cost, 0)
+                    const totalQuantity = previousQuantity + item.stockQuantity
+                    const newCost = totalQuantity > 0
+                        ? ((previousQuantity * previousCost) + item.incomingValue) / totalQuantity
+                        : item.stockUnitCost
 
                     if (item.type === 'flower') {
                         const flower = flowers.find(f => f.id === item.id)

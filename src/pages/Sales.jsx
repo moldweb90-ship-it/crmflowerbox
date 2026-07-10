@@ -5,6 +5,7 @@ import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapP
 import Modal from '../components/ui/Modal'
 import ClaimModal from '../components/claims/ClaimModal'
 import QuantityStepper from '../components/ui/QuantityStepper'
+import { compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel } from '../lib/goodsVariants'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -100,7 +101,7 @@ export default function Sales() {
         calculateCostPrice,
         flowers, goods, settings,
         showcaseBouquets, markShowcaseBouquetSold,
-        claims, getSaleClaims
+        claims, getSaleClaims, getStockQty
     } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
@@ -1735,7 +1736,7 @@ export default function Sales() {
                                                     setSiteItemSearch(''); setShowSiteItemDropdown(false)
                                                 }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>🌸 {flower.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{flower.price} L</span></div>
                                             ))}
-                                            {goods.filter(g => g.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).map(good => (
+                                            {goods.filter(g => getGoodsSearchText(g).includes(siteItemSearch.toLowerCase())).sort(compareGoodsVariants).map(good => (
                                                 <div key={`g-${good.id}`} onClick={() => {
                                                     const ex = siteComposition.findIndex(c => c.type === 'good' && c.item_id === good.id)
                                                     const newComp = ex >= 0 ? siteComposition.map((c, i) => i === ex ? { ...c, quantity: parseDecimal(c.quantity) + 1 } : c) : [...siteComposition, { type: 'good', item_id: good.id, name: good.name, quantity: 1, cost: good.cost || 0, price: good.price || 0 }]
@@ -1743,9 +1744,12 @@ export default function Sales() {
                                                     const withMarkup = calculateSiteCompositionPrice(newComp)
                                                     setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
                                                     setSiteItemSearch(''); setShowSiteItemDropdown(false)
-                                                }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6' }}><span>📦 {good.name}</span><span style={{ color: '#6366f1', fontWeight: 600 }}>{good.price} L</span></div>
+                                                }} style={{ padding: '0.6rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', borderBottom: '1px solid #f3f4f6' }}>
+                                                    <span style={{ minWidth: 0 }}><span style={{ display: 'block' }}>📦 {good.name}</span><small style={{ color: '#94a3b8' }}>{getGoodsVariantLabel(good) || good.category || 'Доп. товар'} · остаток {getStockQty('good', good.id)} {good.stock_unit || 'шт'}</small></span>
+                                                    <span style={{ color: '#6366f1', fontWeight: 600, whiteSpace: 'nowrap' }}>{good.price} L</span>
+                                                </div>
                                             ))}
-                                            {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).length === 0 && goods.filter(g => g.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).length === 0 && <div style={{ padding: '1rem', color: '#9ca3af', textAlign: 'center' }}>Ничего не найдено</div>}
+                                            {flowers.filter(f => f.name?.toLowerCase().includes(siteItemSearch.toLowerCase())).length === 0 && goods.filter(g => getGoodsSearchText(g).includes(siteItemSearch.toLowerCase())).length === 0 && <div style={{ padding: '1rem', color: '#9ca3af', textAlign: 'center' }}>Ничего не найдено</div>}
                                         </div>
                                     )}
                                 </div>
@@ -2837,7 +2841,7 @@ export default function Sales() {
                                         </div>
                                     ))}
                                     {/* Search in goods */}
-                                    {goods.filter(g => g.name.toLowerCase().includes(salonItemSearch.toLowerCase())).map(good => (
+                                    {goods.filter(g => getGoodsSearchText(g).includes(salonItemSearch.toLowerCase())).sort(compareGoodsVariants).map(good => (
                                         <div
                                             key={`good-${good.id}`}
                                             onClick={() => {
@@ -2867,12 +2871,12 @@ export default function Sales() {
                                             onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
                                         >
                                             <span>📦</span>
-                                            <span style={{ flex: 1 }}>{good.name}</span>
+                                            <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: 'block' }}>{good.name}</span><small style={{ color: '#94a3b8' }}>{getGoodsVariantLabel(good) || good.category || 'Доп. товар'} · остаток {getStockQty('good', good.id)} {good.stock_unit || 'шт'}</small></span>
                                             <span style={{ color: '#7c3aed', fontWeight: 600 }}>{good.price || 0} lei</span>
                                         </div>
                                     ))}
                                     {flowers.filter(f => f.name.toLowerCase().includes(salonItemSearch.toLowerCase())).length === 0 &&
-                                        goods.filter(g => g.name.toLowerCase().includes(salonItemSearch.toLowerCase())).length === 0 && (
+                                        goods.filter(g => getGoodsSearchText(g).includes(salonItemSearch.toLowerCase())).length === 0 && (
                                             <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af' }}>Ничего не найдено</div>
                                         )}
                                 </div>

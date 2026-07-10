@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp, Flower } from 'lucide-react'
+import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp, Flower, Layers3 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
+import { compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, inferGoodsFamily } from '../lib/goodsVariants'
 
 export default function Supplies() {
     const { supplies, suppliers, flowers, goods, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, createSupplier } = useStore() // Added goods
@@ -54,6 +55,9 @@ export default function Supplies() {
     const [currentItem, setCurrentItem] = useState({ id: '', quantity: '', unitCost: '' })
     const [itemSearch, setItemSearch] = useState('')
     const [isItemDropdownOpen, setIsItemDropdownOpen] = useState(false)
+    const [goodsEntryMode, setGoodsEntryMode] = useState('single')
+    const [bundleLines, setBundleLines] = useState([])
+    const [bundleTotalCost, setBundleTotalCost] = useState('')
 
     // --- Filters & Analytics State ---
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'month' }) // presets: 'week', 'month', '30days', 'custom', 'all'
@@ -162,7 +166,56 @@ export default function Supplies() {
         }
     }
 
+    const buildMixedBundleItems = () => {
+        const totalCost = parseAmount(bundleTotalCost)
+        if (!bundleLines.length || totalCost <= 0) return []
+
+        const weightedLines = bundleLines.map(line => {
+            const item = goods.find(good => String(good.id) === String(line.id))
+            const quantity = parseAmount(line.quantity)
+            const catalogCost = parseAmount(item?.cost)
+            return { ...line, item, quantity, weight: quantity * (catalogCost > 0 ? catalogCost : 1) }
+        }).filter(line => line.item && line.quantity > 0)
+        const totalWeight = weightedLines.reduce((sum, line) => sum + line.weight, 0)
+        if (!totalWeight) return []
+
+        return weightedLines.map(line => {
+            const allocatedAmount = totalCost * (line.weight / totalWeight)
+            const stockUnit = line.item.stock_unit || 'шт'
+            return {
+                type: 'good',
+                id: line.item.id,
+                name: line.item.name,
+                quantity: line.quantity,
+                unitCost: allocatedAmount / line.quantity,
+                purchaseQuantity: line.quantity,
+                purchaseUnitCost: allocatedAmount / line.quantity,
+                purchaseUnit: stockUnit,
+                stockQuantity: line.quantity,
+                stockUnitCost: allocatedAmount / line.quantity,
+                stockUnit,
+                unitsPerPurchase: 1,
+                bundleAllocation: true
+            }
+        })
+    }
+
     const handleAddItem = () => {
+        if (itemType === 'good' && goodsEntryMode === 'mixed') {
+            const selected = goods.find(item => String(item.id) === String(currentItem.id))
+            const quantity = parseAmount(currentItem.quantity)
+            if (!selected || quantity <= 0) return
+            setBundleLines(current => {
+                const existing = current.find(line => String(line.id) === String(selected.id))
+                return existing
+                    ? current.map(line => String(line.id) === String(selected.id) ? { ...line, quantity: parseAmount(line.quantity) + quantity } : line)
+                    : [...current, { id: selected.id, name: selected.name, quantity }]
+            })
+            setCurrentItem({ id: '', quantity: '', unitCost: '' })
+            setItemSearch('')
+            setIsItemDropdownOpen(false)
+            return
+        }
         const itemData = buildSupplyItem()
         if (!itemData) return
 
@@ -173,6 +226,15 @@ export default function Supplies() {
         setIsItemDropdownOpen(false)
     }
 
+    const handleCommitMixedBundle = () => {
+        const bundleItems = buildMixedBundleItems()
+        if (!bundleItems.length) return
+        setSupplyItems(current => [...current, ...bundleItems])
+        setBundleLines([])
+        setBundleTotalCost('')
+        setCurrentItem({ id: '', quantity: '', unitCost: '' })
+    }
+
     const handleRemoveItem = (index) => {
         setSupplyItems(supplyItems.filter((_, i) => i !== index))
     }
@@ -180,7 +242,9 @@ export default function Supplies() {
     const handleSaveSupply = async () => {
         // If there are unsaved items in the form, add them first
         let finalItems = [...supplyItems]
-        if (currentItem.id && currentItem.quantity && currentItem.unitCost) {
+        if (goodsEntryMode === 'mixed' && bundleLines.length && parseAmount(bundleTotalCost) > 0) {
+            finalItems.push(...buildMixedBundleItems())
+        } else if (currentItem.id && currentItem.quantity && currentItem.unitCost) {
             const itemData = buildSupplyItem()
             if (itemData) finalItems.push(itemData)
         }
@@ -205,6 +269,9 @@ export default function Supplies() {
             setCurrentItem({ id: '', quantity: '', unitCost: '' })
             setItemSearch('')
             setIsItemDropdownOpen(false)
+            setGoodsEntryMode('single')
+            setBundleLines([])
+            setBundleTotalCost('')
             setEditingSupplyId(null)
         } else {
             alert('Ошибка при сохранении поставки: ' + (result.error?.message || ''))
@@ -257,17 +324,24 @@ export default function Supplies() {
         setCurrentItem({ id: '', quantity: '', unitCost: '' })
         setItemSearch('')
         setIsItemDropdownOpen(false)
+        setGoodsEntryMode('single')
+        setBundleLines([])
+        setBundleTotalCost('')
         setIsModalOpen(true)
     }
 
     // Modal Totals Calculation
     const availableSupplyItems = itemType === 'flower' ? flowers : goods
     const selectedCurrentItem = availableSupplyItems.find(item => item.id === currentItem.id)
-    const filteredSupplyItems = availableSupplyItems.filter(item =>
-        item.name?.toLowerCase().includes(itemSearch.trim().toLowerCase())
-    )
+    const filteredSupplyItems = availableSupplyItems.filter(item => {
+        const term = itemSearch.trim().toLowerCase()
+        if (!term) return true
+        return itemType === 'good' ? getGoodsSearchText(item).includes(term) : item.name?.toLowerCase().includes(term)
+    }).sort((a, b) => itemType === 'good' ? compareGoodsVariants(a, b) : String(a.name || '').localeCompare(String(b.name || ''), 'ru'))
 
-    const currentItemSum = (parseAmount(currentItem.quantity) || 0) * (parseAmount(currentItem.unitCost) || 0)
+    const pendingBundleItems = buildMixedBundleItems()
+    const pendingBundleTotal = pendingBundleItems.reduce((sum, item) => sum + getSupplyItemAmount(item), 0)
+    const currentItemSum = goodsEntryMode === 'mixed' ? 0 : (parseAmount(currentItem.quantity) || 0) * (parseAmount(currentItem.unitCost) || 0)
     // Add current item to calculations if valid
     const allItems = [...supplyItems]
     if (currentItem.id && currentItem.quantity && currentItem.unitCost) {
@@ -280,7 +354,7 @@ export default function Supplies() {
         + (itemType === 'flower' ? currentItemSum : 0)
 
     const goodsTotal = supplyItems.filter(i => i.type === 'good').reduce((acc, i) => acc + getSupplyItemAmount(i), 0)
-        + (itemType === 'good' ? currentItemSum : 0)
+        + (itemType === 'good' ? currentItemSum + pendingBundleTotal : 0)
 
     const totalSum = flowersTotal + goodsTotal
 
@@ -831,6 +905,7 @@ export default function Supplies() {
                                 <button
                                     onClick={() => {
                                         setItemType('flower')
+                                        setGoodsEntryMode('single')
                                         setCurrentItem({ ...currentItem, id: '' })
                                         setItemSearch('')
                                         setIsItemDropdownOpen(false)
@@ -877,6 +952,25 @@ export default function Supplies() {
                                     <Package size={16} /> Товары
                                 </button>
                             </div>
+
+                            {itemType === 'good' && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', padding: 4, borderRadius: 8, background: '#f1f5f9' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setGoodsEntryMode('single'); setCurrentItem({ id: '', quantity: '', unitCost: '' }) }}
+                                        style={{ padding: '0.6rem', borderRadius: 6, background: goodsEntryMode === 'single' ? '#fff' : 'transparent', color: goodsEntryMode === 'single' ? '#111827' : '#64748b', fontWeight: 850, boxShadow: goodsEntryMode === 'single' ? '0 2px 8px rgba(15,23,42,0.08)' : 'none' }}
+                                    >
+                                        Одна позиция
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setGoodsEntryMode('mixed'); setCurrentItem({ id: '', quantity: '', unitCost: '' }) }}
+                                        style={{ padding: '0.6rem', borderRadius: 6, background: goodsEntryMode === 'mixed' ? '#fff' : 'transparent', color: goodsEntryMode === 'mixed' ? '#111827' : '#64748b', fontWeight: 850, boxShadow: goodsEntryMode === 'mixed' ? '0 2px 8px rgba(15,23,42,0.08)' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                                    >
+                                        <Layers3 size={16} /> Смешанный комплект
+                                    </button>
+                                </div>
+                            )}
 
                             <div style={{ position: 'relative' }}>
                                 <button
@@ -968,7 +1062,12 @@ export default function Supplies() {
                                                                 fontWeight: currentItem.id === item.id ? 850 : 600
                                                             }}
                                                         >
-                                                            {item.name}
+                                                            <span style={{ display: 'block' }}>{item.name}</span>
+                                                            {itemType === 'good' && (
+                                                                <span style={{ display: 'block', marginTop: 2, color: '#94a3b8', fontSize: '0.72rem', fontWeight: 700 }}>
+                                                                    {inferGoodsFamily(item)}{getGoodsVariantLabel(item) ? ` · ${getGoodsVariantLabel(item)}` : ''} · {item.cost || 0} lei/{item.stock_unit || 'шт'}
+                                                                </span>
+                                                            )}
                                                         </button>
                                                     ))
                                                 )}
@@ -981,7 +1080,7 @@ export default function Supplies() {
                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(130px, 0.75fr) minmax(150px, 1fr)', gap: '0.75rem', alignItems: 'end' }}>
                                 <div>
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 600, fontSize: '0.88rem' }}>
-                                        Кол-во{itemType === 'good' && selectedCurrentItem ? `, ${selectedCurrentItem.purchase_unit || 'шт'}` : ''}
+                                        Кол-во{itemType === 'good' && selectedCurrentItem ? `, ${goodsEntryMode === 'mixed' ? (selectedCurrentItem.stock_unit || 'шт') : (selectedCurrentItem.purchase_unit || 'шт')}` : ''}
                                     </label>
                                     <QuantityStepper
                                         placeholder="Кол-во"
@@ -991,7 +1090,7 @@ export default function Supplies() {
                                         step={1}
                                     />
                                 </div>
-                                <div>
+                                {goodsEntryMode !== 'mixed' && <div>
                                     <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 600, fontSize: '0.88rem' }}>
                                         Цена{itemType === 'good' && selectedCurrentItem ? ` за ${selectedCurrentItem.purchase_unit || 'шт'}` : ''}
                                     </label>
@@ -1004,7 +1103,7 @@ export default function Supplies() {
                                         onChange={e => setCurrentItem({ ...currentItem, unitCost: e.target.value })}
                                         style={{ height: 40, padding: '0 0.9rem' }}
                                     />
-                                </div>
+                                </div>}
                             </div>
 
                             <button
@@ -1026,7 +1125,7 @@ export default function Supplies() {
 
                         {currentItem.id && (
                             <div style={{ textAlign: 'right', fontSize: '0.875rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: 1.5 }}>
-                                {itemType === 'good' && selectedCurrentItem && (() => {
+                                {itemType === 'good' && goodsEntryMode !== 'mixed' && selectedCurrentItem && (() => {
                                     const meta = getCurrentUnitMeta(selectedCurrentItem, currentItem)
                                     const stockQty = parseAmount(currentItem.quantity) * meta.unitsPerPurchase
                                     const stockCost = meta.unitsPerPurchase > 0 ? parseAmount(currentItem.unitCost) / meta.unitsPerPurchase : 0
@@ -1037,6 +1136,35 @@ export default function Supplies() {
                                     )
                                 })()}
                                 Сумма: <b>{currentItemSum.toFixed(2)} lei</b>
+                            </div>
+                        )}
+
+                        {itemType === 'good' && goodsEntryMode === 'mixed' && bundleLines.length > 0 && (
+                            <div style={{ marginTop: '0.75rem', padding: '0.9rem', borderRadius: 8, background: '#fffbeb', border: '1px solid #fde68a' }}>
+                                <div style={{ fontWeight: 900, marginBottom: '0.65rem' }}>Состав комплекта</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                                    {bundleLines.map(line => (
+                                        <div key={line.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', gap: '0.65rem', alignItems: 'center' }}>
+                                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 750 }}>{line.name}</span>
+                                            <span style={{ color: '#64748b', fontWeight: 850 }}>{line.quantity} {goods.find(item => String(item.id) === String(line.id))?.stock_unit || 'шт'}</span>
+                                            <button type="button" onClick={() => setBundleLines(current => current.filter(item => String(item.id) !== String(line.id)))} title="Убрать из комплекта" style={{ color: '#dc2626' }}><X size={17} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto', gap: '0.65rem', alignItems: 'end', marginTop: '0.8rem' }}>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 750, fontSize: '0.82rem' }}>Общая стоимость комплекта</label>
+                                        <input className="input" type="text" inputMode="decimal" value={bundleTotalCost} onChange={e => setBundleTotalCost(e.target.value)} placeholder="Например: 1200" />
+                                    </div>
+                                    <button type="button" className="btn" onClick={handleCommitMixedBundle} disabled={parseAmount(bundleTotalCost) <= 0} style={{ minHeight: 44, background: '#f59e0b', color: '#fff', justifyContent: 'center' }}>
+                                        <Check size={17} /> Добавить комплект
+                                    </button>
+                                </div>
+                                {parseAmount(bundleTotalCost) > 0 && (
+                                    <div style={{ marginTop: '0.55rem', color: '#92400e', fontSize: '0.78rem', lineHeight: 1.4 }}>
+                                        CRM распределит {parseAmount(bundleTotalCost).toFixed(2)} lei между позициями пропорционально их текущей себестоимости. Если цены еще нет, распределит по количеству.
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
