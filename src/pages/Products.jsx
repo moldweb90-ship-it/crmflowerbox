@@ -353,8 +353,8 @@ export default function Products() {
     }
 
     const updateCompositionQty = (index, value) => {
-        const parsed = Number(String(value).replace(',', '.'))
-        const nextQty = value === '' ? '' : Math.max(0, Number.isFinite(parsed) ? parsed : 0)
+        const nextQty = String(value ?? '').replace(/[^0-9.,]/g, '')
+        if (nextQty && !/^\d*[.,]?\d*$/.test(nextQty)) return
         setFormData({
             ...formData,
             composition: formData.composition.map((item, i) => i === index ? { ...item, qty: nextQty } : item)
