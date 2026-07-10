@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp, Flower, Layers3 } from 'lucide-react'
+import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp, Flower, Layers3, Search, ImageIcon } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, inferGoodsFamily } from '../lib/goodsVariants'
@@ -977,7 +977,7 @@ export default function Supplies() {
                                     type="button"
                                     className="input"
                                     onClick={() => {
-                                        setIsItemDropdownOpen(!isItemDropdownOpen)
+                                        setIsItemDropdownOpen(true)
                                         setItemSearch('')
                                     }}
                                     style={{
@@ -996,91 +996,15 @@ export default function Supplies() {
                                     </span>
                                     <ChevronDown size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                                 </button>
-
-                                {isItemDropdownOpen && (
-                                    <>
-                                        <div
-                                            onClick={() => setIsItemDropdownOpen(false)}
-                                            style={{ position: 'fixed', inset: 0, zIndex: 70 }}
-                                        />
-                                        <div style={{
-                                            position: 'absolute',
-                                            left: 0,
-                                            right: 0,
-                                            top: 'calc(100% + 8px)',
-                                            zIndex: 80,
-                                            background: '#fff',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: 16,
-                                            boxShadow: '0 18px 45px rgba(15,23,42,0.16)',
-                                            overflow: 'hidden'
-                                        }}>
-                                            <div style={{ padding: '0.65rem', borderBottom: '1px solid var(--border)' }}>
-                                                <input
-                                                    autoFocus
-                                                    className="input"
-                                                    placeholder={itemType === 'flower' ? 'Поиск цветка...' : 'Поиск товара...'}
-                                                    value={itemSearch}
-                                                    onChange={e => setItemSearch(e.target.value)}
-                                                    onKeyDown={e => {
-                                                        if (e.key === 'Escape') setIsItemDropdownOpen(false)
-                                                    }}
-                                                    style={{ padding: '0.65rem 0.75rem', width: '100%' }}
-                                                />
-                                            </div>
-                                            <div style={{ maxHeight: 280, overflowY: 'auto', padding: '0.35rem' }}>
-                                                {filteredSupplyItems.length === 0 ? (
-                                                    <div style={{ padding: '0.9rem', color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>
-                                                        Ничего не найдено
-                                                    </div>
-                                                ) : (
-                                                    filteredSupplyItems.map((item, index) => (
-                                                        <React.Fragment key={item.id}>
-                                                        {itemType === 'good' && (index === 0 || inferGoodsFamily(filteredSupplyItems[index - 1]) !== inferGoodsFamily(item)) && (
-                                                            <div style={{ padding: '0.5rem 0.75rem 0.3rem', color: '#64748b', fontSize: '0.72rem', fontWeight: 950, textTransform: 'uppercase', background: '#f8fafc' }}>{inferGoodsFamily(item)}</div>
-                                                        )}
-                                                        <button
-                                                            key={item.id}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setCurrentItem({
-                                                                    ...currentItem,
-                                                                    id: item.id,
-                                                                    unitsPerPurchase: item.units_per_purchase || 1,
-                                                                    purchaseUnit: item.purchase_unit || 'шт',
-                                                                    stockUnit: item.stock_unit || 'шт'
-                                                                })
-                                                                setItemSearch('')
-                                                                setIsItemDropdownOpen(false)
-                                                            }}
-                                                            style={{
-                                                                width: '100%',
-                                                                border: 'none',
-                                                                background: currentItem.id === item.id ? '#fff1ed' : 'transparent',
-                                                                color: '#111827',
-                                                                padding: '0.7rem 0.8rem',
-                                                                borderRadius: 10,
-                                                                textAlign: 'left',
-                                                                cursor: 'pointer',
-                                                                fontSize: '0.95rem',
-                                                                fontWeight: currentItem.id === item.id ? 850 : 600
-                                                            }}
-                                                        >
-                                                            <span style={{ display: 'block' }}>{item.name}</span>
-                                                            {itemType === 'good' && (
-                                                                <span style={{ display: 'block', marginTop: 2, color: '#94a3b8', fontSize: '0.72rem', fontWeight: 700 }}>
-                                                                    {inferGoodsFamily(item)}{getGoodsVariantLabel(item) ? ` · ${getGoodsVariantLabel(item)}` : ''} · {item.cost || 0} lei/{item.stock_unit || 'шт'}
-                                                                </span>
-                                                            )}
-                                                        </button>
-                                                        </React.Fragment>
-                                                    ))
-                                                )}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
                             </div>
+
+                            {itemType === 'good' && goodsEntryMode === 'mixed' && (
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 750, fontSize: '0.82rem' }}>Общая цена смешанного комплекта</label>
+                                    <input className="input" type="text" inputMode="decimal" value={bundleTotalCost} onChange={e => setBundleTotalCost(e.target.value)} placeholder="Например: 1200 lei за весь набор" />
+                                    <div style={{ marginTop: '0.35rem', color: '#92400e', fontSize: '0.75rem', lineHeight: 1.35 }}>Укажите сумму за весь набор. После выбора состава CRM распределит её между позициями.</div>
+                                </div>
+                            )}
 
                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(130px, 0.75fr) minmax(150px, 1fr)', gap: '0.75rem', alignItems: 'end' }}>
                                 <div>
@@ -1156,11 +1080,7 @@ export default function Supplies() {
                                         </div>
                                     ))}
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto', gap: '0.65rem', alignItems: 'end', marginTop: '0.8rem' }}>
-                                    <div>
-                                        <label style={{ display: 'block', marginBottom: '0.35rem', color: '#64748b', fontWeight: 750, fontSize: '0.82rem' }}>Общая стоимость комплекта</label>
-                                        <input className="input" type="text" inputMode="decimal" value={bundleTotalCost} onChange={e => setBundleTotalCost(e.target.value)} placeholder="Например: 1200" />
-                                    </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.65rem', alignItems: 'end', marginTop: '0.8rem' }}>
                                     <button type="button" className="btn" onClick={handleCommitMixedBundle} disabled={parseAmount(bundleTotalCost) <= 0} style={{ minHeight: 44, background: '#f59e0b', color: '#fff', justifyContent: 'center' }}>
                                         <Check size={17} /> Добавить комплект
                                     </button>
@@ -1209,6 +1129,62 @@ export default function Supplies() {
                             {loading ? 'Сохранение...' : (modalMode === 'add' ? 'Создать поставку' : 'Сохранить изменения')}
                         </button>
                     </div>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={isItemDropdownOpen}
+                onClose={() => { setIsItemDropdownOpen(false); setItemSearch('') }}
+                title={itemType === 'flower' ? 'Выберите цветок' : 'Выберите товар'}
+                maxWidth="680px"
+            >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={19} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+                        <input
+                            autoFocus
+                            className="input"
+                            placeholder={itemType === 'flower' ? 'Поиск цветка...' : 'Поиск по модели, размеру или цвету...'}
+                            value={itemSearch}
+                            onChange={e => setItemSearch(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Escape') setIsItemDropdownOpen(false) }}
+                            style={{ width: '100%', paddingLeft: 42 }}
+                        />
+                    </div>
+                    <div style={{ maxHeight: '62vh', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}>
+                        {filteredSupplyItems.length === 0 ? (
+                            <div style={{ padding: '2rem 1rem', color: '#94a3b8', fontWeight: 750, textAlign: 'center' }}>Ничего не найдено</div>
+                        ) : filteredSupplyItems.map((item, index) => (
+                            <React.Fragment key={item.id}>
+                                {itemType === 'good' && (index === 0 || inferGoodsFamily(filteredSupplyItems[index - 1]) !== inferGoodsFamily(item)) && (
+                                    <div style={{ position: 'sticky', top: 0, zIndex: 1, padding: '0.55rem 0.8rem', color: '#475569', fontSize: '0.75rem', fontWeight: 950, textTransform: 'uppercase', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>{inferGoodsFamily(item)}</div>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCurrentItem({
+                                            ...currentItem,
+                                            id: item.id,
+                                            unitsPerPurchase: item.units_per_purchase || 1,
+                                            purchaseUnit: item.purchase_unit || 'шт',
+                                            stockUnit: item.stock_unit || 'шт'
+                                        })
+                                        setItemSearch('')
+                                        setIsItemDropdownOpen(false)
+                                    }}
+                                    style={{ width: '100%', display: 'grid', gridTemplateColumns: itemType === 'good' ? '52px minmax(0,1fr) auto' : 'minmax(0,1fr) auto', gap: '0.75rem', alignItems: 'center', padding: '0.72rem 0.8rem', textAlign: 'left', background: String(currentItem.id) === String(item.id) ? '#fff7ed' : '#fff', borderBottom: '1px solid #eef2f7' }}
+                                >
+                                    {itemType === 'good' && <span style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9', display: 'grid', placeItems: 'center' }}>{item.image_url ? <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ImageIcon size={20} color="#94a3b8" />}</span>}
+                                    <span style={{ minWidth: 0 }}>
+                                        <b style={{ display: 'block', color: '#0f172a' }}>{itemType === 'good' ? (getGoodsVariantLabel(item) || item.name) : item.name}</b>
+                                        {itemType === 'good' && <small style={{ display: 'block', marginTop: 3, color: '#64748b', fontWeight: 700 }}>{item.name}</small>}
+                                    </span>
+                                    <span style={{ color: '#64748b', fontSize: '0.82rem', fontWeight: 850, whiteSpace: 'nowrap' }}>{item.cost || 0} lei/{itemType === 'good' ? (item.stock_unit || 'шт') : 'шт'}</span>
+                                </button>
+                            </React.Fragment>
+                        ))}
+                    </div>
+                    {itemType === 'good' && <div style={{ color: '#64748b', fontSize: '0.78rem', fontWeight: 700 }}>Выберите конкретную модификацию. В поставке количество будет записано именно на её складской остаток.</div>}
                 </div>
             </Modal>
 
