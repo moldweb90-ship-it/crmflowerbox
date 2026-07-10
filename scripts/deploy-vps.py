@@ -76,8 +76,16 @@ cd deploy
 docker compose up -d --build {service}
 printf "NGINX_TEST\\n"
 docker compose exec -T {service} nginx -t
-printf "HTTP_PRODUCTS="
-curl -sS -o /dev/null -w '%{{http_code}}\\n' http://127.0.0.1/products
+HTTP_PRODUCTS=000
+for attempt in $(seq 1 20); do
+  HTTP_PRODUCTS=$(curl -sS -o /dev/null -w '%{{http_code}}' http://127.0.0.1/products 2>/dev/null || true)
+  if [ "$HTTP_PRODUCTS" = "200" ]; then
+    break
+  fi
+  sleep 1
+done
+printf "HTTP_PRODUCTS=%s\\n" "$HTTP_PRODUCTS"
+test "$HTTP_PRODUCTS" = "200"
 {sync_check}
 docker compose ps
 """
