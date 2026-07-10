@@ -107,6 +107,7 @@ export default function Dashboard() {
     const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, customers, getItemName,
         employees, shifts, startShift, endShift, getActiveShifts, getCashBalance, claims, calculateCostPrice } = useStore()
     const navigate = useNavigate()
+    const [stockView, setStockView] = useState('flower')
 
     // Waste Analytics — один период 30 дней для списаний и выручки
     const wasteStats = React.useMemo(() => {
@@ -149,46 +150,67 @@ export default function Dashboard() {
         return { totalWasteCost, wastePercent, allReasons }
     }, [stockTransactions, sales, flowers, goods])
 
-    // Движение склада: остаток в деньгах + зависшие позиции (FIFO, 7+ дней)
+    // Складской обзор: для цветов важны свежесть и оперативный запас,
+    // для доптоваров - стоимость и настроенный минимальный остаток.
     const stockTurnover = React.useMemo(() => {
         const now = new Date()
-        let totalStockValue = 0
-        const staleList = []
-        const outOfStockList = []
-        const lowStockList = []
-        const LOW_STOCK_THRESHOLD = 10
+        const createSection = () => ({
+            totalStockValue: 0,
+            totalQuantity: 0,
+            positions: 0,
+            staleList: [],
+            outOfStockList: [],
+            lowStockList: [],
+            categories: {}
+        })
+        const sections = { flower: createSection(), good: createSection() }
 
         stock.forEach(s => {
+            const itemType = s.item_type === 'flower' ? 'flower' : 'good'
+            const section = sections[itemType]
             const item = s.item_type === 'flower'
                 ? flowers.find(f => f.id === s.item_id)
                 : goods.find(g => g.id === s.item_id)
             if (!item) return
             const cost = item.cost ?? item.purchase_price ?? (item.price ? item.price * 0.4 : 0)
+            const quantity = Number(s.quantity || 0)
+            const configuredMinimum = Number(s.min_quantity || 0)
+            const alertMinimum = itemType === 'flower' ? (configuredMinimum > 0 ? configuredMinimum : 10) : configuredMinimum
 
-            // Calc total value only for positive stock
-            if (s.quantity > 0) {
-                totalStockValue += s.quantity * cost
+            section.positions += 1
+
+            if (quantity > 0) {
+                section.totalStockValue += quantity * cost
+                section.totalQuantity += quantity
+                if (itemType === 'good') {
+                    const category = item.category || 'Без категории'
+                    section.categories[category] = (section.categories[category] || 0) + quantity
+                }
             }
 
-            // check shortage
-            if (s.quantity <= 0) {
-                outOfStockList.push({
-                    type: s.item_type,
-                    id: s.item_id,
-                    name: item.name
-                })
-                return // No need to check stale
-            }
-
-            if (s.quantity < LOW_STOCK_THRESHOLD) {
-                lowStockList.push({
+            // Для доптоваров тревоги включаются только после настройки минимума.
+            const shouldMonitor = itemType === 'flower' || configuredMinimum > 0
+            if (quantity <= 0 && shouldMonitor) {
+                section.outOfStockList.push({
                     type: s.item_type,
                     id: s.item_id,
                     name: item.name,
-                    quantity: s.quantity
+                    minimum: alertMinimum
+                })
+                return
+            }
+
+            if (quantity > 0 && shouldMonitor && quantity <= alertMinimum) {
+                section.lowStockList.push({
+                    type: s.item_type,
+                    id: s.item_id,
+                    name: item.name,
+                    quantity,
+                    minimum: alertMinimum
                 })
             }
 
+            if (itemType !== 'flower') return
             const batches = getRemainingBatchesByFIFO(s.item_type, s.item_id, stockTransactions, supplies)
             let staleQty = 0
             let maxDays = 0
@@ -201,7 +223,7 @@ export default function Dashboard() {
                 }
             })
             if (staleQty > 0) {
-                staleList.push({
+                section.staleList.push({
                     type: s.item_type,
                     id: s.item_id,
                     name: item.name,
@@ -212,13 +234,18 @@ export default function Dashboard() {
             }
         })
 
-        staleList.sort((a, b) => b.days - a.days)
-        // Sort shortage lists safely
-        outOfStockList.sort((a, b) => a.name.localeCompare(b.name))
-        lowStockList.sort((a, b) => a.quantity - b.quantity)
+        Object.values(sections).forEach(section => {
+            section.staleList.sort((a, b) => b.days - a.days)
+            section.outOfStockList.sort((a, b) => a.name.localeCompare(b.name))
+            section.lowStockList.sort((a, b) => a.quantity - b.quantity)
+            section.categoryList = Object.entries(section.categories)
+                .map(([name, quantity]) => ({ name, quantity }))
+                .sort((a, b) => b.quantity - a.quantity)
+        })
 
-        return { totalStockValue, staleList, outOfStockList, lowStockList }
+        return sections
     }, [stock, stockTransactions, supplies, flowers, goods])
+    const activeStock = stockTurnover[stockView]
 
     // --- NEW METRICS (REVAMP) ---
 
@@ -1258,96 +1285,69 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* Движение склада (оборачиваемость) */}
+                {/* Оперативный складской обзор */}
                 <div style={{ minWidth: isMobile ? '85%' : 'auto', scrollSnapAlign: 'center' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem', marginLeft: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Box size={20} color="#0ea5e9" />
-                        Движение склада
+                        Склад сегодня
                     </h2>
                     <div className="card" style={{
-                        background: 'linear-gradient(135deg, #E0F2FE 0%, #F0FDF4 100%)',
-                        border: '1px solid #7DD3FC',
+                        background: '#fff',
+                        border: '1px solid #dbe4ee',
                         padding: '1.25rem',
                         height: isMobile ? 'auto' : '100%',
                         minHeight: isMobile ? 0 : '140px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '1rem'
+                        gap: '0.85rem'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={iconBubbleStyle('#0ea5e9', 42)}>
-                                <DollarSign {...bubbleIconProps(17)} />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: 4, background: '#f1f5f9', borderRadius: 8 }}>
+                            <button type="button" onClick={() => setStockView('flower')} style={{ minHeight: 36, border: 0, borderRadius: 6, background: stockView === 'flower' ? '#fff' : 'transparent', color: stockView === 'flower' ? '#be185d' : '#64748b', boxShadow: stockView === 'flower' ? '0 1px 4px rgba(15,23,42,.12)' : 'none', fontWeight: 850, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                <Flower2 size={16} /> Цветы
+                            </button>
+                            <button type="button" onClick={() => setStockView('good')} style={{ minHeight: 36, border: 0, borderRadius: 6, background: stockView === 'good' ? '#fff' : 'transparent', color: stockView === 'good' ? '#0369a1' : '#64748b', boxShadow: stockView === 'good' ? '0 1px 4px rgba(15,23,42,.12)' : 'none', fontWeight: 850, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                <Package size={16} /> Доп. товары
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                            <div style={{ padding: '0.75rem', borderRadius: 8, background: stockView === 'flower' ? '#fdf2f8' : '#eff6ff', border: `1px solid ${stockView === 'flower' ? '#fbcfe8' : '#bfdbfe'}` }}>
+                                <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 750 }}>{stockView === 'flower' ? 'Цветы в холодильнике' : 'Доптовары на складе'}</div>
+                                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', marginTop: 2 }}>{Math.round(activeStock.totalStockValue).toLocaleString()} lei</div>
+                                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>по закупочной стоимости</div>
                             </div>
-                            <div>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#0369a1' }}>В холодильнике</div>
-                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0c4a6e' }}>
-                                    {Math.round(stockTurnover.totalStockValue).toLocaleString()} lei
-                                </div>
-                                <div style={{ fontSize: '0.7rem', color: '#0284c7' }}>замороженные средства</div>
+                            <div style={{ padding: '0.75rem', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 750 }}>{stockView === 'flower' ? 'Всего стеблей' : 'Всего единиц'}</div>
+                                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', marginTop: 2 }}>{activeStock.totalQuantity.toLocaleString()}</div>
+                                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{activeStock.positions} позиций на учёте</div>
                             </div>
                         </div>
-                        <div style={{ borderTop: '1px solid #bae6fd', paddingTop: '0.75rem', flex: 1, minHeight: 0 }}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#dc2626', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                <Clock size={14} /> Зависшие ({STALE_DAYS}+ дней)
+
+                        {stockView === 'flower' && (
+                            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: activeStock.staleList.length ? '#dc2626' : '#16a34a', display: 'flex', alignItems: 'center', gap: 5 }}><Clock size={14} /> Свежесть: {activeStock.staleList.length ? `${activeStock.staleList.length} поз. старше ${STALE_DAYS} дней` : 'всё в норме'}</div>
                             </div>
-                            {stockTurnover.staleList.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: isMobile ? 'none' : '100px', overflowY: 'auto' }}>
-                                    {stockTurnover.staleList.slice(0, 8).map((item, i) => (
-                                        <div key={`${item.type}-${item.id}`} style={{
-                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem',
-                                            background: '#fef2f2', padding: '0.35rem 0.5rem', borderRadius: '8px', border: '1px solid #fecaca'
-                                        }}>
-                                            <span style={{ fontWeight: 600 }}>{item.name}</span>
-                                            <span style={{ color: '#b91c1c', fontWeight: 700 }}>{item.quantity} шт. · {item.days} дн.</span>
+                        )}
+
+                        {stockView === 'good' && activeStock.categoryList.length > 0 && (
+                            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+                                {activeStock.categoryList.slice(0, 4).map(category => <span key={category.name} style={{ whiteSpace: 'nowrap', fontSize: '0.68rem', fontWeight: 750, padding: '4px 7px', borderRadius: 6, color: '#475569', background: '#f1f5f9' }}>{category.name}: {category.quantity}</span>)}
+                            </div>
+                        )}
+
+                        <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', flex: 1, minHeight: 0 }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#d97706', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={14} /> Требуют внимания</div>
+                            {[...activeStock.outOfStockList, ...activeStock.lowStockList].length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 112, overflowY: 'auto' }}>
+                                    {[...activeStock.outOfStockList, ...activeStock.lowStockList].slice(0, 6).map(item => (
+                                        <div key={`${item.type}-${item.id}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 8, alignItems: 'center', fontSize: '0.76rem', padding: '4px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155', fontWeight: 650 }}>{item.name}</span>
+                                            <span style={{ color: item.quantity > 0 ? '#d97706' : '#dc2626', fontWeight: 850 }}>{item.quantity || 0} / мин. {item.minimum}</span>
                                         </div>
                                     ))}
-                                    {stockTurnover.staleList.length > 8 && (
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>+ ещё {stockTurnover.staleList.length - 8}</div>
-                                    )}
                                 </div>
-                            ) : (
-                                <div style={{ fontSize: '0.8rem', color: '#16a34a', marginBottom: '1rem' }}>Зависших позиций нет</div>
-                            )}
-
-                            {/* Out of Stock Section */}
-                            <div style={{ marginTop: '1rem', borderTop: '1px solid #e0f2fe', paddingTop: '0.75rem' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                    <AlertOctagon size={14} /> Нет в наличии
-                                </div>
-                                {stockTurnover.outOfStockList.length > 0 ? (
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                                        {stockTurnover.outOfStockList.slice(0, 6).map((item, i) => (
-                                            <span key={i} style={{ fontSize: '0.75rem', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#475569', border: '1px solid #cbd5e1' }}>
-                                                {item.name}
-                                            </span>
-                                        ))}
-                                        {stockTurnover.outOfStockList.length > 6 && (
-                                            <span style={{ fontSize: '0.75rem', color: '#64748b', alignSelf: 'center' }}>+{stockTurnover.outOfStockList.length - 6}</span>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div style={{ fontSize: '0.8rem', color: '#16a34a' }}>Все товары в наличии</div>
-                                )}
-                            </div>
-
-                            {/* Low Stock Section */}
-                            <div style={{ marginTop: '1rem', borderTop: '1px solid #e0f2fe', paddingTop: '0.75rem' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#f59e0b', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                    <AlertTriangle size={14} /> Мало остатков (&lt;10)
-                                </div>
-                                {stockTurnover.lowStockList.length > 0 ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '100px', overflowY: 'auto' }}>
-                                        {stockTurnover.lowStockList.slice(0, 5).map((item, i) => (
-                                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', borderBottom: '1px dashed #e2e8f0', paddingBottom: '2px' }}>
-                                                <span style={{ color: '#334155' }}>{item.name}</span>
-                                                <span style={{ color: '#d97706', fontWeight: 600 }}>{item.quantity} шт.</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div style={{ fontSize: '0.8rem', color: '#16a34a' }}>Запасы в норме</div>
-                                )}
-                            </div>
+                            ) : <div style={{ fontSize: '0.8rem', color: '#16a34a' }}>{stockView === 'flower' ? 'Критичных остатков нет' : 'Все настроенные остатки в норме'}</div>}
+                            {stockView === 'good' && <div style={{ fontSize: '0.67rem', color: '#94a3b8', marginTop: 6 }}>Контроль включается после установки минимального остатка на складе.</div>}
                         </div>
                     </div>
                 </div>
