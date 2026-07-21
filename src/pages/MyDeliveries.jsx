@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useStore } from '../context/StoreContext'
+import { getSalePaymentSummary } from '../lib/salePayments'
 
 const STATUS_META = {
     not_delivered: { label: 'Ждет доставки', color: '#64748b', bg: '#f1f5f9' },
@@ -146,7 +147,7 @@ function sortByRoutePriority(a, b) {
 
 export default function MyDeliveries() {
     const { user } = useAuth()
-    const { sales, couriers, updateSale, refreshDeliveryData, claims } = useStore()
+    const { sales, salePayments, couriers, updateSale, refreshDeliveryData, claims } = useStore()
     const [filter, setFilter] = useState('today')
     const [savingId, setSavingId] = useState(null)
     const [refreshing, setRefreshing] = useState(false)
@@ -440,6 +441,7 @@ export default function MyDeliveries() {
 
                                 {daySales.map(sale => {
                                     const status = getStatus(sale.delivery_status)
+                                    const paymentSummary = getSalePaymentSummary(sale, salePayments || [])
                                     const phone = firstPhone(sale)
                                     const address = sale.delivery_address || ''
                                     const isSaving = savingId === sale.id
@@ -474,8 +476,11 @@ export default function MyDeliveries() {
                                                         <MapPin size={17} color="#ef4444" style={{ marginTop: 2, flexShrink: 0 }} />
                                                         <span>{address || 'Адрес не указан'}</span>
                                                     </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', color: '#334155', fontWeight: 800 }}>
-                                                        <WalletCards size={17} color="#f59e0b" /> {Number(sale.sale_price || 0).toLocaleString()} lei
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', color: paymentSummary.remaining > 0.009 ? '#b45309' : '#047857', fontWeight: 850 }}>
+                                                        <WalletCards size={17} />
+                                                        {paymentSummary.remaining > 0.009
+                                                            ? `Получить ${paymentSummary.remaining.toLocaleString('ru-RU')} lei`
+                                                            : 'Оплачено полностью'}
                                                     </div>
                                                 </div>
                                             </div>
@@ -533,11 +538,14 @@ export default function MyDeliveries() {
                 <div style={{ display: 'grid', gap: '0.9rem' }}>
                     {paginatedSales.map(sale => {
                         const status = getStatus(sale.delivery_status)
+                        const paymentSummary = getSalePaymentSummary(sale, salePayments || [])
                         const phone = firstPhone(sale)
                         const address = sale.delivery_address || ''
                         const isSaving = savingId === sale.id
                         const composition = getCompositionPreview(sale)
-                        const paymentText = sale.payment_status === 'paid' ? 'оплачен' : 'проверить оплату'
+                        const paymentText = paymentSummary.remaining > 0.009
+                            ? `${paymentSummary.paid > 0.009 ? 'аванс внесен · ' : ''}получить ${paymentSummary.remaining.toLocaleString('ru-RU')} lei`
+                            : 'оплачено полностью'
                         const isDone = !isActiveDelivery(sale)
                         return (
                             <article key={sale.id} style={{
@@ -568,8 +576,8 @@ export default function MyDeliveries() {
                                             <MapPin size={18} color="#ef4444" style={{ marginTop: 2, flexShrink: 0 }} />
                                             <span>{address || 'Адрес не указан'}</span>
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#334155', fontWeight: 800 }}>
-                                            <WalletCards size={18} color="#f59e0b" /> {Number(sale.sale_price || 0).toLocaleString()} lei · {paymentText}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: paymentSummary.remaining > 0.009 ? '#b45309' : '#047857', fontWeight: 850 }}>
+                                            <WalletCards size={18} /> {paymentText}
                                         </div>
                                     </div>
                                 </div>

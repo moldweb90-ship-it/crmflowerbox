@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import { calculateCashBalance } from '../lib/cashLedger'
 import { calculateSalePricing, toMoney } from '../lib/salePricing'
+import { getSalePaymentSummary } from '../lib/salePayments'
 
 const StoreContext = createContext()
 
@@ -39,6 +40,7 @@ export function StoreProvider({ children }) {
     const [expenses, setExpenses] = usePersistedState('store_expenses', [])
     const [cashMovements, setCashMovements] = usePersistedState('store_cash_movements', [])
     const [sales, setSales] = usePersistedState('store_sales', [])
+    const [salePayments, setSalePayments] = usePersistedState('store_sale_payments', [])
     const [couriers, setCouriers] = usePersistedState('store_couriers', [])
     const [florists, setFlorists] = usePersistedState('store_florists', [])
     const [employees, setEmployees] = usePersistedState('store_employees', [])
@@ -88,10 +90,11 @@ export function StoreProvider({ children }) {
                 supabase.from('claims').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('customers').select('*').order('created_at', { ascending: false }),
                 supabase.from('cash_movements').select('*, employees(name)').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
-                supabase.from('supply_payments').select('*, supplies(total_amount, supplier_id, suppliers(name))').order('paid_at', { ascending: false }).then(r => r).catch(() => ({ data: [] }))
+                supabase.from('supply_payments').select('*, supplies(total_amount, supplier_id, suppliers(name))').order('paid_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
+                supabase.from('sale_payments').select('*').order('paid_at', { ascending: false }).then(r => r).catch(() => ({ data: [] }))
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, claimRows, cust, cashRows, supplyPaymentRows] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, claimRows, cust, cashRows, supplyPaymentRows, salePaymentRows] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -128,6 +131,7 @@ export function StoreProvider({ children }) {
             if (cust.data) setCustomers(cust.data)
             if (cashRows?.data) setCashMovements(cashRows.data)
             if (supplyPaymentRows?.data) setSupplyPayments(supplyPaymentRows.data)
+            if (salePaymentRows?.data) setSalePayments(salePaymentRows.data)
         } catch (error) {
             console.error('Error fetching data:', error)
         } finally {
@@ -137,12 +141,14 @@ export function StoreProvider({ children }) {
 
     const refreshDeliveryData = async () => {
         try {
-            const [sal, emp] = await Promise.all([
+            const [sal, emp, paymentRows] = await Promise.all([
                 supabase.from('sales').select('*, products(name, sku, composition)').order('order_date', { ascending: false }),
-                supabase.from('employees').select('*').order('name', { ascending: true }).then(r => r).catch(() => ({ data: [] }))
+                supabase.from('employees').select('*').order('name', { ascending: true }).then(r => r).catch(() => ({ data: [] })),
+                supabase.from('sale_payments').select('*').order('paid_at', { ascending: false }).then(r => r).catch(() => ({ data: [] }))
             ])
             if (sal.data) setSales(sal.data)
             if (emp?.data) setEmployees(emp.data)
+            if (paymentRows?.data) setSalePayments(paymentRows.data)
             return { success: true }
         } catch (error) {
             console.error('Error refreshing delivery data:', error)
@@ -320,6 +326,7 @@ export function StoreProvider({ children }) {
             const { error: err2 } = await supabase.from('sales').delete().neq('id', '00000000-0000-0000-0000-000000000000')
             if (err2) throw err2
             setSales([])
+            setSalePayments([])
 
             // Delete all stock transactions (Waste history)
             const { error: err3 } = await supabase.from('stock_transactions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
@@ -433,7 +440,7 @@ export function StoreProvider({ children }) {
             return { success: false, error: new Error(`Сумма больше долга (${debt.toFixed(2)} lei)`) }
         }
         if (method === 'cash') {
-            const cashBalance = calculateCashBalance({ sales, claims, expenses, cashMovements, supplyPayments })
+            const cashBalance = calculateCashBalance({ sales, salePayments, claims, expenses, cashMovements, supplyPayments })
             if (amount > cashBalance + 0.009) {
                 return { success: false, error: new Error(`В кассе доступно только ${cashBalance.toFixed(2)} lei`) }
             }
@@ -1066,7 +1073,11 @@ export function StoreProvider({ children }) {
 
             // 2. Очистить все UUID поля от пустых строк
             const salePayload = { ...sale }
+            const initialPaymentAmount = Math.max(0, toMoney(salePayload.initial_payment_amount))
+            const initialPaymentPerformedBy = String(salePayload.initial_payment_performed_by || '').trim() || 'Сотрудник'
             delete salePayload.skip_stock_deduction
+            delete salePayload.initial_payment_amount
+            delete salePayload.initial_payment_performed_by
 
             const isDelivery = salePayload.delivery_method === 'delivery'
             const deliveryFee = isDelivery ? Number(salePayload.delivery_fee ?? salePayload.extra_delivery_cost ?? 0) : 0
@@ -1116,6 +1127,26 @@ export function StoreProvider({ children }) {
             if (data) {
                 const saleData = data[0]
                 setSales([saleData, ...sales])
+
+                const paymentAmount = salePayload.payment_status === 'paid'
+                    ? Number(saleData.sale_price || 0)
+                    : initialPaymentAmount
+                if (paymentAmount > 0) {
+                    const paymentResult = await addSalePayment({
+                        sale_id: saleData.id,
+                        amount: Math.min(paymentAmount, Number(saleData.sale_price || 0)),
+                        payment_type: paymentAmount + 0.009 < Number(saleData.sale_price || 0) ? 'advance' : 'balance',
+                        payment_method: salePayload.payment_method || 'cash',
+                        paid_at: saleData.order_date || new Date().toISOString(),
+                        comment: paymentAmount + 0.009 < Number(saleData.sale_price || 0) ? 'Аванс при создании заказа' : 'Оплата при создании заказа',
+                        performed_by: initialPaymentPerformedBy
+                    }, saleData)
+                    if (!paymentResult.success) {
+                        await supabase.from('sales').delete().eq('id', saleData.id)
+                        setSales(current => current.filter(item => item.id !== saleData.id))
+                        throw paymentResult.error || new Error('Не удалось записать оплату заказа')
+                    }
+                }
 
                 // 3. Обновить статистику клиента
                 if (customerId && salePayload.sale_price) {
@@ -1201,12 +1232,95 @@ export function StoreProvider({ children }) {
             }
         })
 
+        const salePaymentsForOrder = salePayments.filter(payment => String(payment.sale_id) === String(id))
+        if (payload.sale_price !== undefined && salePaymentsForOrder.length > 0) {
+            const existingSale = sales.find(sale => String(sale.id) === String(id)) || {}
+            payload.payment_status = getSalePaymentSummary({ ...existingSale, ...payload }, salePayments).status
+        }
+
         const { error } = await supabase.from('sales').update(payload).eq('id', id)
         if (!error) {
             setSales(sales.map(s => s.id === id ? { ...s, ...payload } : s))
             return { success: true }
         }
         return { success: false, error }
+    }
+
+    const getSalePayments = saleId => salePayments
+        .filter(payment => String(payment.sale_id) === String(saleId))
+        .sort((a, b) => new Date(b.paid_at || b.created_at) - new Date(a.paid_at || a.created_at))
+
+    const getSalePaymentSummaryForSale = sale => getSalePaymentSummary(sale, salePayments)
+
+    const addSalePayment = async (payment, saleRecord = null) => {
+        const sale = saleRecord || sales.find(item => String(item.id) === String(payment?.sale_id))
+        const amount = Number(String(payment?.amount ?? '').replace(',', '.'))
+        const paymentType = payment?.payment_type
+        const paymentMethod = payment?.payment_method
+        if (!sale || !Number.isFinite(amount) || amount <= 0) {
+            return { success: false, error: new Error('Укажите корректную сумму оплаты') }
+        }
+        if (!['advance', 'balance', 'refund'].includes(paymentType)) {
+            return { success: false, error: new Error('Выберите тип операции') }
+        }
+        if (!['cash', 'terminal', 'paynet', 'card_transfer', 'card_ru'].includes(paymentMethod)) {
+            return { success: false, error: new Error('Выберите способ оплаты') }
+        }
+
+        const summary = getSalePaymentSummary(sale, salePayments)
+        const available = paymentType === 'refund' ? summary.paid : summary.remaining
+        if (amount > available + 0.009) {
+            return { success: false, error: new Error(`${paymentType === 'refund' ? 'Можно вернуть' : 'Осталось оплатить'} только ${available.toFixed(2)} lei`) }
+        }
+
+        const payload = {
+            sale_id: sale.id,
+            amount,
+            payment_type: paymentType,
+            payment_method: paymentMethod,
+            paid_at: payment.paid_at || new Date().toISOString(),
+            comment: String(payment.comment || '').trim() || null,
+            performed_by: String(payment.performed_by || '').trim() || null
+        }
+        const { data, error } = await supabase.from('sale_payments').insert([payload]).select()
+        if (error || !data?.[0]) {
+            const serverMessage = error?.message || ''
+            const friendlyError = serverMessage.includes('exceeds remaining')
+                ? new Error('Сумма больше остатка по заказу. Обновите страницу и проверьте платежи.')
+                : serverMessage.includes('Refund exceeds')
+                    ? new Error('Сумма возврата больше фактически оплаченной суммы.')
+                    : error || new Error('Не удалось записать оплату')
+            return { success: false, error: friendlyError }
+        }
+
+        const created = data[0]
+        const nextPayments = [created, ...salePayments]
+        const nextSummary = getSalePaymentSummary(sale, nextPayments)
+        setSalePayments(nextPayments)
+        setSales(current => current.map(item => String(item.id) === String(sale.id)
+            ? { ...item, payment_status: nextSummary.status, payment_method: paymentMethod }
+            : item
+        ))
+        return { success: true, data: created }
+    }
+
+    const deleteSalePayment = async paymentId => {
+        const payment = salePayments.find(item => item.id === paymentId)
+        if (!payment) return { success: false, error: new Error('Операция не найдена') }
+
+        const { error } = await supabase.from('sale_payments').delete().eq('id', paymentId)
+        if (error) return { success: false, error }
+
+        const nextPayments = salePayments.filter(item => item.id !== paymentId)
+        const sale = sales.find(item => String(item.id) === String(payment.sale_id))
+        const nextSummary = getSalePaymentSummary(sale, nextPayments)
+        const latestPaymentMethod = nextSummary.payments[0]?.payment_method || sale?.payment_method || 'cash'
+        setSalePayments(nextPayments)
+        setSales(current => current.map(item => String(item.id) === String(payment.sale_id)
+            ? { ...item, payment_status: nextSummary.status, payment_method: latestPaymentMethod }
+            : item
+        ))
+        return { success: true }
     }
 
     const markCourierPaid = async (saleId) => {
@@ -1262,6 +1376,7 @@ export function StoreProvider({ children }) {
         const { error } = await supabase.from('sales').delete().eq('id', id)
         if (!error) {
             setSales(sales.filter(s => s.id !== id))
+            setSalePayments(current => current.filter(payment => String(payment.sale_id) !== String(id)))
             return { success: true }
         }
         return { success: false, error }
@@ -1547,7 +1662,7 @@ export function StoreProvider({ children }) {
     }
 
     const getCashBalance = () => {
-        return calculateCashBalance({ sales, claims, expenses, cashMovements, supplyPayments })
+        return calculateCashBalance({ sales, salePayments, claims, expenses, cashMovements, supplyPayments })
     }
 
     const uploadEmployeePhoto = async (file, employeeId = 'temp') => {
@@ -2724,7 +2839,7 @@ export function StoreProvider({ children }) {
             suppliers, supplies, supplyPayments, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, getSupplyPayments, getSupplyPaymentSummary, addSupplyPayment, deleteSupplyPayment, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,
             expenses, addExpense, updateExpense, deleteExpense,
             cashMovements, addCashMovement, refreshCashMovements,
-            sales, addSale, updateSale, deleteSale, markCourierPaid,
+            sales, salePayments, addSale, updateSale, deleteSale, markCourierPaid, getSalePayments, getSalePaymentSummary: getSalePaymentSummaryForSale, addSalePayment, deleteSalePayment,
             claims, addClaim, updateClaim, deleteClaim, getSaleClaims, getCustomerClaims,
             tasks, addTask, toggleTask, deleteTask, toggleTaskImportance, clearCompletedTasks,
             couriers: couriersList, addCourier,

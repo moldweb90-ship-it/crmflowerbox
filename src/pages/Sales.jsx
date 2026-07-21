@@ -2,13 +2,15 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
 import { useAuth } from '../context/AuthContext'
-import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye, Search, ArrowDownToLine, ArrowUpFromLine, History, ChevronDown, ChevronUp } from 'lucide-react'
+import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye, Search, ArrowDownToLine, ArrowUpFromLine, History, ChevronDown, ChevronUp, Globe2, Store } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import ClaimModal from '../components/claims/ClaimModal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import CompositionPicker from '../components/sales/CompositionPicker'
+import SalePaymentsPanel from '../components/sales/SalePaymentsPanel'
 import { CASH_IN_OPTIONS, CASH_MOVEMENT_TYPES, CASH_OUT_OPTIONS, buildCashActivities } from '../lib/cashLedger'
 import { calculateSalePricing, deriveStoredSalePricing } from '../lib/salePricing'
+import { getPaymentStatusMeta, getSalePaymentSummary } from '../lib/salePayments'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -21,6 +23,8 @@ const PAYMENT_METHODS = [
 
 const PAYMENT_STATUSES = [
     { id: 'paid', label: 'Оплачен', color: '#10b981', icon: '✓' },
+    { id: 'partial', label: 'Частично оплачен', color: '#f59e0b', icon: '◐' },
+    { id: 'overpaid', label: 'Переплата', color: '#7c3aed', icon: '+' },
     { id: 'unpaid', label: 'Не оплачен', color: '#ef4444', icon: '✗' },
     { id: 'pending', label: 'В ожидании', color: '#f59e0b', icon: '⏳' },
     { id: 'declined', label: 'Отклонён', color: '#6b7280', icon: '⊘' }
@@ -111,7 +115,7 @@ const formatSignedLei = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${Numbe
 export default function Sales() {
     const { user } = useAuth()
     const {
-        sales, addSale, updateSale, deleteSale,
+        sales, salePayments, addSale, updateSale, deleteSale,
         markCourierPaid,
         products, couriers, florists, employees, addCourier, addFlorist,
         expenses, addExpense, cashMovements, addCashMovement, supplyPayments,
@@ -198,6 +202,7 @@ export default function Sales() {
         order_date: toLocalDateTimeInput(),
         payment_method: 'cash',
         payment_status: 'paid',
+        initial_payment_amount: '',
         florist_id: '',
         needs_delivery: false,
         delivery_date: toLocalDateTimeInput(),
@@ -225,6 +230,7 @@ export default function Sales() {
     const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'today' })
     const [deliveryDateFilter, setDeliveryDateFilter] = useState(null) // For calendar click - filter by delivery date
     const [orderSearch, setOrderSearch] = useState('') // For order number search from global search
+    const [sourceFilter, setSourceFilter] = useState('all')
 
     // Form state
     const emptyForm = {
@@ -245,6 +251,7 @@ export default function Sales() {
         delivery_method: 'delivery',
         payment_method: 'cash',
         payment_status: 'unpaid',
+        initial_payment_amount: '',
         delivery_status: 'not_delivered',
         project: 'flowerbox',
         sales_channel: 'website',
@@ -340,6 +347,9 @@ export default function Sales() {
     // Filtered & grouped sales
     const filteredSales = useMemo(() => {
         return sales.filter(sale => {
+            if (sourceFilter === 'online' && sale.sales_channel === 'store') return false
+            if (sourceFilter === 'salon' && sale.sales_channel !== 'store') return false
+
             // If searching by order number (from global search)
             if (orderSearch) {
                 return sale.order_number?.toString().includes(orderSearch) || sale.id?.toString().includes(orderSearch)
@@ -356,7 +366,7 @@ export default function Sales() {
             if (dateFilter.end && saleDate > dateFilter.end) return false
             return true
         })
-    }, [sales, dateFilter, deliveryDateFilter, orderSearch])
+    }, [sales, dateFilter, deliveryDateFilter, orderSearch, sourceFilter])
 
     const orderSearchSale = useMemo(() => {
         if (!orderSearch) return null
@@ -389,13 +399,20 @@ export default function Sales() {
 
     const filteredClaims = useMemo(() => {
         return (claims || []).filter(claim => {
+            if (sourceFilter !== 'all') {
+                const sale = sales.find(item => item.id === claim.sale_id)
+                if (!sale) return false
+                if (sourceFilter === 'online' && sale.sales_channel === 'store') return false
+                if (sourceFilter === 'salon' && sale.sales_channel !== 'store') return false
+            }
+
             const claimDate = toLocalDateKey(claim.created_at)
             if (!dateFilter.start && !dateFilter.end) return true
             if (dateFilter.start && claimDate < dateFilter.start) return false
             if (dateFilter.end && claimDate > dateFilter.end) return false
             return true
         })
-    }, [claims, dateFilter])
+    }, [claims, dateFilter, sales, sourceFilter])
 
     const claimAdjustments = useMemo(() => {
         const bySale = {}
@@ -452,11 +469,12 @@ export default function Sales() {
 
     const cashActivities = useMemo(() => buildCashActivities({
         sales,
+        salePayments: salePayments || [],
         claims: claims || [],
         expenses,
         cashMovements: cashMovements || [],
         supplyPayments: supplyPayments || [],
-    }), [sales, claims, expenses, cashMovements, supplyPayments])
+    }), [sales, salePayments, claims, expenses, cashMovements, supplyPayments])
 
     const cashBalance = useMemo(() => (
         cashActivities.reduce((sum, activity) => sum + Number(activity.effect || 0), 0)
@@ -620,6 +638,7 @@ export default function Sales() {
                 order_date: toLocalDateTimeInput(sale.order_date) || toLocalDateTimeInput(),
                 payment_method: sale.payment_method || 'cash',
                 payment_status: sale.payment_status || 'paid',
+                initial_payment_amount: '',
                 florist_id: sale.florist_id || '',
                 needs_delivery: sale.delivery_method === 'delivery',
                 delivery_date: toLocalDateTimeInput(sale.delivery_date),
@@ -661,6 +680,7 @@ export default function Sales() {
                 pickup_discount_applied: sale.delivery_method === 'pickup' && storedPricing.pickupDiscount > 0,
                 payment_method: sale.payment_method || 'cash',
                 payment_status: sale.payment_status || 'unpaid',
+                initial_payment_amount: '',
                 delivery_status: sale.delivery_status || 'not_delivered',
                 project: sale.project || 'flowerbox',
                 sales_channel: sale.sales_channel || 'website',
@@ -811,6 +831,12 @@ export default function Sales() {
 
         setLoading(true)
         const salePrice = formData.sale_price === '' ? calculatedSalePrice : parseMoney(formData.sale_price)
+        const initialPaymentAmount = parseMoney(formData.initial_payment_amount)
+        if (modalMode === 'add' && formData.payment_status === 'partial' && (initialPaymentAmount <= 0 || initialPaymentAmount >= salePrice)) {
+            setLoading(false)
+            alert(`Аванс должен быть больше 0 и меньше суммы заказа (${salePrice.toLocaleString('ru-RU')} lei)`)
+            return
+        }
         const deliveryFee = formData.delivery_method === 'delivery' ? currentDeliveryFee : 0
         const courierPayout = formData.delivery_method === 'delivery' ? currentCourierPayout : 0
         const pickupDiscount = formData.delivery_method === 'pickup' ? currentPickupDiscount : 0
@@ -831,7 +857,18 @@ export default function Sales() {
             price_before_discount: parseMoney(formData.price_before_discount || salePrice + pickupDiscount),
             pickup_discount_applied: formData.delivery_method === 'pickup' && pickupDiscount > 0,
             extra_delivery_cost: formData.delivery_method === 'delivery' ? deliveryFee : null,
-            extra_delivery_reason: formData.delivery_method === 'delivery' ? (formData.extra_delivery_reason || null) : null
+            extra_delivery_reason: formData.delivery_method === 'delivery' ? (formData.extra_delivery_reason || null) : null,
+            initial_payment_performed_by: user?.email || user?.name || 'Сотрудник'
+        }
+
+        if (modalMode === 'add') {
+            payload.initial_payment_amount = formData.payment_status === 'partial'
+                ? parseMoney(formData.initial_payment_amount)
+                : undefined
+        } else {
+            delete payload.initial_payment_amount
+            delete payload.payment_status
+            delete payload.payment_method
         }
 
         // Clean up delivery data if pickup
@@ -1038,6 +1075,50 @@ export default function Sales() {
                             {p.label}
                         </button>
                     ))}
+                </div>
+
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                    gap: '0.25rem',
+                    padding: '0.25rem',
+                    background: '#f1f5f9',
+                    borderRadius: '10px',
+                    width: isMobile ? '100%' : 'auto'
+                }}>
+                    {[
+                        { id: 'all', label: 'Все', Icon: ShoppingCart },
+                        { id: 'online', label: 'Онлайн', Icon: Globe2 },
+                        { id: 'salon', label: 'Салон', Icon: Store }
+                    ].map(({ id, label, Icon }) => {
+                        const active = sourceFilter === id
+                        return (
+                            <button
+                                key={id}
+                                type="button"
+                                onClick={() => setSourceFilter(id)}
+                                title={`Показать: ${label.toLowerCase()}`}
+                                style={{
+                                    minHeight: '38px',
+                                    padding: '0.45rem 0.75rem',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    background: active ? 'white' : 'transparent',
+                                    color: active ? '#111827' : '#64748b',
+                                    boxShadow: active ? '0 1px 4px rgba(15, 23, 42, 0.12)' : 'none',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.4rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <Icon size={15} />
+                                {label}
+                            </button>
+                        )
+                    })}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -1388,7 +1469,8 @@ export default function Sales() {
                         {/* Day's Sales Cards */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             {daySales.map((sale, idx) => {
-                                const paymentStatus = getStatusData(PAYMENT_STATUSES, sale.payment_status)
+                                const paymentSummary = getSalePaymentSummary(sale, salePayments || [])
+                                const paymentStatus = getPaymentStatusMeta(paymentSummary.status)
                                 const saleClaims = getSaleClaims ? getSaleClaims(sale.id) : []
                                 const hasFullRefund = saleClaims.some(claim => claim.resolution === 'full_refund')
                                 const effectiveDeliveryStatus = hasFullRefund ? 'returned' : sale.delivery_status
@@ -1491,8 +1573,25 @@ export default function Sales() {
 
                                         {/* Middle: Product + Dates + Address */}
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.35rem' }}>
-                                                {sale.is_custom ? (sale.custom_name || 'Индивидуальный букет') : (sale.products?.name || 'Букет')}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                                                <div style={{ fontWeight: 600, fontSize: '1rem' }}>
+                                                    {sale.is_custom ? (sale.custom_name || 'Индивидуальный букет') : (sale.products?.name || 'Букет')}
+                                                </div>
+                                                <div style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.3rem',
+                                                    padding: '0.2rem 0.5rem',
+                                                    borderRadius: '6px',
+                                                    background: sale.sales_channel === 'store' ? '#f3e8ff' : '#e0f2fe',
+                                                    color: sale.sales_channel === 'store' ? '#7e22ce' : '#0369a1',
+                                                    fontWeight: 800,
+                                                    fontSize: '0.72rem',
+                                                    whiteSpace: 'nowrap'
+                                                }}>
+                                                    {sale.sales_channel === 'store' ? <Store size={12} /> : <Globe2 size={12} />}
+                                                    {sale.sales_channel === 'store' ? 'Салон' : 'Онлайн'}
+                                                </div>
                                             </div>
 
                                             {/* Dates row */}
@@ -1530,22 +1629,23 @@ export default function Sales() {
 
                                         {/* Statuses */}
                                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
-                                            <select
-                                                value={sale.payment_status}
-                                                onChange={(e) => handleStatusChange(sale.id, 'payment_status', e.target.value)}
+                                            <button
+                                                type="button"
+                                                onClick={() => { setViewingSale(sale); setIsViewOpen(true) }}
+                                                title="Открыть оплаты заказа"
                                                 style={{
                                                     padding: '0.25rem 0.5rem',
                                                     borderRadius: '8px',
                                                     border: `2px solid ${paymentStatus.color}`,
-                                                    background: `${paymentStatus.color}15`,
+                                                    background: paymentStatus.background,
                                                     color: paymentStatus.color,
                                                     fontWeight: 600,
                                                     fontSize: '0.75rem',
                                                     cursor: 'pointer'
                                                 }}
                                             >
-                                                {PAYMENT_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                                            </select>
+                                                {paymentStatus.label}{paymentSummary.remaining > 0.009 ? ` · осталось ${paymentSummary.remaining.toLocaleString('ru-RU')} lei` : ''}
+                                            </button>
                                             <select
                                                 value={effectiveDeliveryStatus}
                                                 onChange={(e) => handleStatusChange(sale.id, 'delivery_status', e.target.value)}
@@ -1950,17 +2050,23 @@ export default function Sales() {
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '1rem' }}>
                             <div>
                                 <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Способ</label>
-                                <select className="input" value={formData.payment_method} onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}>
+                                <select className="input" disabled={modalMode === 'edit'} value={formData.payment_method} onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}>
                                     {PAYMENT_METHODS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Статус</label>
-                                <select className="input" value={formData.payment_status} onChange={(e) => setFormData({ ...formData, payment_status: e.target.value })}
-                                    style={{ background: getStatusData(PAYMENT_STATUSES, formData.payment_status).color + '20', color: getStatusData(PAYMENT_STATUSES, formData.payment_status).color, fontWeight: 600 }}
-                                >
-                                    {PAYMENT_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                                </select>
+                                {modalMode === 'add' ? (
+                                    <select className="input" value={formData.payment_status} onChange={(e) => setFormData({ ...formData, payment_status: e.target.value, initial_payment_amount: e.target.value === 'partial' ? formData.initial_payment_amount : '' })}
+                                        style={{ background: getStatusData(PAYMENT_STATUSES, formData.payment_status).color + '20', color: getStatusData(PAYMENT_STATUSES, formData.payment_status).color, fontWeight: 600 }}
+                                    >
+                                        {PAYMENT_STATUSES.filter(status => ['paid', 'partial', 'unpaid'].includes(status.id)).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                    </select>
+                                ) : (
+                                    <div className="input" style={{ display: 'flex', alignItems: 'center', background: getStatusData(PAYMENT_STATUSES, formData.payment_status).color + '20', color: getStatusData(PAYMENT_STATUSES, formData.payment_status).color, fontWeight: 700 }}>
+                                        {getStatusData(PAYMENT_STATUSES, formData.payment_status).label}
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Проект</label>
@@ -1975,6 +2081,16 @@ export default function Sales() {
                                 </select>
                             </div>
                         </div>
+                        {modalMode === 'add' && formData.payment_status === 'partial' && (
+                            <div style={{ marginTop: '0.75rem', maxWidth: isMobile ? 'none' : 320 }}>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207', fontWeight: 700 }}>Сумма аванса, lei</label>
+                                <input className="input" inputMode="decimal" placeholder="Например: 2000" value={formData.initial_payment_amount} onChange={(e) => setFormData({ ...formData, initial_payment_amount: e.target.value })} />
+                                <small style={{ color: '#a16207' }}>Остаток система рассчитает автоматически.</small>
+                            </div>
+                        )}
+                        {modalMode === 'edit' && (
+                            <div style={{ marginTop: '0.65rem', color: '#92400e', fontSize: '0.78rem', fontWeight: 700 }}>Доплаты и возвраты записываются в карточке заказа, чтобы сохранялась история операций.</div>
+                        )}
                     </div>
 
                     {/* Section 5: Delivery */}
@@ -2489,34 +2605,20 @@ export default function Sales() {
                             </div>
                         </div>
 
-                        {/* Payment Info */}
-                        <div style={{ background: '#fefce8', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
-                            <h4 style={{ fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <CreditCard size={18} /> Оплата
-                            </h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '0.75rem' }}>
-                                <div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Способ</div>
-                                    <div style={{ fontWeight: 600 }}>
-                                        {PAYMENT_METHODS.find(m => m.id === viewingSale.payment_method)?.label || viewingSale.payment_method}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Статус</div>
-                                    <div style={{ fontWeight: 600, color: getStatusData(PAYMENT_STATUSES, viewingSale.payment_status).color }}>
-                                        {getStatusData(PAYMENT_STATUSES, viewingSale.payment_status).label}
-                                    </div>
-                                </div>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <SalePaymentsPanel sale={sales.find(sale => sale.id === viewingSale.id) || viewingSale} isMobile={isMobile} />
+                        </div>
+
+                        <div style={{ background: '#f8fafc', padding: '0.85rem 1rem', borderRadius: '12px', marginBottom: '1.5rem', border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: '0.75rem' }}>
                                 <div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Проект</div>
-                                    <div style={{ fontWeight: 600 }}>
-                                        {getSaleProject(viewingSale).label}
-                                    </div>
+                                    <div style={{ fontWeight: 700 }}>{getSaleProject(viewingSale).label}</div>
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Канал</div>
-                                    <div style={{ fontWeight: 600 }}>
-                                        {SALES_CHANNELS.find(c => c.id === viewingSale.sales_channel)?.label || viewingSale.sales_channel}
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Канал обращения</div>
+                                    <div style={{ fontWeight: 700 }}>
+                                        {SALES_CHANNELS.find(c => c.id === viewingSale.sales_channel)?.label || viewingSale.sales_channel || 'Не указан'}
                                     </div>
                                 </div>
                             </div>
@@ -2528,12 +2630,17 @@ export default function Sales() {
                                 className="btn btn-primary"
                                 onClick={() => {
                                     const sale = viewingSale
+                                    const paymentSummary = getSalePaymentSummary(sale, salePayments || [])
+                                    const paymentStatusInfo = getPaymentStatusMeta(paymentSummary.status)
                                     const orderDate = sale.order_date ? new Date(sale.order_date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
                                     const deliveryDate = sale.delivery_date ? new Date(sale.delivery_date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
                                     const courierName = couriers.find(c => c.id === sale.courier_id)?.name || '—'
                                     const floristName = florists.find(f => f.id === sale.florist_id)?.name || '—'
-                                    const paymentMethod = PAYMENT_METHODS.find(m => m.id === sale.payment_method)?.label || sale.payment_method
-                                    const paymentStatus = getStatusData(PAYMENT_STATUSES, sale.payment_status).label
+                                    const paymentMethods = [...new Set(paymentSummary.payments.map(payment => (
+                                        PAYMENT_METHODS.find(method => method.id === payment.payment_method)?.label || payment.payment_method
+                                    )))]
+                                    const paymentMethod = paymentMethods.join(', ') || PAYMENT_METHODS.find(m => m.id === sale.payment_method)?.label || sale.payment_method
+                                    const paymentStatus = paymentStatusInfo.label
                                     const deliveryStatus = getStatusData(DELIVERY_STATUSES, sale.delivery_status).label
                                     const salesChannel = SALES_CHANNELS.find(c => c.id === sale.sales_channel)?.label || sale.sales_channel
                                     const salesProject = getSaleProject(sale).label
@@ -2708,13 +2815,25 @@ export default function Sales() {
         <div class="section-title">💳 Оплата</div>
         <div class="grid-3">
             <div class="field">
+                <div class="field-label">Сумма заказа</div>
+                <div class="field-value">${paymentSummary.total.toLocaleString('ru-RU')} lei</div>
+            </div>
+            <div class="field">
+                <div class="field-label">Оплачено</div>
+                <div class="field-value" style="color: #059669;">${paymentSummary.paid.toLocaleString('ru-RU')} lei</div>
+            </div>
+            <div class="field">
+                <div class="field-label">Осталось</div>
+                <div class="field-value" style="color: #d97706;">${paymentSummary.remaining.toLocaleString('ru-RU')} lei</div>
+            </div>
+            <div class="field">
                 <div class="field-label">Способ</div>
                 <div class="field-value">${paymentMethod}</div>
             </div>
             <div class="field">
                 <div class="field-label">Статус</div>
                 <div class="field-value">
-                    <span class="status-badge ${sale.payment_status === 'paid' ? 'status-paid' : 'status-unpaid'}">${paymentStatus}</span>
+                    <span class="status-badge ${paymentSummary.status === 'paid' ? 'status-paid' : paymentSummary.status === 'unpaid' ? 'status-unpaid' : 'status-pending'}">${paymentStatus}</span>
                 </div>
             </div>
             <div class="field">
@@ -3008,13 +3127,15 @@ export default function Sales() {
                                         <button
                                             key={pm.id}
                                             type="button"
+                                            disabled={Boolean(editingSalonSaleId)}
                                             onClick={() => setSalonFormData({ ...salonFormData, payment_method: pm.id })}
                                             style={{
                                                 padding: '0.5rem 0.75rem',
                                                 borderRadius: '8px',
                                                 border: salonFormData.payment_method === pm.id ? '2px solid #7c3aed' : '1px solid #d1d5db',
                                                 background: salonFormData.payment_method === pm.id ? '#faf5ff' : 'white',
-                                                cursor: 'pointer',
+                                                cursor: editingSalonSaleId ? 'not-allowed' : 'pointer',
+                                                opacity: editingSalonSaleId ? 0.65 : 1,
                                                 fontWeight: salonFormData.payment_method === pm.id ? 600 : 400,
                                                 fontSize: '0.85rem'
                                             }}
@@ -3027,25 +3148,35 @@ export default function Sales() {
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                     {[
                                         { id: 'paid', label: '✓ Оплачен', color: '#10b981' },
+                                        { id: 'partial', label: '◐ Аванс', color: '#f59e0b' },
                                         { id: 'unpaid', label: '✗ Не оплачен', color: '#ef4444' }
                                     ].map(ps => (
                                         <button
                                             key={ps.id}
                                             type="button"
-                                            onClick={() => setSalonFormData({ ...salonFormData, payment_status: ps.id })}
+                                            disabled={Boolean(editingSalonSaleId)}
+                                            onClick={() => setSalonFormData({ ...salonFormData, payment_status: ps.id, initial_payment_amount: ps.id === 'partial' ? salonFormData.initial_payment_amount : '' })}
                                             style={{
                                                 padding: '0.5rem 0.75rem',
                                                 borderRadius: '8px',
                                                 border: salonFormData.payment_status === ps.id ? `2px solid ${ps.color}` : '1px solid #d1d5db',
                                                 background: salonFormData.payment_status === ps.id ? `${ps.color}15` : 'white',
                                                 color: salonFormData.payment_status === ps.id ? ps.color : '#374151',
-                                                cursor: 'pointer',
+                                                cursor: editingSalonSaleId ? 'not-allowed' : 'pointer',
+                                                opacity: editingSalonSaleId ? 0.65 : 1,
                                                 fontWeight: salonFormData.payment_status === ps.id ? 600 : 400,
                                                 fontSize: '0.85rem'
                                             }}
                                         >{ps.label}</button>
                                     ))}
                                 </div>
+                                {salonFormData.payment_status === 'partial' && !editingSalonSaleId && (
+                                    <div style={{ marginTop: '0.6rem' }}>
+                                        <label style={{ fontSize: '0.78rem', marginBottom: '0.25rem', display: 'block', fontWeight: 700, color: '#92400e' }}>Сумма аванса, lei</label>
+                                        <input className="input" inputMode="decimal" placeholder="Например: 2000" value={salonFormData.initial_payment_amount} onChange={(e) => setSalonFormData({ ...salonFormData, initial_payment_amount: e.target.value })} />
+                                    </div>
+                                )}
+                                {editingSalonSaleId && <div style={{ marginTop: '0.45rem', color: '#92400e', fontSize: '0.72rem', fontWeight: 700 }}>Оплата изменяется через карточку заказа.</div>}
                             </div>
                         </div>
                     </div>
@@ -3247,6 +3378,10 @@ export default function Sales() {
                                         pickupDiscount
                                     })
                                     const salePrice = salonPricing.salePrice
+                                    const initialPaymentAmount = parseMoney(salonFormData.initial_payment_amount)
+                                    if (!editingSalonSaleId && salonFormData.payment_status === 'partial' && (initialPaymentAmount <= 0 || initialPaymentAmount >= salePrice)) {
+                                        throw new Error(`Аванс должен быть больше 0 и меньше суммы заказа (${salePrice.toLocaleString('ru-RU')} lei)`)
+                                    }
 
                                     // Create/Update sale record
                                     const saleData = {
@@ -3256,6 +3391,8 @@ export default function Sales() {
                                         order_date: localDateTimeInputToIso(salonFormData.order_date),
                                         payment_method: salonFormData.payment_method,
                                         payment_status: salonFormData.payment_status,
+                                        initial_payment_amount: salonFormData.payment_status === 'partial' ? initialPaymentAmount : undefined,
+                                        initial_payment_performed_by: user?.email || user?.name || 'Сотрудник',
                                         florist_id: salonFormData.florist_id || null,
                                         cost_price: costPrice,
                                         sale_price: salePrice,
@@ -3279,6 +3416,10 @@ export default function Sales() {
 
                                     if (editingSalonSaleId) {
                                         // Update existing sale
+                                        delete saleData.initial_payment_amount
+                                        delete saleData.initial_payment_performed_by
+                                        delete saleData.payment_status
+                                        delete saleData.payment_method
                                         await updateSale(editingSalonSaleId, saleData)
                                     } else {
                                         // Create new sale

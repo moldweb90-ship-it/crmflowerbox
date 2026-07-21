@@ -43,11 +43,12 @@ export const getOwnerMovementEffect = (movement) => {
     return (config?.ownerDirection || 0) * Number(movement?.amount || 0)
 }
 
-export const buildCashActivities = ({ sales = [], claims = [], expenses = [], cashMovements = [], supplyPayments = [] }) => {
+export const buildCashActivities = ({ sales = [], salePayments = [], claims = [], expenses = [], cashMovements = [], supplyPayments = [] }) => {
     const activities = []
+    const salesWithPayments = new Set(salePayments.map(payment => String(payment.sale_id)))
 
     sales
-        .filter(sale => sale.payment_method === 'cash' && (sale.payment_status === 'paid' || sale.status === 'completed'))
+        .filter(sale => !salesWithPayments.has(String(sale.id)) && sale.payment_method === 'cash' && (sale.payment_status === 'paid' || sale.status === 'completed'))
         .forEach(sale => activities.push({
             id: `sale-${sale.id}`,
             kind: 'sale',
@@ -61,8 +62,37 @@ export const buildCashActivities = ({ sales = [], claims = [], expenses = [], ca
             tone: '#059669',
         }))
 
+    salePayments
+        .filter(payment => payment.payment_method === 'cash')
+        .forEach(payment => {
+            const sale = sales.find(item => String(item.id) === String(payment.sale_id))
+            const isRefund = payment.payment_type === 'refund'
+            const amount = Number(payment.amount || 0)
+            activities.push({
+                id: `sale-payment-${payment.id}`,
+                kind: isRefund ? 'refund' : 'sale',
+                title: isRefund
+                    ? 'Возврат клиенту наличными'
+                    : payment.payment_type === 'advance'
+                        ? 'Наличный аванс по заказу'
+                        : 'Наличная оплата заказа',
+                amount,
+                effect: isRefund ? -amount : amount,
+                ownerEffect: 0,
+                affectsProfit: !isRefund,
+                occurred_at: payment.paid_at || payment.created_at,
+                comment: [sale?.order_number ? `#${sale.order_number}` : sale?.custom_name || sale?.products?.name, payment.comment].filter(Boolean).join(' · '),
+                performed_by: payment.performed_by || '',
+                tone: isRefund ? '#dc2626' : '#059669',
+            })
+        })
+
     claims.forEach(claim => {
-        const sale = sales.find(item => item.id === claim.sale_id)
+        const sale = sales.find(item => String(item.id) === String(claim.sale_id))
+        const hasRecordedRefund = salePayments.some(payment =>
+            String(payment.sale_id) === String(claim.sale_id) && payment.payment_type === 'refund'
+        )
+        if (hasRecordedRefund) return
         if (sale?.payment_method !== 'cash' || !Number(claim.refund_amount || 0)) return
         activities.push({
             id: `claim-${claim.id}`,

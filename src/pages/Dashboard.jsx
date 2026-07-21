@@ -6,6 +6,7 @@ import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, Sho
 import Modal from '../components/ui/Modal'
 import TasksWidget from '../components/TasksWidget'
 import { getDailyFlowerNote } from '../lib/dailyFlowerNotes'
+import { getSalePaymentSummary } from '../lib/salePayments'
 
 const STALE_DAYS = 7
 const SHIFT_START_H = 9
@@ -104,7 +105,7 @@ function getRemainingBatchesByFIFO(itemType, itemId, stockTransactions, supplies
 }
 
 export default function Dashboard() {
-    const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, customers, getItemName,
+    const { products, flowers, goods, categories, stock, stockTransactions, supplies, sales, salePayments, customers, getItemName,
         employees, shifts, startShift, endShift, getActiveShifts, getCashBalance, claims, calculateCostPrice } = useStore()
     const navigate = useNavigate()
     const [stockView, setStockView] = useState('flower')
@@ -295,33 +296,40 @@ export default function Dashboard() {
         let cashRefunds = 0
         let cardRefunds = 0
 
-        todaySales.forEach(s => {
-            const price = Number(s.sale_price) || 0
-            const pMethod = (s.payment_method || '').toLowerCase()
-            const pStatus = (s.payment_status || '').toLowerCase()
-            const status = (s.status || '').toLowerCase()
+        const payments = salePayments || []
+        const salesWithPaymentRows = new Set(payments.map(payment => String(payment.sale_id)))
 
-            // Logic:
-            // "Debt/In Transit" -> Payment is Cash BUT not yet paid (e.g. courier has it or not delivered yet)
-            // Or explicitly 'unpaid'
-            if (pMethod.includes('card') || pMethod.includes('term')) {
-                card += price
-            } else if (pMethod.includes('cash') || pMethod.includes('nal')) {
-                // Cash logic
-                if (status === 'completed' || pStatus === 'paid') {
-                    cash += price
-                } else {
-                    debt += price
-                }
-            } else {
-                // Fallback (transfers etc) -> count as Card/Bank for now or separate?
-                card += price
-            }
+        payments
+            .filter(payment => isSameLocalDay(payment.paid_at || payment.created_at, todayStr))
+            .forEach(payment => {
+                const effect = payment.payment_type === 'refund' ? -Number(payment.amount || 0) : Number(payment.amount || 0)
+                if (payment.payment_method === 'cash') cash += effect
+                else card += effect
+            })
+
+        todaySales.forEach(sale => {
+            const summary = getSalePaymentSummary(sale, payments)
+            debt += salesWithPaymentRows.has(String(sale.id))
+                ? summary.remaining
+                : ((sale.payment_status || '').toLowerCase() === 'paid' ? 0 : Number(sale.sale_price || 0))
+
+            // Legacy fallback for orders created before the payment journal existed.
+            if (salesWithPaymentRows.has(String(sale.id))) return
+            const price = Number(sale.sale_price) || 0
+            const method = (sale.payment_method || '').toLowerCase()
+            const status = (sale.payment_status || '').toLowerCase()
+            if (status !== 'paid' && (sale.status || '').toLowerCase() !== 'completed') return
+            if (method.includes('cash') || method.includes('nal')) cash += price
+            else card += price
         })
 
         todayClaims.forEach(claim => {
             const refund = Number(claim.refund_amount) || 0
             if (!refund) return
+            const hasRecordedRefund = payments.some(payment =>
+                String(payment.sale_id) === String(claim.sale_id) && payment.payment_type === 'refund'
+            )
+            if (hasRecordedRefund) return
             const sale = salesById.get(claim.sale_id)
             const pMethod = (sale?.payment_method || '').toLowerCase()
             if (pMethod.includes('cash') || pMethod.includes('nal')) {
@@ -336,7 +344,7 @@ export default function Dashboard() {
 
         const marginPct = revenueToday > 0 ? (profitToday / revenueToday) * 100 : 0
         return { revenueToday, grossRevenueToday, revenueYesterday, profitToday, grossProfitToday, refundsToday, claimLossToday, avgCheck, cash, card, debt, marginPct }
-    }, [sales, claims])
+    }, [sales, salePayments, claims])
 
     // 2. Recent Orders & Problem Orders
     const { recentOrders, problemOrders } = React.useMemo(() => {

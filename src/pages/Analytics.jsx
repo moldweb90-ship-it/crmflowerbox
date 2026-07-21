@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 
 export default function Analytics() {
-    const { sales, expenses, cashMovements, supplyPayments, supplies, stockTransactions, flowers, goods, claims } = useStore()
+    const { sales, salePayments, expenses, cashMovements, supplyPayments, supplies, stockTransactions, flowers, goods, claims } = useStore()
 
     // Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -146,11 +146,12 @@ export default function Analytics() {
 
     const cashActivities = useMemo(() => buildCashActivities({
         sales,
+        salePayments: salePayments || [],
         expenses,
         claims: claims || [],
         cashMovements: cashMovements || [],
         supplyPayments: supplyPayments || [],
-    }), [sales, expenses, claims, cashMovements, supplyPayments])
+    }), [sales, salePayments, expenses, claims, cashMovements, supplyPayments])
 
     const cashStats = useMemo(() => {
         const now = new Date()
