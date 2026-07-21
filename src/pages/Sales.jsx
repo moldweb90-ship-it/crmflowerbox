@@ -2044,29 +2044,15 @@ export default function Sales() {
                         </div>
                     </div>
 
-                    {/* Section 4: Payment (One Row) */}
+                    {/* Section 4: Payment */}
                     <div style={{ background: '#fefce8', padding: '1rem', borderRadius: '16px', border: '1px solid #fde047' }}>
                         <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, color: '#854d0e' }}>💳 Оплата</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '1rem' }}>
                             <div>
                                 <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Способ</label>
                                 <select className="input" disabled={modalMode === 'edit'} value={formData.payment_method} onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}>
                                     {PAYMENT_METHODS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
                                 </select>
-                            </div>
-                            <div>
-                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Статус</label>
-                                {modalMode === 'add' ? (
-                                    <select className="input" value={formData.payment_status} onChange={(e) => setFormData({ ...formData, payment_status: e.target.value, initial_payment_amount: e.target.value === 'partial' ? formData.initial_payment_amount : '' })}
-                                        style={{ background: getStatusData(PAYMENT_STATUSES, formData.payment_status).color + '20', color: getStatusData(PAYMENT_STATUSES, formData.payment_status).color, fontWeight: 600 }}
-                                    >
-                                        {PAYMENT_STATUSES.filter(status => ['paid', 'partial', 'unpaid'].includes(status.id)).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                                    </select>
-                                ) : (
-                                    <div className="input" style={{ display: 'flex', alignItems: 'center', background: getStatusData(PAYMENT_STATUSES, formData.payment_status).color + '20', color: getStatusData(PAYMENT_STATUSES, formData.payment_status).color, fontWeight: 700 }}>
-                                        {getStatusData(PAYMENT_STATUSES, formData.payment_status).label}
-                                    </div>
-                                )}
                             </div>
                             <div>
                                 <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Проект</label>
@@ -2081,11 +2067,70 @@ export default function Sales() {
                                 </select>
                             </div>
                         </div>
-                        {modalMode === 'add' && formData.payment_status === 'partial' && (
-                            <div style={{ marginTop: '0.75rem', maxWidth: isMobile ? 'none' : 320 }}>
-                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207', fontWeight: 700 }}>Сумма аванса, lei</label>
-                                <input className="input" inputMode="decimal" placeholder="Например: 2000" value={formData.initial_payment_amount} onChange={(e) => setFormData({ ...formData, initial_payment_amount: e.target.value })} />
-                                <small style={{ color: '#a16207' }}>Остаток система рассчитает автоматически.</small>
+                        {modalMode === 'add' ? (
+                            <div style={{ marginTop: '1rem' }}>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.4rem', display: 'block', color: '#a16207', fontWeight: 700 }}>Статус оплаты</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '0.55rem' }}>
+                                    {[
+                                        { id: 'paid', label: 'Оплачен', icon: '✓', color: '#10b981' },
+                                        { id: 'partial', label: 'Аванс', icon: '◐', color: '#f59e0b' },
+                                        { id: 'unpaid', label: 'Не оплачен', icon: '×', color: '#6b7280' }
+                                    ].map(status => {
+                                        const isSelected = formData.payment_status === status.id;
+                                        return (
+                                            <button
+                                                key={status.id}
+                                                type="button"
+                                                onClick={() => setFormData({
+                                                    ...formData,
+                                                    payment_status: status.id,
+                                                    initial_payment_amount: status.id === 'partial' ? formData.initial_payment_amount : ''
+                                                })}
+                                                style={{
+                                                    minHeight: 48,
+                                                    padding: '0.65rem 0.75rem',
+                                                    borderRadius: 10,
+                                                    border: `2px solid ${isSelected ? status.color : '#e5e7eb'}`,
+                                                    background: isSelected ? `${status.color}18` : '#fff',
+                                                    color: isSelected ? status.color : '#475569',
+                                                    fontWeight: 800,
+                                                    fontSize: '0.9rem',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                <span style={{ marginRight: '0.4rem' }}>{status.icon}</span>{status.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {formData.payment_status === 'partial' && (
+                                    <div style={{ marginTop: '0.75rem', padding: '0.85rem', borderRadius: 10, border: '1px solid #fbbf24', background: '#fff7d6' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(0, 1.3fr)', gap: '0.75rem', alignItems: 'end' }}>
+                                            <div>
+                                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#92400e', fontWeight: 800 }}>Сумма аванса, lei</label>
+                                                <input className="input" inputMode="decimal" placeholder="Например: 2000" value={formData.initial_payment_amount} onChange={(e) => setFormData({ ...formData, initial_payment_amount: e.target.value })} />
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                                <div style={{ padding: '0.55rem 0.65rem', borderRadius: 8, background: '#fff', border: '1px solid #fde68a' }}>
+                                                    <div style={{ color: '#a16207', fontSize: '0.72rem', fontWeight: 700 }}>Стоимость заказа</div>
+                                                    <div style={{ color: '#1f2937', fontWeight: 800 }}>{parseMoney(formData.sale_price).toLocaleString('ru-RU')} lei</div>
+                                                </div>
+                                                <div style={{ padding: '0.55rem 0.65rem', borderRadius: 8, background: '#fff', border: '1px solid #fde68a' }}>
+                                                    <div style={{ color: '#a16207', fontSize: '0.72rem', fontWeight: 700 }}>Останется доплатить</div>
+                                                    <div style={{ color: '#b45309', fontWeight: 800 }}>{Math.max(0, parseMoney(formData.sale_price) - parseMoney(formData.initial_payment_amount)).toLocaleString('ru-RU')} lei</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div style={{ marginTop: '1rem' }}>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#a16207' }}>Статус оплаты</label>
+                                <div className="input" style={{ display: 'flex', alignItems: 'center', background: getStatusData(PAYMENT_STATUSES, formData.payment_status).color + '20', color: getStatusData(PAYMENT_STATUSES, formData.payment_status).color, fontWeight: 700 }}>
+                                    {getStatusData(PAYMENT_STATUSES, formData.payment_status).label}
+                                </div>
                             </div>
                         )}
                         {modalMode === 'edit' && (
