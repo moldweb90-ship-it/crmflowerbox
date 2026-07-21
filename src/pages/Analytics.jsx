@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 
 export default function Analytics() {
-    const { sales, expenses, cashMovements, stockTransactions, flowers, goods, claims } = useStore()
+    const { sales, expenses, cashMovements, supplyPayments, supplies, stockTransactions, flowers, goods, claims } = useStore()
 
     // Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -149,7 +149,8 @@ export default function Analytics() {
         expenses,
         claims: claims || [],
         cashMovements: cashMovements || [],
-    }), [sales, expenses, claims, cashMovements])
+        supplyPayments: supplyPayments || [],
+    }), [sales, expenses, claims, cashMovements, supplyPayments])
 
     const cashStats = useMemo(() => {
         const now = new Date()
@@ -199,6 +200,10 @@ export default function Analytics() {
             cashSales: sumKinds(['sale']),
             refunds: sumKinds(['refund']),
             expenses: sumKinds(['expense']),
+            supplierCashPayments: sumKinds(['supplier_payment_cash']),
+            supplierCompanyPayments: sumKinds(['supplier_payment_company_account']),
+            supplierOwnerPayments: sumKinds(['supplier_payment_owner_funds']),
+            supplierPaymentsTotal: sumKinds(['supplier_payment_cash', 'supplier_payment_company_account', 'supplier_payment_owner_funds']),
             ownerContributions: sumKinds(['owner_contribution']),
             ownerWithdrawals: sumKinds(['owner_withdrawal']),
             transfersIn: sumKinds(['vault_to_cash', 'accountable_return']),
@@ -206,8 +211,12 @@ export default function Analytics() {
             shortages: sumKinds(['cash_shortage']),
             overages: sumKinds(['cash_overage']),
             ownerNet: inPeriod.reduce((sum, activity) => sum + Number(activity.ownerEffect || 0), 0),
+            supplierDebt: Math.max(0,
+                (supplies || []).reduce((sum, supply) => sum + Number(supply.total_amount || 0), 0)
+                - (supplyPayments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+            ),
         }
-    }, [cashActivities, dateFilter, customRange])
+    }, [cashActivities, dateFilter, customRange, supplies, supplyPayments])
 
 
     // ABC Analysis
@@ -486,6 +495,7 @@ function CashFlowView({ stats, isMobile, formatMoney }) {
         { label: 'Из сейфа и возврат подотчёта', value: stats.transfersIn, sign: 1 },
         { label: 'Излишки при сверке', value: stats.overages, sign: 1 },
         { label: 'Расходы бизнеса из кассы', value: stats.expenses, sign: -1 },
+        { label: 'Оплаты поставщикам из кассы', value: stats.supplierCashPayments, sign: -1 },
         { label: 'Изъято владельцем', value: stats.ownerWithdrawals, sign: -1 },
         { label: 'В сейф и сотрудникам под отчёт', value: stats.transfersOut, sign: -1 },
         { label: 'Возвраты клиентам', value: stats.refunds, sign: -1 },
@@ -513,6 +523,20 @@ function CashFlowView({ stats, isMobile, formatMoney }) {
                 })}
             </div>
 
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+                {[
+                    { label: 'Поставщикам из кассы', value: stats.supplierCashPayments, color: '#dc2626' },
+                    { label: 'Со счета фирмы', value: stats.supplierCompanyPayments, color: '#2563eb' },
+                    { label: 'Личными деньгами', value: stats.supplierOwnerPayments, color: '#7c3aed' },
+                    { label: 'Долг поставщикам', value: stats.supplierDebt, color: '#d97706' },
+                ].map(item => (
+                    <div key={item.label} style={{ padding: '0.85rem 1rem', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, minWidth: 0 }}>
+                        <div style={{ color: '#64748b', fontSize: '0.74rem', fontWeight: 800, marginBottom: 5 }}>{item.label}</div>
+                        <div style={{ color: item.color, fontWeight: 900, fontSize: isMobile ? '1rem' : '1.15rem', overflowWrap: 'anywhere' }}>{formatMoney(item.value)}</div>
+                    </div>
+                ))}
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.45fr) minmax(280px, 0.75fr)', gap: '1rem', marginBottom: '1.25rem', alignItems: 'start' }}>
                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: isMobile ? '1rem' : '1.25rem' }}>
                     <h3 style={{ fontSize: '1.05rem', fontWeight: 900, margin: '0 0 1rem' }}>Расчёт остатка кассы</h3>
@@ -533,6 +557,7 @@ function CashFlowView({ stats, isMobile, formatMoney }) {
                 <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: isMobile ? '1rem' : '1.25rem' }}>
                     <h3 style={{ fontSize: '1.05rem', fontWeight: 900, margin: '0 0 0.8rem' }}>Расчёты с владельцем</h3>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.55rem 0', color: '#2563eb' }}><span>Внесено</span><strong>+ {formatMoney(stats.ownerContributions)}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.55rem 0', color: '#7c3aed' }}><span>Оплачено поставщикам напрямую</span><strong>+ {formatMoney(stats.supplierOwnerPayments)}</strong></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.55rem 0', color: '#7c3aed' }}><span>Забрано</span><strong>− {formatMoney(stats.ownerWithdrawals)}</strong></div>
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb', fontWeight: 900, color: stats.ownerNet >= 0 ? '#2563eb' : '#7c3aed' }}>
                         {stats.ownerNet > 0 && `Владелец вложил чистыми ${formatMoney(stats.ownerNet)}`}
@@ -555,7 +580,10 @@ function CashFlowView({ stats, isMobile, formatMoney }) {
                                 <span style={{ color: '#64748b' }}>{new Date(activity.occurred_at).toLocaleString('ru-RU')}</span>
                                 <span style={{ fontWeight: 800, color: '#1f2937' }}>{activity.title}</span>
                                 <span style={{ color: '#64748b' }}>{[activity.employee_name, activity.comment, activity.performed_by ? `записал ${activity.performed_by}` : ''].filter(Boolean).join(' · ') || '—'}</span>
-                                <span style={{ textAlign: 'right', fontWeight: 900, color: activity.effect >= 0 ? '#059669' : '#dc2626' }}>{activity.effect >= 0 ? '+' : '−'}{formatMoney(Math.abs(activity.effect))}</span>
+                                {(() => {
+                                    const shownEffect = Number(activity.displayEffect ?? activity.effect)
+                                    return <span style={{ textAlign: 'right', fontWeight: 900, color: shownEffect >= 0 ? '#059669' : '#dc2626' }}>{shownEffect >= 0 ? '+' : '−'}{formatMoney(Math.abs(shownEffect))}</span>
+                                })()}
                             </div>
                         ))}
                         {stats.activities.length === 0 && <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8' }}>За выбранный период движений денег нет</div>}

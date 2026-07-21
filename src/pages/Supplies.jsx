@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
-import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp, Flower, Layers3, Search, ImageIcon } from 'lucide-react'
+import { Truck, Plus, Calendar, Package, DollarSign, X, Check, CalendarRange, Filter as FilterIcon, ArrowRight, ChevronDown, ChevronUp, Flower, Layers3, Search, ImageIcon, WalletCards, Building2, UserRound, ReceiptText, Trash2 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import { compareGoodsVariants, getGoodsSearchText, getGoodsVariantLabel, inferGoodsFamily } from '../lib/goodsVariants'
+import { SUPPLY_PAYMENT_METHODS } from '../lib/cashLedger'
+
+const emptyPayment = { mode: 'unpaid', payment_method: 'company_account', amount: '', reference: '', comment: '' }
 
 export default function Supplies() {
-    const { supplies, suppliers, flowers, goods, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, createSupplier } = useStore() // Added goods
+    const { supplies, suppliers, flowers, goods, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, createSupplier, getSupplyPayments, getSupplyPaymentSummary, addSupplyPayment, deleteSupplyPayment, getCashBalance } = useStore()
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
     const [expandedMenuId, setExpandedMenuId] = useState(null) // For dropdown menu
 
@@ -35,12 +38,19 @@ export default function Supplies() {
     const [supplierName, setSupplierName] = useState('')
     const [supplyItems, setSupplyItems] = useState([])
     const [updateCatalogPrices, setUpdateCatalogPrices] = useState(true)
+    const [initialPayment, setInitialPayment] = useState(emptyPayment)
+    const [paymentForm, setPaymentForm] = useState({ payment_method: 'company_account', amount: '', reference: '', comment: '' })
+    const [paymentError, setPaymentError] = useState('')
+    const [paymentLoading, setPaymentLoading] = useState(false)
 
     const handleViewClick = async (supply) => {
         try {
             setLoading(true)
             const items = await getSupplyItems(supply.id)
             setViewingSupply({ ...supply, items })
+            const summary = getSupplyPaymentSummary(supply)
+            setPaymentForm({ payment_method: 'company_account', amount: summary.debt > 0 ? String(summary.debt) : '', reference: '', comment: '' })
+            setPaymentError('')
             setLoading(false)
             setIsViewModalOpen(true)
         } catch (error) {
@@ -290,7 +300,27 @@ export default function Supplies() {
 
         setLoading(true)
         let result
+        const supplyTotal = finalItems.reduce((sum, item) => sum + getSupplyItemAmount(item), 0)
         const saveOptions = { updateCatalogPrices }
+        if (modalMode === 'add' && initialPayment.mode !== 'unpaid') {
+            const paymentAmount = initialPayment.mode === 'full' ? supplyTotal : parseAmount(initialPayment.amount)
+            if (paymentAmount <= 0 || paymentAmount > supplyTotal + 0.01) {
+                setLoading(false)
+                alert('Укажите корректную сумму оплаты: не больше суммы поставки.')
+                return
+            }
+            if (initialPayment.payment_method === 'cash' && paymentAmount > getCashBalance() + 0.01) {
+                setLoading(false)
+                alert(`В кассе недостаточно денег. Доступно ${getCashBalance().toFixed(2)} lei.`)
+                return
+            }
+            saveOptions.initialPayment = {
+                amount: paymentAmount,
+                payment_method: initialPayment.payment_method,
+                reference: initialPayment.reference,
+                comment: initialPayment.comment,
+            }
+        }
         if (modalMode === 'edit' && editingSupplyId) {
             result = await updateSupply(editingSupplyId, supplierName, finalItems, saveOptions)
         } else {
@@ -299,6 +329,7 @@ export default function Supplies() {
         setLoading(false)
 
         if (result.success) {
+            if (result.paymentError) alert('Поставка создана, но оплату записать не удалось: ' + (result.paymentError.message || result.paymentError))
             setIsModalOpen(false)
             setSupplierName('')
             setSupplyItems([])
@@ -310,6 +341,7 @@ export default function Supplies() {
             setBundleLines([])
             setBundleTotalCost('')
             setBundleAllocationMode('auto')
+            setInitialPayment(emptyPayment)
             setEditingSupplyId(null)
         } else {
             alert('Ошибка при сохранении поставки: ' + (result.error?.message || ''))
@@ -366,7 +398,28 @@ export default function Supplies() {
         setBundleLines([])
         setBundleTotalCost('')
         setBundleAllocationMode('auto')
+        setInitialPayment(emptyPayment)
         setIsModalOpen(true)
+    }
+
+    const handleAddSupplyPayment = async () => {
+        if (!viewingSupply) return
+        setPaymentError('')
+        setPaymentLoading(true)
+        const result = await addSupplyPayment(viewingSupply.id, paymentForm, viewingSupply)
+        setPaymentLoading(false)
+        if (!result.success) {
+            setPaymentError(result.error?.message || 'Не удалось зарегистрировать оплату.')
+            return
+        }
+        const remaining = Math.max(0, getSupplyPaymentSummary(viewingSupply).debt - parseAmount(paymentForm.amount))
+        setPaymentForm(current => ({ ...current, amount: remaining > 0 ? String(remaining) : '', reference: '', comment: '' }))
+    }
+
+    const handleDeleteSupplyPayment = async (paymentId) => {
+        if (!window.confirm('Удалить эту запись об оплате? Долг поставщику увеличится.')) return
+        const result = await deleteSupplyPayment(paymentId)
+        if (!result.success) setPaymentError(result.error?.message || 'Не удалось удалить оплату.')
     }
 
     // Modal Totals Calculation
@@ -403,6 +456,21 @@ export default function Supplies() {
         + (itemType === 'good' ? currentItemSum + pendingBundleTotal : 0)
 
     const totalSum = flowersTotal + goodsTotal
+
+    const getPaymentBadge = (supply) => {
+        const summary = getSupplyPaymentSummary(supply)
+        if (summary.debt <= 0.01) return { label: 'Оплачено', background: '#ecfdf5', color: '#047857' }
+        if (summary.paid > 0) return { label: `Частично · долг ${summary.debt.toLocaleString('ru-RU')} lei`, background: '#fffbeb', color: '#b45309' }
+        return { label: `Долг ${summary.debt.toLocaleString('ru-RU')} lei`, background: '#fef2f2', color: '#b91c1c' }
+    }
+
+    const paymentMethodOptions = [
+        { value: 'cash', label: SUPPLY_PAYMENT_METHODS.cash.label, icon: WalletCards },
+        { value: 'company_account', label: SUPPLY_PAYMENT_METHODS.company_account.label, icon: Building2 },
+        { value: 'owner_funds', label: SUPPLY_PAYMENT_METHODS.owner_funds.label, icon: UserRound },
+    ]
+    const viewingPaymentSummary = viewingSupply ? getSupplyPaymentSummary(viewingSupply) : { total: 0, paid: 0, debt: 0 }
+    const viewingPayments = viewingSupply ? getSupplyPayments(viewingSupply.id) : []
 
     const formatSupplyQuantity = (item) => {
         const purchaseQty = parseAmount(item.purchaseQuantity ?? item.quantity)
@@ -649,7 +717,9 @@ export default function Supplies() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredSupplies.map(supply => (
+                                {filteredSupplies.map(supply => {
+                                    const paymentBadge = getPaymentBadge(supply)
+                                    return (
                                     <tr
                                         key={supply.id}
                                         style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background-color 0.2s' }}
@@ -685,13 +755,13 @@ export default function Supplies() {
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                                                 <span style={{
                                                     padding: '0.25rem 0.75rem',
-                                                    backgroundColor: '#ecfdf5',
-                                                    color: '#059669',
+                                                    backgroundColor: paymentBadge.background,
+                                                    color: paymentBadge.color,
                                                     borderRadius: '99px',
                                                     fontSize: '0.75rem',
                                                     fontWeight: 600
                                                 }}>
-                                                    Принят
+                                                    {paymentBadge.label}
                                                 </span>
 
                                                 <div style={{ position: 'relative' }}>
@@ -729,7 +799,8 @@ export default function Supplies() {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                    )
+                                })}
                                 {filteredSupplies.length === 0 && (
                                     <tr>
                                         <td colSpan={4} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -743,7 +814,9 @@ export default function Supplies() {
                 ) : (
                     // Mobile Card View
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {filteredSupplies.map(supply => (
+                        {filteredSupplies.map(supply => {
+                            const paymentBadge = getPaymentBadge(supply)
+                            return (
                             <div
                                 key={supply.id}
                                 className="card"
@@ -778,13 +851,13 @@ export default function Supplies() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.75rem', borderTop: '1px dashed var(--border)' }}>
                                     <span style={{
                                         padding: '0.25rem 0.75rem',
-                                        backgroundColor: '#ecfdf5',
-                                        color: '#059669',
+                                        backgroundColor: paymentBadge.background,
+                                        color: paymentBadge.color,
                                         borderRadius: '99px',
                                         fontSize: '0.75rem',
                                         fontWeight: 600
                                     }}>
-                                        Принят на склад
+                                        {paymentBadge.label}
                                     </span>
                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                                         <button onClick={(e) => handleEditClick(e, supply)} className="btn-sm" style={{ padding: '0.4rem 0.8rem', background: '#f3f4f6', borderRadius: '8px', fontSize: '0.8rem' }}>✏️</button>
@@ -793,7 +866,8 @@ export default function Supplies() {
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            )
+                        })}
                         {filteredSupplies.length === 0 && (
                             <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                                 {supplies.length > 0 ? 'Нет поставок за выбранный период' : 'Поставок пока нет'}
@@ -807,7 +881,7 @@ export default function Supplies() {
             <Modal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                title="Новая поставка"
+                title={modalMode === 'add' ? 'Новая поставка' : 'Редактировать поставку'}
             >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '70vh', overflowY: 'auto', paddingRight: '0.5rem' }}>
 
@@ -1191,6 +1265,56 @@ export default function Supplies() {
                         </div>
                     </div>
 
+                    {modalMode === 'add' && (
+                        <section style={{ paddingTop: '1.15rem', borderTop: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginBottom: '0.8rem' }}>
+                                <ReceiptText size={19} color="#d97706" />
+                                <div>
+                                    <div style={{ fontWeight: 900 }}>Оплата поставщику</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: 2 }}>Не влияет на прибыль: фиксирует оплату или долг по поставке.</div>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 5, padding: 5, borderRadius: 8, background: '#f1f5f9' }}>
+                                {[
+                                    { value: 'unpaid', label: 'В долг' },
+                                    { value: 'full', label: 'Оплачено полностью' },
+                                    { value: 'partial', label: 'Частично' },
+                                ].map(option => (
+                                    <button key={option.value} type="button" onClick={() => setInitialPayment(current => ({ ...current, mode: option.value }))} style={{ padding: '0.65rem 0.75rem', borderRadius: 6, background: initialPayment.mode === option.value ? '#fff' : 'transparent', color: initialPayment.mode === option.value ? '#111827' : '#64748b', fontWeight: 850, boxShadow: initialPayment.mode === option.value ? '0 2px 8px rgba(15,23,42,0.08)' : 'none' }}>{option.label}</button>
+                                ))}
+                            </div>
+
+                            {initialPayment.mode === 'unpaid' ? (
+                                <div style={{ marginTop: '0.75rem', padding: '0.75rem 0.9rem', borderRadius: 8, background: '#fffbeb', color: '#92400e', fontSize: '0.82rem', lineHeight: 1.45 }}>
+                                    Вся сумма <b>{totalSum.toFixed(2)} lei</b> будет записана как долг поставщику. Оплату можно добавить позже из карточки поставки.
+                                </div>
+                            ) : (
+                                <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '0.55rem' }}>
+                                        {paymentMethodOptions.map(option => {
+                                            const Icon = option.icon
+                                            const active = initialPayment.payment_method === option.value
+                                            return <button key={option.value} type="button" onClick={() => setInitialPayment(current => ({ ...current, payment_method: option.value }))} style={{ minHeight: 58, padding: '0.65rem', border: `1px solid ${active ? '#f59e0b' : '#e2e8f0'}`, borderRadius: 8, background: active ? '#fffbeb' : '#fff', color: active ? '#92400e' : '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem', fontWeight: 800, textAlign: 'center' }}><Icon size={17} />{option.label}</button>
+                                        })}
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(160px, 0.7fr) minmax(200px, 1fr)', gap: '0.75rem' }}>
+                                        <div>
+                                            <label style={{ display: 'block', marginBottom: 5, color: '#64748b', fontSize: '0.78rem', fontWeight: 800 }}>Сумма оплаты</label>
+                                            <input className="input" type="text" inputMode="decimal" disabled={initialPayment.mode === 'full'} value={initialPayment.mode === 'full' ? totalSum.toFixed(2) : initialPayment.amount} onChange={event => setInitialPayment(current => ({ ...current, amount: event.target.value }))} placeholder="0.00 lei" />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', marginBottom: 5, color: '#64748b', fontSize: '0.78rem', fontWeight: 800 }}>Фактура / номер платежа</label>
+                                            <input className="input" value={initialPayment.reference} onChange={event => setInitialPayment(current => ({ ...current, reference: event.target.value }))} placeholder="Необязательно" />
+                                        </div>
+                                    </div>
+                                    <input className="input" value={initialPayment.comment} onChange={event => setInitialPayment(current => ({ ...current, comment: event.target.value }))} placeholder="Комментарий к оплате" />
+                                    {initialPayment.payment_method === 'cash' && <div style={{ color: '#92400e', fontSize: '0.78rem', fontWeight: 750 }}>В кассе сейчас: {getCashBalance().toFixed(2)} lei. После сохранения оплата уменьшит кассу.</div>}
+                                </div>
+                            )}
+                        </section>
+                    )}
+
                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
                         <button className="btn" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-main)' }} onClick={() => setIsModalOpen(false)}>
                             Отмена
@@ -1278,6 +1402,52 @@ export default function Supplies() {
                                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>{Number(viewingSupply.total_amount).toLocaleString('ru-RU')} lei</div>
                             </div>
                         </div>
+
+                        <section style={{ padding: '1rem', border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.65rem', marginBottom: viewingPaymentSummary.debt > 0.01 ? '1rem' : 0 }}>
+                                {[
+                                    { label: 'Поставка', value: viewingPaymentSummary.total, color: '#334155' },
+                                    { label: 'Оплачено', value: viewingPaymentSummary.paid, color: '#047857' },
+                                    { label: 'Осталось', value: viewingPaymentSummary.debt, color: viewingPaymentSummary.debt > 0.01 ? '#b91c1c' : '#047857' },
+                                ].map(item => <div key={item.label} style={{ minWidth: 0 }}><small style={{ display: 'block', color: '#94a3b8', fontWeight: 800, marginBottom: 3 }}>{item.label}</small><b style={{ color: item.color, overflowWrap: 'anywhere' }}>{item.value.toLocaleString('ru-RU')} lei</b></div>)}
+                            </div>
+
+                            {viewingPaymentSummary.debt > 0.01 && (
+                                <div style={{ paddingTop: '0.85rem', borderTop: '1px solid #e2e8f0' }}>
+                                    <div style={{ fontWeight: 900, marginBottom: '0.65rem' }}>Добавить оплату</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 5, marginBottom: '0.7rem' }}>
+                                        {paymentMethodOptions.map(option => {
+                                            const Icon = option.icon
+                                            const active = paymentForm.payment_method === option.value
+                                            return <button key={option.value} type="button" onClick={() => setPaymentForm(current => ({ ...current, payment_method: option.value }))} style={{ minHeight: 48, padding: '0.55rem', border: `1px solid ${active ? '#f59e0b' : '#e2e8f0'}`, borderRadius: 7, background: active ? '#fffbeb' : '#fff', color: active ? '#92400e' : '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontWeight: 800, fontSize: '0.78rem' }}><Icon size={15} />{option.label}</button>
+                                        })}
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '0.7fr 1fr', gap: '0.65rem' }}>
+                                        <input className="input" type="text" inputMode="decimal" value={paymentForm.amount} onChange={event => setPaymentForm(current => ({ ...current, amount: event.target.value }))} placeholder="Сумма, lei" />
+                                        <input className="input" value={paymentForm.reference} onChange={event => setPaymentForm(current => ({ ...current, reference: event.target.value }))} placeholder="Фактура / номер платежа" />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.65rem', marginTop: '0.65rem', alignItems: 'stretch', flexDirection: isMobile ? 'column' : 'row' }}>
+                                        <input className="input" value={paymentForm.comment} onChange={event => setPaymentForm(current => ({ ...current, comment: event.target.value }))} placeholder="Комментарий" style={{ flex: 1 }} />
+                                        <button type="button" className="btn" onClick={handleAddSupplyPayment} disabled={paymentLoading || parseAmount(paymentForm.amount) <= 0} style={{ background: '#f59e0b', color: '#fff', justifyContent: 'center', minWidth: 170 }}><Check size={17} /> {paymentLoading ? 'Сохранение...' : 'Записать оплату'}</button>
+                                    </div>
+                                    {paymentForm.payment_method === 'cash' && <div style={{ marginTop: 6, color: '#92400e', fontSize: '0.75rem', fontWeight: 750 }}>Доступно в кассе: {getCashBalance().toFixed(2)} lei</div>}
+                                    {paymentError && <div style={{ marginTop: 7, color: '#dc2626', fontSize: '0.78rem', fontWeight: 750 }}>{paymentError}</div>}
+                                </div>
+                            )}
+
+                            {viewingPayments.length > 0 && (
+                                <div style={{ marginTop: '0.9rem', paddingTop: '0.8rem', borderTop: '1px solid #e2e8f0' }}>
+                                    <div style={{ fontWeight: 900, fontSize: '0.85rem', marginBottom: '0.45rem' }}>История оплат</div>
+                                    {viewingPayments.map(payment => (
+                                        <div key={payment.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', gap: '0.65rem', alignItems: 'center', padding: '0.55rem 0', borderTop: '1px solid #eef2f7', fontSize: '0.8rem' }}>
+                                            <div style={{ minWidth: 0 }}><b>{SUPPLY_PAYMENT_METHODS[payment.payment_method]?.label || payment.payment_method}</b><small style={{ display: 'block', color: '#64748b', marginTop: 2 }}>{new Date(payment.paid_at).toLocaleString('ru-RU')}{payment.reference ? ` · ${payment.reference}` : ''}</small></div>
+                                            <b style={{ color: '#047857', whiteSpace: 'nowrap' }}>{Number(payment.amount).toLocaleString('ru-RU')} lei</b>
+                                            <button type="button" onClick={() => handleDeleteSupplyPayment(payment.id)} title="Удалить оплату" style={{ width: 34, height: 34, borderRadius: 6, display: 'grid', placeItems: 'center', color: '#dc2626', background: '#fef2f2' }}><Trash2 size={16} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </section>
 
                         {/* Items Table */}
                         <div>

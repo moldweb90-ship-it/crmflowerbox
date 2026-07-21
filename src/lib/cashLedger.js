@@ -15,6 +15,12 @@ export const CASH_MOVEMENT_TYPES = {
 export const CASH_IN_OPTIONS = ['owner_contribution', 'vault_to_cash', 'accountable_return']
 export const CASH_OUT_OPTIONS = ['owner_withdrawal', 'cash_to_vault', 'accountable_advance']
 
+export const SUPPLY_PAYMENT_METHODS = {
+    cash: { label: 'Из кассы', shortLabel: 'Касса', tone: '#d97706' },
+    company_account: { label: 'Счёт фирмы / e-Factura', shortLabel: 'Счёт фирмы', tone: '#2563eb' },
+    owner_funds: { label: 'Личные деньги владельца', shortLabel: 'Личные деньги', tone: '#7c3aed' },
+}
+
 const normalizedComment = (expense) => String(expense?.comment || '').toLowerCase()
 
 export const isCashDeposit = (expense) => (
@@ -37,7 +43,7 @@ export const getOwnerMovementEffect = (movement) => {
     return (config?.ownerDirection || 0) * Number(movement?.amount || 0)
 }
 
-export const buildCashActivities = ({ sales = [], claims = [], expenses = [], cashMovements = [] }) => {
+export const buildCashActivities = ({ sales = [], claims = [], expenses = [], cashMovements = [], supplyPayments = [] }) => {
     const activities = []
 
     sales
@@ -108,6 +114,29 @@ export const buildCashActivities = ({ sales = [], claims = [], expenses = [], ca
             performed_by: movement.performed_by || '',
             employee_name: movement.employees?.name || '',
             tone: config.tone || '#64748b',
+        })
+    })
+
+    supplyPayments.forEach(payment => {
+        const method = SUPPLY_PAYMENT_METHODS[payment.payment_method] || SUPPLY_PAYMENT_METHODS.company_account
+        const amount = Number(payment.amount || 0)
+        const isCash = payment.payment_method === 'cash'
+        const isOwnerFunds = payment.payment_method === 'owner_funds'
+        const supplierName = payment.supplies?.suppliers?.name || ''
+        activities.push({
+            id: `supply-payment-${payment.id}`,
+            kind: `supplier_payment_${payment.payment_method}`,
+            title: `Оплата поставщику${supplierName ? `: ${supplierName}` : ''}`,
+            amount,
+            effect: isCash ? -amount : 0,
+            displayEffect: -amount,
+            ownerEffect: isOwnerFunds ? amount : 0,
+            affectsProfit: false,
+            occurred_at: payment.paid_at || payment.created_at,
+            comment: [method.shortLabel, payment.reference, payment.comment].filter(Boolean).join(' · '),
+            performed_by: payment.performed_by || '',
+            tone: method.tone,
+            payment_method: payment.payment_method,
         })
     })
 

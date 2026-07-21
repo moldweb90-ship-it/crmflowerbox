@@ -110,7 +110,7 @@ export default function Sales() {
         sales, addSale, updateSale, deleteSale,
         markCourierPaid,
         products, couriers, florists, employees, addCourier, addFlorist,
-        expenses, addExpense, cashMovements, addCashMovement,
+        expenses, addExpense, cashMovements, addCashMovement, supplyPayments,
         calculateCostPrice,
         flowers, goods, settings,
         showcaseBouquets, markShowcaseBouquetSold,
@@ -447,7 +447,8 @@ export default function Sales() {
         claims: claims || [],
         expenses,
         cashMovements: cashMovements || [],
-    }), [sales, claims, expenses, cashMovements])
+        supplyPayments: supplyPayments || [],
+    }), [sales, claims, expenses, cashMovements, supplyPayments])
 
     const cashBalance = useMemo(() => (
         cashActivities.reduce((sum, activity) => sum + Number(activity.effect || 0), 0)

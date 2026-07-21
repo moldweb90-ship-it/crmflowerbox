@@ -34,6 +34,7 @@ export function StoreProvider({ children }) {
     const [products, setProducts] = usePersistedState('store_products', [])
     const [suppliers, setSuppliers] = usePersistedState('store_suppliers', [])
     const [supplies, setSupplies] = usePersistedState('store_supplies', [])
+    const [supplyPayments, setSupplyPayments] = usePersistedState('store_supply_payments', [])
     const [expenses, setExpenses] = usePersistedState('store_expenses', [])
     const [cashMovements, setCashMovements] = usePersistedState('store_cash_movements', [])
     const [sales, setSales] = usePersistedState('store_sales', [])
@@ -85,10 +86,11 @@ export function StoreProvider({ children }) {
                 supabase.from('showcase_bouquets').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('claims').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('customers').select('*').order('created_at', { ascending: false }),
-                supabase.from('cash_movements').select('*, employees(name)').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] }))
+                supabase.from('cash_movements').select('*, employees(name)').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
+                supabase.from('supply_payments').select('*, supplies(total_amount, supplier_id, suppliers(name))').order('paid_at', { ascending: false }).then(r => r).catch(() => ({ data: [] }))
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, claimRows, cust, cashRows] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, claimRows, cust, cashRows, supplyPaymentRows] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -124,6 +126,7 @@ export function StoreProvider({ children }) {
             if (claimRows.data) setClaims(claimRows.data)
             if (cust.data) setCustomers(cust.data)
             if (cashRows?.data) setCashMovements(cashRows.data)
+            if (supplyPaymentRows?.data) setSupplyPayments(supplyPaymentRows.data)
         } catch (error) {
             console.error('Error fetching data:', error)
         } finally {
@@ -401,6 +404,63 @@ export function StoreProvider({ children }) {
         }
     }
 
+    const getSupplyPayments = (supplyId) => supplyPayments
+        .filter(payment => String(payment.supply_id) === String(supplyId))
+        .sort((a, b) => new Date(b.paid_at || b.created_at) - new Date(a.paid_at || a.created_at))
+
+    const getSupplyPaymentSummary = (supply) => {
+        const payments = getSupplyPayments(supply?.id)
+        const paid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+        const total = Number(supply?.total_amount || 0)
+        return { payments, paid, debt: Math.max(0, total - paid), total }
+    }
+
+    const addSupplyPayment = async (supplyId, payment, supplyRecord = null) => {
+        const supply = supplyRecord || supplies.find(item => String(item.id) === String(supplyId))
+        const amount = parseLooseNumber(payment?.amount, 0)
+        const method = payment?.payment_method
+        if (!supply || !Number.isFinite(amount) || amount <= 0) {
+            return { success: false, error: new Error('Укажите корректную сумму оплаты') }
+        }
+        if (!['cash', 'company_account', 'owner_funds'].includes(method)) {
+            return { success: false, error: new Error('Выберите источник оплаты') }
+        }
+
+        const currentPaid = getSupplyPayments(supply.id).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        const debt = Math.max(0, Number(supply.total_amount || 0) - currentPaid)
+        if (amount > debt + 0.009) {
+            return { success: false, error: new Error(`Сумма больше долга (${debt.toFixed(2)} lei)`) }
+        }
+        if (method === 'cash') {
+            const cashBalance = calculateCashBalance({ sales, claims, expenses, cashMovements, supplyPayments })
+            if (amount > cashBalance + 0.009) {
+                return { success: false, error: new Error(`В кассе доступно только ${cashBalance.toFixed(2)} lei`) }
+            }
+        }
+
+        const payload = {
+            supply_id: supply.id,
+            amount,
+            payment_method: method,
+            paid_at: payment.paid_at || new Date().toISOString(),
+            reference: String(payment.reference || '').trim() || null,
+            comment: String(payment.comment || '').trim() || null,
+            performed_by: String(payment.performed_by || '').trim() || null,
+        }
+        const { data, error } = await supabase.from('supply_payments').insert([payload]).select()
+        if (!error && data?.[0]) {
+            const supplierName = supply.suppliers?.name || suppliers.find(item => item.id === supply.supplier_id)?.name || ''
+            setSupplyPayments(current => [{ ...data[0], supplies: { total_amount: supply.total_amount, supplier_id: supply.supplier_id, suppliers: { name: supplierName } } }, ...current])
+        }
+        return { success: !error, data: data?.[0], error }
+    }
+
+    const deleteSupplyPayment = async (paymentId) => {
+        const { error } = await supabase.from('supply_payments').delete().eq('id', paymentId)
+        if (!error) setSupplyPayments(current => current.filter(payment => payment.id !== paymentId))
+        return { success: !error, error }
+    }
+
     // Supplies
     const saveSupply = async (supplierName, items, options = {}) => {
         try {
@@ -530,7 +590,13 @@ export function StoreProvider({ children }) {
                 }, 500)
             }
 
-            return { success: true }
+            let paymentError = null
+            if (options.initialPayment && Number(options.initialPayment.amount || 0) > 0) {
+                const paymentResult = await addSupplyPayment(newSupply.id, options.initialPayment, newSupply)
+                if (!paymentResult.success) paymentError = paymentResult.error
+            }
+
+            return { success: true, data: newSupply, paymentError }
         } catch (error) {
             console.error('Supply Save Error:', error)
             return { success: false, error }
@@ -627,6 +693,7 @@ export function StoreProvider({ children }) {
             const { error } = await supabase.from('supplies').delete().eq('id', id)
             if (error) throw error
             setSupplies(supplies.filter(s => s.id !== id))
+            setSupplyPayments(current => current.filter(payment => payment.supply_id !== id))
             return { success: true }
         } catch (e) {
             console.error('Delete Error:', e)
@@ -1448,7 +1515,7 @@ export function StoreProvider({ children }) {
     }
 
     const getCashBalance = () => {
-        return calculateCashBalance({ sales, claims, expenses, cashMovements })
+        return calculateCashBalance({ sales, claims, expenses, cashMovements, supplyPayments })
     }
 
     const uploadEmployeePhoto = async (file, employeeId = 'temp') => {
@@ -2622,7 +2689,7 @@ export function StoreProvider({ children }) {
             goods, addGood, updateGood, deleteGood, deleteGoods,
             categories, addCategory, updateCategory, deleteCategory,
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
-            suppliers, supplies, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,
+            suppliers, supplies, supplyPayments, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, getSupplyPayments, getSupplyPaymentSummary, addSupplyPayment, deleteSupplyPayment, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,
             expenses, addExpense, updateExpense, deleteExpense,
             cashMovements, addCashMovement, refreshCashMovements,
             sales, addSale, updateSale, deleteSale, markCourierPaid,
