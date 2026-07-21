@@ -17,6 +17,13 @@ CREATE INDEX IF NOT EXISTS idx_cash_movements_created
 COMMENT ON TABLE public.cash_movements IS 'Движения физической кассы, не являющиеся продажами или операционными расходами';
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.cash_movements TO anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.cash_movements TO authenticated;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.cash_movements TO authenticated;
+  END IF;
+END
+$$;
 
 NOTIFY pgrst, 'reload schema';
