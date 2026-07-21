@@ -214,7 +214,7 @@ export default function Stock() {
 
     const { user } = useAuth()
     const [search, setSearch] = useState('')
-    const [filter, setFilter] = useState('all') // 'all', 'flowers', 'goods'
+    const [filter, setFilter] = useState('flowers') // 'flowers', 'goods', 'all'
     const [stockStatus, setStockStatus] = useState('all') // 'all', 'available', 'low', 'out'
     const [categoryFilter, setCategoryFilter] = useState('all')
     const [sortMode, setSortMode] = useState('quantity_desc')
@@ -832,9 +832,9 @@ export default function Stock() {
 
                             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                 {[
-                                    { id: 'all', label: 'Все', icon: Package },
                                     { id: 'flowers', label: 'Цветы', icon: Flower },
-                                    { id: 'goods', label: 'Товары', icon: Box }
+                                    { id: 'goods', label: 'Доп. товары', icon: Box },
+                                    { id: 'all', label: 'Всё', icon: Package }
                                 ].map(item => {
                                     const Icon = item.icon
                                     return (
