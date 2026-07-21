@@ -253,7 +253,7 @@ export default function Stock() {
     const [groupStockByModel, setGroupStockByModel] = useState(true)
     const [expandedStockGroups, setExpandedStockGroups] = useState(() => new Set())
     const MOVEMENTS_PER_PAGE = isMobile ? 6 : 9
-    const INVENTORY_PAGE_SIZE = 50
+    const INVENTORY_PAGE_SIZE = filter === 'flowers' ? 30 : 50
 
     // Waste Filters
     const [wasteFilter, setWasteFilter] = useState('all') // 'all', 'today', 'yesterday', 'week', 'month', 'custom'
@@ -408,7 +408,7 @@ export default function Stock() {
     const paginatedInventory = useMemo(() => {
         const start = (inventoryPage - 1) * INVENTORY_PAGE_SIZE
         return filteredInventory.slice(start, start + INVENTORY_PAGE_SIZE)
-    }, [filteredInventory, inventoryPage])
+    }, [filteredInventory, inventoryPage, INVENTORY_PAGE_SIZE])
 
     useEffect(() => {
         setInventoryPage(1)

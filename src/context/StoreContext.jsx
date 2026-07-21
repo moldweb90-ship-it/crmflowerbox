@@ -2016,7 +2016,7 @@ export function StoreProvider({ children }) {
 
     // Get items with low stock (below min_quantity)
     const getLowStockItems = () => {
-        return stock.filter(s => s.quantity <= (s.min_quantity || 5))
+        return stock.filter(s => Number(s.min_quantity || 0) > 0 && Number(s.quantity || 0) <= Number(s.min_quantity))
     }
 
     // Get item name helper

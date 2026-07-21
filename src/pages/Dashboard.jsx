@@ -175,7 +175,7 @@ export default function Dashboard() {
             const cost = item.cost ?? item.purchase_price ?? (item.price ? item.price * 0.4 : 0)
             const quantity = Number(s.quantity || 0)
             const configuredMinimum = Number(s.min_quantity || 0)
-            const alertMinimum = itemType === 'flower' ? (configuredMinimum > 0 ? configuredMinimum : 10) : configuredMinimum
+            const alertMinimum = configuredMinimum
 
             section.positions += 1
 
@@ -188,8 +188,8 @@ export default function Dashboard() {
                 }
             }
 
-            // Для доптоваров тревоги включаются только после настройки минимума.
-            const shouldMonitor = itemType === 'flower' || configuredMinimum > 0
+            // A zero minimum means stock alerts are disabled for this position.
+            const shouldMonitor = configuredMinimum > 0
             if (quantity <= 0 && shouldMonitor) {
                 section.outOfStockList.push({
                     type: s.item_type,
