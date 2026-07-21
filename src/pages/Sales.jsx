@@ -6,6 +6,7 @@ import Modal from '../components/ui/Modal'
 import ClaimModal from '../components/claims/ClaimModal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import CompositionPicker from '../components/sales/CompositionPicker'
+import { CASH_DEPOSIT_CATEGORY, CASH_WITHDRAWAL_CATEGORY, isCashDeposit, isCashTransfer, isCashWithdrawal } from '../lib/cashLedger'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -442,15 +443,17 @@ export default function Sales() {
 
         // Cash Expenses (Source = cash_box)
         const cashExpenses = expenses
-            .filter(e => e.payment_method === 'cash_box' && e.category !== 'deposit')
+            .filter(e => e.payment_method === 'cash_box' && !isCashTransfer(e))
             .reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
-        // Cash Deposits (Source = cash_box, Category = deposit)
         const cashDeposits = expenses
-            .filter(e => e.payment_method === 'cash_box' && e.category === 'deposit')
+            .filter(e => e.payment_method === 'cash_box' && isCashDeposit(e))
+            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+        const cashWithdrawals = expenses
+            .filter(e => e.payment_method === 'cash_box' && isCashWithdrawal(e))
             .reduce((sum, e) => sum + Number(e.amount || 0), 0)
 
-        return cashSales + cashDeposits - cashExpenses - cashRefunds
+        return cashSales + cashDeposits - cashWithdrawals - cashExpenses - cashRefunds
     }, [sales, expenses, claims])
 
     const handleQuickExpense = async () => {
@@ -458,7 +461,7 @@ export default function Sales() {
 
         await addExpense({
             amount: Number(expenseData.amount),
-            category: expenseData.type === 'incasso' ? 'salaries' : (expenseData.type === 'deposit' ? 'deposit' : 'other'),
+            category: expenseData.type === 'incasso' ? CASH_WITHDRAWAL_CATEGORY : (expenseData.type === 'deposit' ? CASH_DEPOSIT_CATEGORY : 'other'),
             date: new Date().toISOString(),
             comment: (expenseData.type === 'incasso' ? '💸 Инкассация: ' : (expenseData.type === 'deposit' ? '📥 Внесение: ' : '📤 Расход: ')) + expenseData.comment,
             payment_method: 'cash_box'
@@ -1160,6 +1163,13 @@ export default function Sales() {
                             value={expenseData.comment}
                             onChange={(e) => setExpenseData({ ...expenseData, comment: e.target.value })}
                         />
+                    </div>
+                    <div style={{ padding: '0.75rem 0.85rem', borderRadius: 8, background: expenseData.type === 'expense' ? '#fff7ed' : '#eff6ff', border: `1px solid ${expenseData.type === 'expense' ? '#fed7aa' : '#bfdbfe'}`, color: expenseData.type === 'expense' ? '#9a3412' : '#1e40af', fontSize: '0.82rem', lineHeight: 1.45, fontWeight: 700 }}>
+                        {expenseData.type === 'expense'
+                            ? 'Расход уменьшит остаток кассы и чистую прибыль.'
+                            : expenseData.type === 'deposit'
+                                ? 'Пополнение увеличит только остаток кассы. На прибыль оно не влияет.'
+                                : 'Инкассация уменьшит только остаток кассы. Прибыль останется без изменений.'}
                     </div>
                     <button className="btn btn-primary" onClick={handleQuickExpense} style={{ marginTop: '0.5rem', justifyContent: 'center' }}>
                         Подтвердить

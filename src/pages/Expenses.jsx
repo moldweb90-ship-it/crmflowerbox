@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../context/StoreContext'
 import { Receipt, Plus, Calendar, DollarSign, X, Edit2, Trash2, Filter, RotateCcw, EyeOff } from 'lucide-react'
 import Modal from '../components/ui/Modal'
+import { isCashTransfer } from '../lib/cashLedger'
 
 // Expense Categories
 const EXPENSE_CATEGORIES = [
@@ -83,6 +84,7 @@ export default function Expenses() {
     const filteredExpenses = useMemo(() => {
         return expenses.filter(expense => {
             if (expense.is_hidden) return false // Filter out hidden expenses
+            if (isCashTransfer(expense)) return false
 
             // Category Filter
             if (categoryFilter !== 'all' && expense.category !== categoryFilter) return false

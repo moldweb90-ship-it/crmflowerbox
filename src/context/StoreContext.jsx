@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../supabase'
+import { isCashDeposit, isCashTransfer, isCashWithdrawal } from '../lib/cashLedger'
 
 const StoreContext = createContext()
 
@@ -1338,9 +1339,12 @@ export function StoreProvider({ children }) {
         return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
     }
 
-    const startShift = async (employeeId, openingCash = 0) => {
+    const startShift = async (employeeId, reconciliation = {}) => {
         const now = new Date().toISOString()
         const dateStr = toDateStr(new Date())
+        const actualCash = Number(reconciliation.actualCash ?? reconciliation ?? 0) || 0
+        const expectedCash = Number(reconciliation.expectedCash ?? actualCash) || 0
+        const difference = Number((actualCash - expectedCash).toFixed(2))
         const existingActive = shifts.find(s =>
             s.employee_id === employeeId &&
             (s.shift_date || '').split('T')[0] === dateStr &&
@@ -1356,7 +1360,10 @@ export function StoreProvider({ children }) {
             shift_type: 'day',
             start_time: now,
             end_time: null,
-            opening_cash: Number(openingCash) || 0,
+            opening_cash: actualCash,
+            opening_cash_expected: expectedCash,
+            opening_cash_difference: difference,
+            opening_cash_note: String(reconciliation.note || '').trim() || null,
             status: 'active'
         }, { onConflict: 'employee_id,shift_date' }).select()
         if (!error && data?.[0]) {
@@ -1366,11 +1373,17 @@ export function StoreProvider({ children }) {
         return { success: !error, data: data?.[0], error }
     }
 
-    const endShift = async (shiftId, closingCash = 0) => {
+    const endShift = async (shiftId, reconciliation = {}) => {
         const now = new Date().toISOString()
+        const actualCash = Number(reconciliation.actualCash ?? reconciliation ?? 0) || 0
+        const expectedCash = Number(reconciliation.expectedCash ?? actualCash) || 0
+        const difference = Number((actualCash - expectedCash).toFixed(2))
         const { data, error } = await supabase.from('shifts').update({
             end_time: now,
-            closing_cash: Number(closingCash) || 0,
+            closing_cash: actualCash,
+            closing_cash_expected: expectedCash,
+            closing_cash_difference: difference,
+            closing_cash_note: String(reconciliation.note || '').trim() || null,
             status: 'completed'
         }).eq('id', shiftId).select()
         if (!error && data?.[0]) {
@@ -1412,9 +1425,15 @@ export function StoreProvider({ children }) {
             })
             .reduce((sum, claim) => sum + Number(claim.refund_amount || 0), 0)
         const cashExpenses = expenses
-            .filter(e => e.payment_method === 'cash_box')
+            .filter(e => e.payment_method === 'cash_box' && !isCashTransfer(e))
             .reduce((sum, e) => sum + Number(e.amount || 0), 0)
-        return cashSales - cashExpenses - cashRefunds
+        const cashDeposits = expenses
+            .filter(e => e.payment_method === 'cash_box' && isCashDeposit(e))
+            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+        const cashWithdrawals = expenses
+            .filter(e => e.payment_method === 'cash_box' && isCashWithdrawal(e))
+            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+        return cashSales + cashDeposits - cashWithdrawals - cashExpenses - cashRefunds
     }
 
     const uploadEmployeePhoto = async (file, employeeId = 'temp') => {

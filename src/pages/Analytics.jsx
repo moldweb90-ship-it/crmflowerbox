@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
+import { isCashTransfer } from '../lib/cashLedger'
 import {
     BarChart, DollarSign, TrendingUp, TrendingDown,
     Calendar, PieChart, Activity, ShoppingCart
@@ -61,7 +62,9 @@ export default function Analytics() {
         const filteredSales = sales.filter(s => isWithinRange(s.order_date || s.created_at))
 
         // Expenses (OpEx)
-        const filteredExpenses = expenses.filter(e => isWithinRange(e.date || e.created_at))
+        const filteredExpenses = expenses.filter(e =>
+            !isCashTransfer(e) && isWithinRange(e.date || e.created_at)
+        )
 
         // Stock Transactions (Waste/Write-offs)
         const filteredWaste = stockTransactions.filter(tx =>

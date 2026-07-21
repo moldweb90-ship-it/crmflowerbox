@@ -676,6 +676,7 @@ export default function Employees() {
                                     <th style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b' }}>Начало</th>
                                     <th style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b' }}>Конец</th>
                                     <th style={{ textAlign: 'right', padding: '0.75rem', color: '#64748b' }}>Длительность</th>
+                                    <th style={{ textAlign: 'right', padding: '0.75rem', color: '#64748b' }}>Касса</th>
                                     <th style={{ textAlign: 'right', padding: '0.75rem', color: '#64748b' }}></th>
                                 </tr>
                             </thead>
@@ -706,6 +707,19 @@ export default function Employees() {
                                                     {end ? `${h}ч ${m}м` : '—'}
                                                 </td>
                                                 <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                                                    {(s.opening_cash_expected != null || s.closing_cash_expected != null) ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                                                            <span style={{ color: '#64748b', fontSize: '0.72rem' }}>откр. {Number(s.opening_cash || 0).toLocaleString()} lei</span>
+                                                            {end && <span style={{ color: '#64748b', fontSize: '0.72rem' }}>закр. {Number(s.closing_cash || 0).toLocaleString()} lei</span>}
+                                                            {Math.abs(Number((end ? s.closing_cash_difference : s.opening_cash_difference) || 0)) > 0.009 ? (
+                                                                <span title={(end ? s.closing_cash_note : s.opening_cash_note) || ''} style={{ color: Number(end ? s.closing_cash_difference : s.opening_cash_difference) < 0 ? '#dc2626' : '#b45309', fontSize: '0.72rem', fontWeight: 850 }}>
+                                                                    {Number(end ? s.closing_cash_difference : s.opening_cash_difference) < 0 ? 'Недостача' : 'Излишек'} {Math.abs(Number((end ? s.closing_cash_difference : s.opening_cash_difference) || 0)).toLocaleString()} lei
+                                                                </span>
+                                                            ) : <span style={{ color: '#16a34a', fontSize: '0.72rem', fontWeight: 800 }}>Совпадает</span>}
+                                                        </div>
+                                                    ) : <span style={{ color: '#94a3b8' }}>—</span>}
+                                                </td>
+                                                <td style={{ padding: '0.75rem', textAlign: 'right' }}>
                                                     <button
                                                         onClick={() => handleDeleteShiftHistory(s)}
                                                         style={{
@@ -730,7 +744,7 @@ export default function Employees() {
                                     })}
                                 {getActualEmployeeShifts(historyModal.id).length === 0 && (
                                     <tr>
-                                        <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>История пуста</td>
+                                        <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>История пуста</td>
                                     </tr>
                                 )}
                             </tbody>

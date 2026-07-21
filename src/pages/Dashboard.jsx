@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
 import { Package, Flower2, DollarSign, Layers, Plus, Calendar, ArrowUpRight, ShoppingCart, Truck, Globe, Store, AlertTriangle, TrendingDown, Box, Clock, Users, UserPlus, RotateCcw, Phone, Play, Square, AlertOctagon, TrendingUp, CreditCard, ChevronRight, Search, Instagram, Facebook, Sparkles } from 'lucide-react'
@@ -670,10 +670,22 @@ export default function Dashboard() {
     const [isStartShiftOpen, setIsStartShiftOpen] = useState(false)
     const [isEndShiftOpen, setIsEndShiftOpen] = useState(false)
     const [shiftToEnd, setShiftToEnd] = useState(null)
-    const [startForm, setStartForm] = useState({ floristId: '', openingCash: '' })
-    const [endFormClosingCash, setEndFormClosingCash] = useState('')
+    const emptyReconciliation = { actualCash: '', expectedCash: 0, checked: false, note: '' }
+    const [startForm, setStartForm] = useState({ floristId: '', ...emptyReconciliation })
+    const [endForm, setEndForm] = useState(emptyReconciliation)
     const [shiftLoading, setShiftLoading] = useState(false)
     const [elapsedSeconds, setElapsedSeconds] = useState(Date.now())
+    const todayCashDiscrepancies = useMemo(() => {
+        const today = toLocalDateKey(new Date())
+        return shifts.flatMap(shift => {
+            if (String(shift.shift_date || '').slice(0, 10) !== today) return []
+            const employee = employees.find(item => item.id === shift.employee_id)
+            return [
+                { stage: 'Открытие', difference: Number(shift.opening_cash_difference || 0), note: shift.opening_cash_note, employee: employee?.name || 'Сотрудник' },
+                { stage: 'Закрытие', difference: Number(shift.closing_cash_difference || 0), note: shift.closing_cash_note, employee: employee?.name || 'Сотрудник' }
+            ].filter(item => Math.abs(item.difference) > 0.009)
+        })
+    }, [shifts, employees])
 
     useEffect(() => {
         const active = getActiveShifts()
@@ -691,22 +703,35 @@ export default function Dashboard() {
     }
 
     const handleStartShift = async () => {
-        if (!startForm.floristId) return
+        const difference = Number(startForm.actualCash || 0) - Number(startForm.expectedCash || 0)
+        if (!startForm.floristId || !startForm.checked || (Math.abs(difference) > 0.009 && !startForm.note.trim())) return
         setShiftLoading(true)
-        await startShift(startForm.floristId, startForm.openingCash)
+        await startShift(startForm.floristId, startForm)
         setShiftLoading(false)
         setIsStartShiftOpen(false)
-        setStartForm({ floristId: '', openingCash: '' })
+        setStartForm({ floristId: '', ...emptyReconciliation })
     }
 
     const handleEndShift = async () => {
-        if (!shiftToEnd) return
+        const difference = Number(endForm.actualCash || 0) - Number(endForm.expectedCash || 0)
+        if (!shiftToEnd || !endForm.checked || (Math.abs(difference) > 0.009 && !endForm.note.trim())) return
         setShiftLoading(true)
-        await endShift(shiftToEnd.id, endFormClosingCash)
+        await endShift(shiftToEnd.id, endForm)
         setShiftLoading(false)
         setIsEndShiftOpen(false)
         setShiftToEnd(null)
-        setEndFormClosingCash('')
+        setEndForm(emptyReconciliation)
+    }
+
+    const cashDifference = form => Number(form.actualCash || 0) - Number(form.expectedCash || 0)
+    const openStartShift = () => {
+        setStartForm({ floristId: '', ...emptyReconciliation, expectedCash: Number(getCashBalance() || 0) })
+        setIsStartShiftOpen(true)
+    }
+    const openEndShift = shift => {
+        setShiftToEnd(shift)
+        setEndForm({ ...emptyReconciliation, expectedCash: Number(getCashBalance() || 0) })
+        setIsEndShiftOpen(true)
     }
 
     const formatTimer = (sec) => {
@@ -792,7 +817,7 @@ export default function Dashboard() {
                 {/* Shift Block */}
                 <div style={{ flex: 1, minWidth: isMobile ? '100%' : '320px' }}>
                     {activeShifts.length === 0 ? (
-                        <div onClick={() => { setIsStartShiftOpen(true); setStartForm(prev => ({ ...prev, openingCash: String(getCashBalance() || 0) })) }} style={{
+                        <div onClick={openStartShift} style={{
                             display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.5rem',
                             background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '16px',
                             cursor: 'pointer', color: 'white', boxShadow: '0 4px 14px rgba(16,185,129,0.4)',
@@ -844,12 +869,17 @@ export default function Dashboard() {
                                         </div>
 
                                         {/* Action */}
-                                        <button onClick={() => { setShiftToEnd(shift); setEndFormClosingCash(String(getCashBalance() || 0)); setIsEndShiftOpen(true) }} style={{
+                                        <button onClick={() => openEndShift(shift)} style={{
                                             background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '8px',
                                             padding: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
                                         }}>
                                             <Square size={18} />
                                         </button>
+                                        {Math.abs(Number(shift.opening_cash_difference || 0)) > 0.009 && (
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 850, color: Number(shift.opening_cash_difference) < 0 ? '#dc2626' : '#b45309', whiteSpace: 'nowrap' }}>
+                                                {Number(shift.opening_cash_difference) < 0 ? 'Недостача' : 'Излишек'} {Math.abs(Number(shift.opening_cash_difference)).toLocaleString()} lei
+                                            </div>
+                                        )}
                                     </div>
                                 )
                             })}
@@ -956,8 +986,22 @@ export default function Dashboard() {
                 </div>
             </div>
 
-
-
+            {todayCashDiscrepancies.length > 0 && (
+                <div style={{ marginBottom: '1rem', padding: '0.85rem 1rem', borderRadius: 8, background: '#fff7ed', border: '1px solid #fdba74', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                    <AlertTriangle size={20} color="#c2410c" style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 900, color: '#9a3412', marginBottom: 4 }}>Расхождение кассы сегодня</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {todayCashDiscrepancies.map((item, index) => (
+                                <span key={`${item.employee}-${item.stage}-${index}`} title={item.note || ''} style={{ padding: '4px 7px', borderRadius: 6, background: '#fff', border: '1px solid #fed7aa', color: '#7c2d12', fontSize: '0.75rem', fontWeight: 750 }}>
+                                    {item.employee} · {item.stage}: {item.difference < 0 ? 'недостача' : 'излишек'} {Math.abs(item.difference).toLocaleString()} lei
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                    <Link to="/employees" style={{ color: '#c2410c', fontSize: '0.75rem', fontWeight: 850, whiteSpace: 'nowrap' }}>История</Link>
+                </div>
+            )}
 
             {/* --- NEW REVAMPED BLOCKS (5) --- */}
             <div className="dashboard-carousel" style={{
@@ -1562,14 +1606,17 @@ export default function Dashboard() {
                             {florists.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                         </select>
                     </div>
-                    <div>
-                        <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>Остаток в кассе (lei)</label>
-                        <input className="input" type="number" min={0} placeholder="0" value={startForm.openingCash} onChange={e => setStartForm({ ...startForm, openingCash: e.target.value })} style={{ width: '100%' }} />
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Из вкладки Заказы → Касса</div>
-                    </div>
+                    <CashReconciliationFields form={startForm} setForm={setStartForm} />
                     <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
                         <button className="btn" onClick={() => setIsStartShiftOpen(false)} style={{ flex: 1 }}>Отмена</button>
-                        <button className="btn btn-primary" disabled={!startForm.floristId || shiftLoading} onClick={handleStartShift} style={{ flex: 1 }}>{shiftLoading ? '...' : 'Начать'}</button>
+                        {!startForm.checked ? (
+                            <button className="btn btn-primary" disabled={startForm.actualCash === ''} onClick={() => setStartForm({ ...startForm, checked: true })} style={{ flex: 1 }}>Сверить</button>
+                        ) : (
+                            <>
+                                <button className="btn" onClick={() => setStartForm({ ...startForm, actualCash: '', checked: false, note: '' })} style={{ flex: 1 }}>Пересчитать</button>
+                                <button className="btn btn-primary" disabled={!startForm.floristId || shiftLoading || (Math.abs(cashDifference(startForm)) > 0.009 && !startForm.note.trim())} onClick={handleStartShift} style={{ flex: 1 }}>{shiftLoading ? '...' : 'Начать'}</button>
+                            </>
+                        )}
                     </div>
                 </div>
             </Modal>
@@ -1578,19 +1625,55 @@ export default function Dashboard() {
                 {shiftToEnd && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <div style={{ fontSize: '0.9rem' }}>Флорист: <b>{employees.find(e => e.id === shiftToEnd.employee_id)?.name}</b></div>
-                        <div>
-                            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>Остаток в кассе (lei)</label>
-                            <input className="input" type="number" min={0} placeholder="0" value={endFormClosingCash} onChange={e => setEndFormClosingCash(e.target.value)} style={{ width: '100%' }} />
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Текущий расчёт из Заказы → Касса</div>
-                        </div>
+                        <CashReconciliationFields form={endForm} setForm={setEndForm} />
                         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
                             <button className="btn" onClick={() => { setIsEndShiftOpen(false); setShiftToEnd(null) }} style={{ flex: 1 }}>Отмена</button>
-                            <button className="btn btn-primary" disabled={shiftLoading} onClick={handleEndShift} style={{ flex: 1 }}>{shiftLoading ? '...' : 'Закончить'}</button>
+                            {!endForm.checked ? (
+                                <button className="btn btn-primary" disabled={endForm.actualCash === ''} onClick={() => setEndForm({ ...endForm, checked: true })} style={{ flex: 1 }}>Сверить</button>
+                            ) : (
+                                <>
+                                    <button className="btn" onClick={() => setEndForm({ ...endForm, actualCash: '', checked: false, note: '' })} style={{ flex: 1 }}>Пересчитать</button>
+                                    <button className="btn btn-primary" disabled={shiftLoading || (Math.abs(cashDifference(endForm)) > 0.009 && !endForm.note.trim())} onClick={handleEndShift} style={{ flex: 1 }}>{shiftLoading ? '...' : 'Закончить'}</button>
+                                </>
+                            )}
                         </div>
                     </div>
                 )}
             </Modal>
         </div>
+    )
+}
+
+function CashReconciliationFields({ form, setForm }) {
+    const difference = Number(form.actualCash || 0) - Number(form.expectedCash || 0)
+    const hasDifference = Math.abs(difference) > 0.009
+
+    return (
+        <>
+            <div style={{ padding: '0.75rem', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                Пересчитайте наличные самостоятельно. Ожидаемая сумма откроется только после сверки.
+            </div>
+            <div>
+                <label style={{ fontSize: '0.85rem', fontWeight: 700, display: 'block', marginBottom: '0.35rem' }}>Фактически в кассе (lei)</label>
+                <input className="input" type="number" min={0} step="0.01" placeholder="Введите пересчитанную сумму" disabled={form.checked} value={form.actualCash} onChange={event => setForm({ ...form, actualCash: event.target.value, checked: false })} style={{ width: '100%' }} />
+            </div>
+            {form.checked && (
+                <div style={{ padding: '0.85rem', borderRadius: 8, background: hasDifference ? (difference < 0 ? '#fef2f2' : '#fff7ed') : '#f0fdf4', border: `1px solid ${hasDifference ? (difference < 0 ? '#fecaca' : '#fed7aa') : '#bbf7d0'}` }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, fontSize: '0.8rem' }}>
+                        <span style={{ color: '#64748b' }}>Ожидалось</span><b>{Number(form.expectedCash || 0).toLocaleString()} lei</b>
+                        <span style={{ color: '#64748b' }}>Пересчитано</span><b>{Number(form.actualCash || 0).toLocaleString()} lei</b>
+                        <span style={{ color: '#64748b' }}>Расхождение</span>
+                        <b style={{ color: !hasDifference ? '#15803d' : difference < 0 ? '#dc2626' : '#b45309' }}>{!hasDifference ? 'Совпадает' : `${difference < 0 ? 'Недостача' : 'Излишек'} ${Math.abs(difference).toLocaleString()} lei`}</b>
+                    </div>
+                </div>
+            )}
+            {form.checked && hasDifference && (
+                <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 700, display: 'block', marginBottom: '0.35rem' }}>Комментарий к расхождению *</label>
+                    <textarea className="input" rows={2} placeholder="Что проверили, возможная причина..." value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} style={{ width: '100%', resize: 'vertical' }} />
+                </div>
+            )}
+        </>
     )
 }
 
