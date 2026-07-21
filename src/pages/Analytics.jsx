@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
-import { isCashTransfer } from '../lib/cashLedger'
+import { buildCashActivities, isCashTransfer } from '../lib/cashLedger'
 import {
     BarChart, DollarSign, TrendingUp, TrendingDown,
-    Calendar, PieChart, Activity, ShoppingCart
+    Calendar, PieChart, Activity, ShoppingCart, WalletCards, ArrowDownToLine, ArrowUpFromLine, Scale
 } from 'lucide-react'
 
 export default function Analytics() {
-    const { sales, expenses, stockTransactions, flowers, goods, claims } = useStore()
+    const { sales, expenses, cashMovements, stockTransactions, flowers, goods, claims } = useStore()
 
     // Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -20,6 +20,7 @@ export default function Analytics() {
     // Filters
     const [dateFilter, setDateFilter] = useState('month') // 'today', 'yesterday', 'week', 'month', 'custom'
     const [customRange, setCustomRange] = useState({ start: '', end: '' })
+    const [analyticsView, setAnalyticsView] = useState('pnl')
 
     // Helper: Date Check
     const isWithinRange = (dateStr) => {
@@ -143,6 +144,71 @@ export default function Analytics() {
         }
     }, [pnlStats, filteredData, flowers, goods])
 
+    const cashActivities = useMemo(() => buildCashActivities({
+        sales,
+        expenses,
+        claims: claims || [],
+        cashMovements: cashMovements || [],
+    }), [sales, expenses, claims, cashMovements])
+
+    const cashStats = useMemo(() => {
+        const now = new Date()
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        let start = null
+        let end = now
+
+        if (dateFilter === 'today') start = today
+        if (dateFilter === 'yesterday') {
+            start = new Date(today)
+            start.setDate(start.getDate() - 1)
+            end = today
+        }
+        if (dateFilter === 'week') {
+            start = new Date(today)
+            start.setDate(start.getDate() - 7)
+        }
+        if (dateFilter === 'month') {
+            start = new Date(today)
+            start.setDate(start.getDate() - 30)
+        }
+        if (dateFilter === 'custom' && customRange.start && customRange.end) {
+            start = new Date(customRange.start)
+            end = new Date(customRange.end)
+            end.setHours(23, 59, 59, 999)
+        }
+
+        const inPeriod = cashActivities.filter(activity => {
+            const date = new Date(activity.occurred_at)
+            return start && !Number.isNaN(date.getTime()) && date >= start && date <= end
+        })
+        const openingBalance = start
+            ? cashActivities.filter(activity => new Date(activity.occurred_at) < start).reduce((sum, activity) => sum + activity.effect, 0)
+            : 0
+        const periodNet = inPeriod.reduce((sum, activity) => sum + activity.effect, 0)
+        const sumKinds = (kinds, field = 'amount') => inPeriod
+            .filter(activity => kinds.includes(activity.kind))
+            .reduce((sum, activity) => sum + Math.abs(Number(activity[field] || 0)), 0)
+
+        return {
+            activities: inPeriod,
+            currentBalance: cashActivities.reduce((sum, activity) => sum + activity.effect, 0),
+            openingBalance,
+            closingBalance: openingBalance + periodNet,
+            inflow: inPeriod.filter(activity => activity.effect > 0).reduce((sum, activity) => sum + activity.effect, 0),
+            outflow: Math.abs(inPeriod.filter(activity => activity.effect < 0).reduce((sum, activity) => sum + activity.effect, 0)),
+            cashSales: sumKinds(['sale']),
+            refunds: sumKinds(['refund']),
+            expenses: sumKinds(['expense']),
+            ownerContributions: sumKinds(['owner_contribution']),
+            ownerWithdrawals: sumKinds(['owner_withdrawal']),
+            transfersIn: sumKinds(['vault_to_cash', 'accountable_return']),
+            transfersOut: sumKinds(['cash_to_vault', 'accountable_advance']),
+            shortages: sumKinds(['cash_shortage']),
+            overages: sumKinds(['cash_overage']),
+            ownerNet: inPeriod.reduce((sum, activity) => sum + Number(activity.ownerEffect || 0), 0),
+        }
+    }, [cashActivities, dateFilter, customRange])
+
 
     // ABC Analysis
     const abcAnalysis = useMemo(() => {
@@ -242,6 +308,21 @@ export default function Analytics() {
                 </div>
             </div>
 
+            <div style={{ display: 'inline-flex', width: isMobile ? '100%' : 'auto', padding: 4, marginBottom: '1.25rem', borderRadius: 10, background: '#e9eef5' }}>
+                {[
+                    { id: 'pnl', label: 'Прибыль и убытки', icon: Activity },
+                    { id: 'cash', label: 'Касса и деньги', icon: WalletCards },
+                ].map(item => {
+                    const Icon = item.icon
+                    const active = analyticsView === item.id
+                    return (
+                        <button key={item.id} type="button" onClick={() => setAnalyticsView(item.id)} style={{ flex: isMobile ? 1 : 'none', minHeight: 42, padding: '0.55rem 0.9rem', border: 'none', borderRadius: 7, background: active ? '#fff' : 'transparent', color: active ? '#111827' : '#64748b', boxShadow: active ? '0 2px 8px rgba(15,23,42,0.08)' : 'none', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem' }}>
+                            <Icon size={17} /> {item.label}
+                        </button>
+                    )
+                })}
+            </div>
+
             {dateFilter === 'custom' && (
                 <div style={{ marginBottom: '2rem', background: 'white', padding: '1rem', borderRadius: '12px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '1rem', alignItems: 'center' }}>
                     <label style={{ width: isMobile ? '100%' : 'auto' }}>От: <input type="date" className="input" style={{ width: isMobile ? '100%' : 'auto' }} value={customRange.start} onChange={e => setCustomRange({ ...customRange, start: e.target.value })} /></label>
@@ -249,7 +330,12 @@ export default function Analytics() {
                 </div>
             )}
 
+            {analyticsView === 'cash' && (
+                <CashFlowView stats={cashStats} isMobile={isMobile} formatMoney={formatMoney} />
+            )}
+
             {/* P&L Block */}
+            {analyticsView === 'pnl' && <>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: isMobile ? '1rem' : '2rem', marginBottom: '3rem', alignItems: 'start' }}>
 
                 {/* Waterfall / Details */}
@@ -307,7 +393,7 @@ export default function Analytics() {
                     <div style={{ marginTop: '2rem', padding: isMobile ? '1.25rem' : '1.5rem', background: finalPnl.netProfit >= 0 ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)', borderRadius: '16px', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                             <div style={{ fontSize: '0.9rem', opacity: 0.9, textTransform: 'uppercase', fontWeight: 700 }}>Чистая прибыль</div>
-                            <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>В карман</div>
+                            <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>Результат бизнеса</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: 800 }}>{formatMoney(finalPnl.netProfit)}</div>
@@ -385,6 +471,94 @@ export default function Analytics() {
                                 </div>
                             ))}
                         </div>
+                    </div>
+                </div>
+            </div>
+            </>}
+        </div>
+    )
+}
+
+function CashFlowView({ stats, isMobile, formatMoney }) {
+    const rows = [
+        { label: 'Наличные продажи', value: stats.cashSales, sign: 1 },
+        { label: 'Вклад владельца', value: stats.ownerContributions, sign: 1 },
+        { label: 'Из сейфа и возврат подотчёта', value: stats.transfersIn, sign: 1 },
+        { label: 'Излишки при сверке', value: stats.overages, sign: 1 },
+        { label: 'Расходы бизнеса из кассы', value: stats.expenses, sign: -1 },
+        { label: 'Изъято владельцем', value: stats.ownerWithdrawals, sign: -1 },
+        { label: 'В сейф и сотрудникам под отчёт', value: stats.transfersOut, sign: -1 },
+        { label: 'Возвраты клиентам', value: stats.refunds, sign: -1 },
+        { label: 'Недостачи при сверке', value: stats.shortages, sign: -1 },
+    ]
+
+    return (
+        <div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: '0.85rem', marginBottom: '1.25rem' }}>
+                {[
+                    { label: 'Сейчас в кассе', value: stats.currentBalance, color: '#d97706', icon: WalletCards },
+                    { label: 'Поступило за период', value: stats.inflow, color: '#059669', icon: ArrowDownToLine },
+                    { label: 'Выбыло за период', value: stats.outflow, color: '#dc2626', icon: ArrowUpFromLine },
+                    { label: 'Владелец: нетто за период', value: stats.ownerNet, color: '#7c3aed', icon: Scale, signed: true },
+                ].map(card => {
+                    const Icon = card.icon
+                    return (
+                        <div key={card.label} style={{ background: '#fff', border: '1px solid #e2e8f0', borderTop: `3px solid ${card.color}`, borderRadius: 8, padding: isMobile ? '0.85rem' : '1rem', minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#64748b', fontWeight: 750, fontSize: isMobile ? '0.72rem' : '0.82rem', marginBottom: '0.5rem' }}><Icon size={17} color={card.color} /> {card.label}</div>
+                            <div style={{ color: card.color, fontSize: isMobile ? '1.15rem' : '1.45rem', fontWeight: 900, overflowWrap: 'anywhere' }}>
+                                {card.signed && card.value > 0 ? '+' : ''}{formatMoney(card.value)}
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.45fr) minmax(280px, 0.75fr)', gap: '1rem', marginBottom: '1.25rem', alignItems: 'start' }}>
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: isMobile ? '1rem' : '1.25rem' }}>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 900, margin: '0 0 1rem' }}>Расчёт остатка кассы</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.65rem 0', borderBottom: '1px solid #e5e7eb', color: '#475569', fontWeight: 800 }}>
+                        <span>Остаток на начало</span><span>{formatMoney(stats.openingBalance)}</span>
+                    </div>
+                    {rows.map(row => (
+                        <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.55rem 0', borderBottom: '1px solid #f1f5f9', color: row.sign > 0 ? '#047857' : '#b91c1c', fontSize: '0.88rem' }}>
+                            <span>{row.label}</span>
+                            <span style={{ fontWeight: 850, whiteSpace: 'nowrap' }}>{row.sign > 0 ? '+' : '−'} {formatMoney(row.value)}</span>
+                        </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginTop: '0.8rem', padding: '0.85rem', borderRadius: 7, background: '#fff7ed', color: '#9a3412', fontWeight: 900 }}>
+                        <span>Остаток на конец периода</span><span>{formatMoney(stats.closingBalance)}</span>
+                    </div>
+                </div>
+
+                <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: isMobile ? '1rem' : '1.25rem' }}>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 900, margin: '0 0 0.8rem' }}>Расчёты с владельцем</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.55rem 0', color: '#2563eb' }}><span>Внесено</span><strong>+ {formatMoney(stats.ownerContributions)}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.55rem 0', color: '#7c3aed' }}><span>Забрано</span><strong>− {formatMoney(stats.ownerWithdrawals)}</strong></div>
+                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb', fontWeight: 900, color: stats.ownerNet >= 0 ? '#2563eb' : '#7c3aed' }}>
+                        {stats.ownerNet > 0 && `Владелец вложил чистыми ${formatMoney(stats.ownerNet)}`}
+                        {stats.ownerNet < 0 && `Владелец забрал чистыми ${formatMoney(Math.abs(stats.ownerNet))}`}
+                        {stats.ownerNet === 0 && 'Вложения и изъятия уравновешены'}
+                    </div>
+                    <p style={{ margin: '0.8rem 0 0', color: '#64748b', fontSize: '0.78rem', lineHeight: 1.45 }}>Эти операции меняют деньги бизнеса, но не пересчитывают заработанную прибыль.</p>
+                </div>
+            </div>
+
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ padding: '1rem 1.1rem', borderBottom: '1px solid #e5e7eb', fontWeight: 900 }}>Журнал движения денег</div>
+                <div style={{ overflowX: 'auto' }}>
+                    <div style={{ minWidth: isMobile ? 620 : 760 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '150px minmax(210px, 1.4fr) minmax(160px, 1fr) 120px', gap: '0.75rem', padding: '0.65rem 1rem', background: '#f8fafc', color: '#94a3b8', fontSize: '0.72rem', fontWeight: 850, textTransform: 'uppercase' }}>
+                            <span>Дата</span><span>Операция</span><span>Комментарий / кто</span><span style={{ textAlign: 'right' }}>Сумма</span>
+                        </div>
+                        {stats.activities.map(activity => (
+                            <div key={activity.id} style={{ display: 'grid', gridTemplateColumns: '150px minmax(210px, 1.4fr) minmax(160px, 1fr) 120px', gap: '0.75rem', padding: '0.75rem 1rem', borderTop: '1px solid #f1f5f9', alignItems: 'center', fontSize: '0.82rem' }}>
+                                <span style={{ color: '#64748b' }}>{new Date(activity.occurred_at).toLocaleString('ru-RU')}</span>
+                                <span style={{ fontWeight: 800, color: '#1f2937' }}>{activity.title}</span>
+                                <span style={{ color: '#64748b' }}>{[activity.employee_name, activity.comment, activity.performed_by ? `записал ${activity.performed_by}` : ''].filter(Boolean).join(' · ') || '—'}</span>
+                                <span style={{ textAlign: 'right', fontWeight: 900, color: activity.effect >= 0 ? '#059669' : '#dc2626' }}>{activity.effect >= 0 ? '+' : '−'}{formatMoney(Math.abs(activity.effect))}</span>
+                            </div>
+                        ))}
+                        {stats.activities.length === 0 && <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94a3b8' }}>За выбранный период движений денег нет</div>}
                     </div>
                 </div>
             </div>

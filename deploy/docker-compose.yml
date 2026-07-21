@@ -40,6 +40,8 @@ services:
     environment:
       DATABASE_URL: postgres://flowerbox:${POSTGRES_PASSWORD}@db:5432/flowerbox
       PORT: 3100
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
 
   crm:
     build:

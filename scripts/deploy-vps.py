@@ -37,6 +37,8 @@ def build_remote_command(args):
     branch = shlex.quote(args.branch)
     service = shlex.quote(args.service)
     token = os.environ.get("CRM_SYNC_TOKEN", "")
+    telegram_bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     token_block = ""
 
     if token:
@@ -46,6 +48,23 @@ if grep -q '^CRM_SYNC_TOKEN=' deploy/.env; then
   sed -i "s|^CRM_SYNC_TOKEN=.*|CRM_SYNC_TOKEN=$CRM_SYNC_TOKEN_VALUE|" deploy/.env
 else
   printf '\\nCRM_SYNC_TOKEN=%s\\n' "$CRM_SYNC_TOKEN_VALUE" >> deploy/.env
+fi
+"""
+
+    telegram_block = ""
+    if telegram_bot_token and telegram_chat_id:
+        telegram_block = f"""
+export TELEGRAM_BOT_TOKEN_VALUE={shlex.quote(telegram_bot_token)}
+export TELEGRAM_CHAT_ID_VALUE={shlex.quote(telegram_chat_id)}
+if grep -q '^TELEGRAM_BOT_TOKEN=' deploy/.env; then
+  sed -i "s|^TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN_VALUE|" deploy/.env
+else
+  printf '\nTELEGRAM_BOT_TOKEN=%s\n' "$TELEGRAM_BOT_TOKEN_VALUE" >> deploy/.env
+fi
+if grep -q '^TELEGRAM_CHAT_ID=' deploy/.env; then
+  sed -i "s|^TELEGRAM_CHAT_ID=.*|TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID_VALUE|" deploy/.env
+else
+  printf '\nTELEGRAM_CHAT_ID=%s\n' "$TELEGRAM_CHAT_ID_VALUE" >> deploy/.env
 fi
 """
 
@@ -72,6 +91,7 @@ git pull --ff-only origin {branch}
 printf "AFTER_HEAD="
 git rev-parse --short HEAD
 {token_block}
+{telegram_block}
 cd deploy
 docker compose up -d --build {service}
 printf "DB_MIGRATIONS\\n"

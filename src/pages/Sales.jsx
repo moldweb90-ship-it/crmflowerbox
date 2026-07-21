@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../context/StoreContext'
-import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye, Search } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { ShoppingCart, Plus, Calendar, DollarSign, X, Edit2, Trash2, Clock, MapPin, Phone, User, Truck, CreditCard, Check, AlertCircle, ChevronLeft, ChevronRight, Printer, Eye, Search, ArrowDownToLine, ArrowUpFromLine, History, ChevronDown, ChevronUp } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import ClaimModal from '../components/claims/ClaimModal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import CompositionPicker from '../components/sales/CompositionPicker'
-import { CASH_DEPOSIT_CATEGORY, CASH_WITHDRAWAL_CATEGORY, isCashDeposit, isCashTransfer, isCashWithdrawal } from '../lib/cashLedger'
+import { CASH_IN_OPTIONS, CASH_MOVEMENT_TYPES, CASH_OUT_OPTIONS, buildCashActivities } from '../lib/cashLedger'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -44,6 +45,16 @@ const SALES_CHANNELS = [
 const SALES_PROJECTS = [
     { id: 'flowerbox', label: 'FlowerBox', short: 'FB', color: '#2563eb', bg: '#dbeafe' },
     { id: 'flowersmafia', label: 'FlowersMafia', short: 'FM', color: '#111827', bg: '#fee2e2' }
+]
+
+const QUICK_EXPENSE_CATEGORIES = [
+    { id: 'rent', label: 'Аренда' },
+    { id: 'salaries', label: 'Зарплаты' },
+    { id: 'marketing', label: 'Маркетинг' },
+    { id: 'taxes', label: 'Налоги' },
+    { id: 'utilities', label: 'Коммуналка' },
+    { id: 'logistics', label: 'Логистика' },
+    { id: 'other', label: 'Прочее' },
 ]
 
 const getSaleProject = (sale) => SALES_PROJECTS.find(p => p.id === (sale?.project || 'flowerbox')) || SALES_PROJECTS[0]
@@ -94,11 +105,12 @@ const localDateTimeInputToIso = (value) => {
 const formatSignedLei = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${Number(value || 0).toLocaleString('ru-RU')} lei`
 
 export default function Sales() {
+    const { user } = useAuth()
     const {
         sales, addSale, updateSale, deleteSale,
         markCourierPaid,
-        products, couriers, florists, addCourier, addFlorist,
-        expenses, addExpense,
+        products, couriers, florists, employees, addCourier, addFlorist,
+        expenses, addExpense, cashMovements, addCashMovement,
         calculateCostPrice,
         flowers, goods, settings,
         showcaseBouquets, markShowcaseBouquetSold,
@@ -167,7 +179,9 @@ export default function Sales() {
 
     // Quick Expense (Cashbox) State
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
-    const [expenseData, setExpenseData] = useState({ amount: '', comment: '', type: 'expense' }) // type: 'expense', 'incasso', 'deposit'
+    const [expenseData, setExpenseData] = useState({ amount: '', comment: '', type: 'expense', movementType: '', expenseCategory: 'other', employeeId: '' })
+    const [cashFormError, setCashFormError] = useState('')
+    const [showCashHistory, setShowCashHistory] = useState(false)
 
     // FAB Menu State
     const [isFabOpen, setIsFabOpen] = useState(false)
@@ -428,46 +442,68 @@ export default function Sales() {
         return { ...project, count: projectSales.length, total, profit }
     })
 
-    // Cashbox Balance Calculation
-    const cashBalance = useMemo(() => {
-        // Cash Sales (all channels + cash payment + actually paid)
-        const cashSales = sales
-            .filter(s => s.payment_method === 'cash' && (s.payment_status === 'paid' || s.status === 'completed'))
-            .reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
-        const cashRefunds = (claims || [])
-            .filter(claim => {
-                const sale = sales.find(s => s.id === claim.sale_id)
-                return sale?.payment_method === 'cash'
-            })
-            .reduce((sum, claim) => sum + Number(claim.refund_amount || 0), 0)
+    const cashActivities = useMemo(() => buildCashActivities({
+        sales,
+        claims: claims || [],
+        expenses,
+        cashMovements: cashMovements || [],
+    }), [sales, claims, expenses, cashMovements])
 
-        // Cash Expenses (Source = cash_box)
-        const cashExpenses = expenses
-            .filter(e => e.payment_method === 'cash_box' && !isCashTransfer(e))
-            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+    const cashBalance = useMemo(() => (
+        cashActivities.reduce((sum, activity) => sum + Number(activity.effect || 0), 0)
+    ), [cashActivities])
 
-        const cashDeposits = expenses
-            .filter(e => e.payment_method === 'cash_box' && isCashDeposit(e))
-            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
-        const cashWithdrawals = expenses
-            .filter(e => e.payment_method === 'cash_box' && isCashWithdrawal(e))
-            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
-
-        return cashSales + cashDeposits - cashWithdrawals - cashExpenses - cashRefunds
-    }, [sales, expenses, claims])
+    const openCashModal = (type) => {
+        setCashFormError('')
+        setExpenseData({
+            amount: '',
+            comment: '',
+            type,
+            movementType: type === 'deposit' ? CASH_IN_OPTIONS[0] : type === 'withdrawal' ? CASH_OUT_OPTIONS[0] : '',
+            expenseCategory: 'other',
+            employeeId: '',
+        })
+        setIsExpenseModalOpen(true)
+    }
 
     const handleQuickExpense = async () => {
-        if (!expenseData.amount) return
+        const amount = Number(String(expenseData.amount).replace(',', '.'))
+        if (!Number.isFinite(amount) || amount <= 0) {
+            setCashFormError('Укажите сумму больше нуля')
+            return
+        }
+        if ((expenseData.type === 'expense' || expenseData.type === 'withdrawal') && amount > cashBalance + 0.009) {
+            setCashFormError(`В кассе доступно ${cashBalance.toLocaleString('ru-RU')} lei`)
+            return
+        }
+        if (['accountable_advance', 'accountable_return'].includes(expenseData.movementType) && !expenseData.employeeId) {
+            setCashFormError('Выберите сотрудника для подотчётной операции')
+            return
+        }
 
-        await addExpense({
-            amount: Number(expenseData.amount),
-            category: expenseData.type === 'incasso' ? CASH_WITHDRAWAL_CATEGORY : (expenseData.type === 'deposit' ? CASH_DEPOSIT_CATEGORY : 'other'),
-            date: new Date().toISOString(),
-            comment: (expenseData.type === 'incasso' ? '💸 Инкассация: ' : (expenseData.type === 'deposit' ? '📥 Внесение: ' : '📤 Расход: ')) + expenseData.comment,
-            payment_method: 'cash_box'
-        })
+        const result = expenseData.type === 'expense'
+            ? await addExpense({
+                amount,
+                category: expenseData.expenseCategory || 'other',
+                date: new Date().toISOString(),
+                comment: `Расход из кассы: ${expenseData.comment}`.trim(),
+                payment_method: 'cash_box'
+            })
+            : await addCashMovement({
+                movement_type: expenseData.movementType,
+                amount,
+                comment: expenseData.comment,
+                employee_id: expenseData.employeeId || null,
+                performed_by: user?.user_metadata?.name || user?.name || user?.email || 'Пользователь CRM',
+            })
+
+        if (!result?.success) {
+            setCashFormError(result?.error?.message || 'Не удалось сохранить операцию')
+            return
+        }
         setIsExpenseModalOpen(false)
-        setExpenseData({ amount: '', comment: '', type: 'expense' })
+        setExpenseData({ amount: '', comment: '', type: 'expense', movementType: '', expenseCategory: 'other', employeeId: '' })
+        setCashFormError('')
     }
 
     // Loyal customers calculation (by email)
@@ -1064,29 +1100,67 @@ export default function Sales() {
                     justifyContent: 'space-between'
                 }}>
                     <div>
-                        <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>💰 В кассе (Наличные)</div>
+                        <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 700, marginBottom: '0.25rem' }}>Физическая касса</div>
                         <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
                             {cashBalance.toLocaleString('ru-RU')} lei
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
                         <button
-                            onClick={() => { setIsExpenseModalOpen(true); setExpenseData({ ...expenseData, type: 'expense' }) }}
-                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
-                            - Расход
+                            onClick={() => openCashModal('expense')}
+                            title="Оплатить расход бизнеса наличными"
+                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                            <ArrowUpFromLine size={15} /> Расход
                         </button>
                         <button
-                            onClick={() => { setIsExpenseModalOpen(true); setExpenseData({ ...expenseData, type: 'incasso' }) }}
-                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
-                            💸 Забрать
+                            onClick={() => openCashModal('withdrawal')}
+                            title="Выдать владельцу, в сейф или сотруднику"
+                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                            <ArrowUpFromLine size={15} /> Выдать
                         </button>
                         <button
-                            onClick={() => { setIsExpenseModalOpen(true); setExpenseData({ ...expenseData, type: 'deposit' }) }}
-                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
-                            📥 Внести
+                            onClick={() => openCashModal('deposit')}
+                            title="Внести деньги владельца, из сейфа или возврат подотчёта"
+                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                            <ArrowDownToLine size={15} /> Внести
                         </button>
                     </div>
                 </div>
+            </div>
+
+            <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '16px', margin: '-0.75rem 0 1.5rem', overflow: 'hidden' }}>
+                <button
+                    type="button"
+                    onClick={() => setShowCashHistory(value => !value)}
+                    style={{ width: '100%', minHeight: 58, padding: '0.85rem 1rem', border: 'none', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', cursor: 'pointer' }}
+                >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#111827', fontWeight: 850 }}>
+                        <History size={19} color="#d97706" /> История кассы
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#64748b', fontSize: '0.82rem', fontWeight: 700 }}>
+                        Последних операций: {Math.min(cashActivities.length, 8)}
+                        {showCashHistory ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </span>
+                </button>
+                {showCashHistory && (
+                    <div style={{ borderTop: '1px solid #e5e7eb' }}>
+                        {cashActivities.slice(0, 8).map(activity => (
+                            <div key={activity.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : 'minmax(220px, 1.5fr) minmax(160px, 1fr) auto', gap: '0.75rem', alignItems: 'center', padding: '0.75rem 1rem', borderBottom: '1px solid #f1f5f9' }}>
+                                <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontWeight: 800, color: '#1f2937' }}>{activity.title}</div>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: 2 }}>
+                                        {new Date(activity.occurred_at).toLocaleString('ru-RU')}{activity.employee_name ? ` · ${activity.employee_name}` : ''}{activity.performed_by ? ` · записал ${activity.performed_by}` : ''}
+                                    </div>
+                                </div>
+                                {!isMobile && <div style={{ color: '#64748b', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activity.comment || 'Без комментария'}</div>}
+                                <div style={{ fontWeight: 900, color: activity.effect >= 0 ? '#059669' : '#dc2626', whiteSpace: 'nowrap' }}>
+                                    {activity.effect >= 0 ? '+' : '−'}{Math.abs(activity.effect).toLocaleString('ru-RU')} lei
+                                </div>
+                            </div>
+                        ))}
+                        {cashActivities.length === 0 && <div style={{ padding: '1rem', color: '#94a3b8', textAlign: 'center' }}>Движений кассы пока нет</div>}
+                    </div>
+                )}
             </div>
 
             <div style={{
@@ -1141,17 +1215,59 @@ export default function Sales() {
             <Modal
                 isOpen={isExpenseModalOpen}
                 onClose={() => setIsExpenseModalOpen(false)}
-                title={expenseData.type === 'incasso' ? '💸 Инкассация (Забрать деньги)' : (expenseData.type === 'deposit' ? '📥 Внесение в кассу' : '📤 Расход из кассы')}
+                title={expenseData.type === 'withdrawal' ? 'Выдать деньги из кассы' : (expenseData.type === 'deposit' ? 'Внести деньги в кассу' : 'Расход бизнеса из кассы')}
             >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {expenseData.type !== 'expense' && (
+                        <div>
+                            <label className="label">Основание операции</label>
+                            <div style={{ display: 'grid', gap: '0.5rem' }}>
+                                {(expenseData.type === 'deposit' ? CASH_IN_OPTIONS : CASH_OUT_OPTIONS).map(type => {
+                                    const option = CASH_MOVEMENT_TYPES[type]
+                                    const selected = expenseData.movementType === type
+                                    return (
+                                        <button
+                                            key={type}
+                                            type="button"
+                                            onClick={() => { setExpenseData({ ...expenseData, movementType: type }); setCashFormError('') }}
+                                            style={{ minHeight: 48, padding: '0.65rem 0.8rem', borderRadius: 8, border: `1px solid ${selected ? option.tone : '#dbe2ea'}`, background: selected ? `${option.tone}12` : '#fff', color: selected ? option.tone : '#334155', textAlign: 'left', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}
+                                        >
+                                            <span>{option.shortLabel}</span>
+                                            <span style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${selected ? option.tone : '#cbd5e1'}`, display: 'grid', placeItems: 'center' }}>
+                                                {selected && <span style={{ width: 8, height: 8, borderRadius: '50%', background: option.tone }} />}
+                                            </span>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )}
+                    {expenseData.type === 'expense' && (
+                        <div>
+                            <label className="label">Категория расхода</label>
+                            <select className="input" value={expenseData.expenseCategory} onChange={e => setExpenseData({ ...expenseData, expenseCategory: e.target.value })}>
+                                {QUICK_EXPENSE_CATEGORIES.map(category => <option key={category.id} value={category.id}>{category.label}</option>)}
+                            </select>
+                        </div>
+                    )}
+                    {['accountable_advance', 'accountable_return'].includes(expenseData.movementType) && (
+                        <div>
+                            <label className="label">Сотрудник</label>
+                            <select className="input" value={expenseData.employeeId} onChange={e => { setExpenseData({ ...expenseData, employeeId: e.target.value }); setCashFormError('') }}>
+                                <option value="">Выберите сотрудника...</option>
+                                {(employees || []).filter(employee => employee.is_active !== false).map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+                            </select>
+                        </div>
+                    )}
                     <div>
                         <label className="label">Сумма (lei)</label>
                         <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             className="input"
                             autoFocus
                             value={expenseData.amount}
-                            onChange={(e) => setExpenseData({ ...expenseData, amount: e.target.value })}
+                            onChange={(e) => { setExpenseData({ ...expenseData, amount: e.target.value }); setCashFormError('') }}
                         />
                     </div>
                     <div>
@@ -1159,20 +1275,21 @@ export default function Sales() {
                         <textarea
                             className="input"
                             rows={2}
-                            placeholder={expenseData.type === 'incasso' ? 'Выручка домой...' : (expenseData.type === 'deposit' ? 'Размен, пополнение...' : 'Бензин, обед...')}
+                            placeholder={expenseData.type === 'withdrawal' ? 'Куда и для чего выданы деньги' : (expenseData.type === 'deposit' ? 'Откуда поступили деньги' : 'На что потрачены деньги')}
                             value={expenseData.comment}
                             onChange={(e) => setExpenseData({ ...expenseData, comment: e.target.value })}
                         />
                     </div>
                     <div style={{ padding: '0.75rem 0.85rem', borderRadius: 8, background: expenseData.type === 'expense' ? '#fff7ed' : '#eff6ff', border: `1px solid ${expenseData.type === 'expense' ? '#fed7aa' : '#bfdbfe'}`, color: expenseData.type === 'expense' ? '#9a3412' : '#1e40af', fontSize: '0.82rem', lineHeight: 1.45, fontWeight: 700 }}>
                         {expenseData.type === 'expense'
-                            ? 'Расход уменьшит остаток кассы и чистую прибыль.'
-                            : expenseData.type === 'deposit'
-                                ? 'Пополнение увеличит только остаток кассы. На прибыль оно не влияет.'
-                                : 'Инкассация уменьшит только остаток кассы. Прибыль останется без изменений.'}
+                            ? 'Это расход бизнеса: он уменьшит и физическую кассу, и чистую прибыль.'
+                            : ['owner_contribution', 'owner_withdrawal'].includes(expenseData.movementType)
+                                ? 'Операция изменит кассу и расчёты с владельцем, но не прибыль бизнеса.'
+                                : 'Это перемещение денег: остаток физической кассы изменится, прибыль бизнеса — нет.'}
                     </div>
+                    {cashFormError && <div style={{ padding: '0.7rem 0.8rem', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '0.82rem', fontWeight: 800 }}>{cashFormError}</div>}
                     <button className="btn btn-primary" onClick={handleQuickExpense} style={{ marginTop: '0.5rem', justifyContent: 'center' }}>
-                        Подтвердить
+                        Сохранить операцию
                     </button>
                 </div>
             </Modal>

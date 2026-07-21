@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import { isCashDeposit, isCashTransfer, isCashWithdrawal } from '../lib/cashLedger'
+import { calculateCashBalance } from '../lib/cashLedger'
 
 const StoreContext = createContext()
 
@@ -35,6 +35,7 @@ export function StoreProvider({ children }) {
     const [suppliers, setSuppliers] = usePersistedState('store_suppliers', [])
     const [supplies, setSupplies] = usePersistedState('store_supplies', [])
     const [expenses, setExpenses] = usePersistedState('store_expenses', [])
+    const [cashMovements, setCashMovements] = usePersistedState('store_cash_movements', [])
     const [sales, setSales] = usePersistedState('store_sales', [])
     const [couriers, setCouriers] = usePersistedState('store_couriers', [])
     const [florists, setFlorists] = usePersistedState('store_florists', [])
@@ -83,10 +84,11 @@ export function StoreProvider({ children }) {
                 supabase.from('stock_lots').select('*, suppliers(name)').order('created_at', { ascending: true }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('showcase_bouquets').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
                 supabase.from('claims').select('*').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] })),
-                supabase.from('customers').select('*').order('created_at', { ascending: false })
+                supabase.from('customers').select('*').order('created_at', { ascending: false }),
+                supabase.from('cash_movements').select('*, employees(name)').order('created_at', { ascending: false }).then(r => r).catch(() => ({ data: [] }))
             ])
 
-            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, claimRows, cust] = responses
+            const [f, g, c, p, sup, supply, exp, sal, cour, flor, emp, shf, empPay, s, stk, stkTrans, lots, showcase, claimRows, cust, cashRows] = responses
 
             if (f.data) setFlowers(f.data)
             if (g.data) setGoods(g.data)
@@ -121,6 +123,7 @@ export function StoreProvider({ children }) {
             if (showcase.data) setShowcaseBouquets(showcase.data)
             if (claimRows.data) setClaims(claimRows.data)
             if (cust.data) setCustomers(cust.data)
+            if (cashRows?.data) setCashMovements(cashRows.data)
         } catch (error) {
             console.error('Error fetching data:', error)
         } finally {
@@ -304,6 +307,10 @@ export function StoreProvider({ children }) {
             const { error: err1 } = await supabase.from('expenses').delete().neq('id', '00000000-0000-0000-0000-000000000000')
             if (err1) throw err1
             setExpenses([])
+
+            const { error: cashError } = await supabase.from('cash_movements').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+            if (cashError) throw cashError
+            setCashMovements([])
 
             // Delete all sales
             const { error: err2 } = await supabase.from('sales').delete().neq('id', '00000000-0000-0000-0000-000000000000')
@@ -942,6 +949,30 @@ export function StoreProvider({ children }) {
         return { success: false, error }
     }
 
+    const refreshCashMovements = async () => {
+        const { data, error } = await supabase.from('cash_movements').select('*, employees(name)').order('created_at', { ascending: false })
+        if (!error && data) setCashMovements(data)
+        return { success: !error, data: data || [], error }
+    }
+
+    const addCashMovement = async (movement) => {
+        const amount = Number(movement?.amount || 0)
+        if (!movement?.movement_type || !Number.isFinite(amount) || amount <= 0) {
+            return { success: false, error: new Error('Укажите корректную сумму и тип движения') }
+        }
+        const { data, error } = await supabase.from('cash_movements').insert([{
+            ...movement,
+            amount,
+            comment: String(movement.comment || '').trim() || null,
+            performed_by: String(movement.performed_by || '').trim() || null,
+        }]).select()
+        if (!error && data?.[0]) {
+            const employee = movement.employee_id ? employees.find(item => item.id === movement.employee_id) : null
+            setCashMovements(current => [{ ...data[0], employees: employee ? { name: employee.name } : null }, ...current])
+        }
+        return { success: !error, data: data?.[0], error }
+    }
+
     // Sales
     const addSale = async (sale) => {
         try {
@@ -1369,6 +1400,7 @@ export function StoreProvider({ children }) {
         if (!error && data?.[0]) {
             const existing = shifts.filter(s => !(s.employee_id === employeeId && s.shift_date === dateStr))
             setShifts([...existing, data[0]])
+            await refreshCashMovements()
         }
         return { success: !error, data: data?.[0], error }
     }
@@ -1388,6 +1420,7 @@ export function StoreProvider({ children }) {
         }).eq('id', shiftId).select()
         if (!error && data?.[0]) {
             setShifts(shifts.map(s => s.id === shiftId ? data[0] : s))
+            await refreshCashMovements()
         }
         return { success: !error, data: data?.[0], error }
     }
@@ -1415,25 +1448,7 @@ export function StoreProvider({ children }) {
     }
 
     const getCashBalance = () => {
-        const cashSales = sales
-            .filter(s => s.payment_method === 'cash' && (s.payment_status === 'paid' || s.status === 'completed'))
-            .reduce((sum, s) => sum + Number(s.sale_price || 0), 0)
-        const cashRefunds = claims
-            .filter(claim => {
-                const sale = sales.find(s => s.id === claim.sale_id)
-                return sale?.payment_method === 'cash'
-            })
-            .reduce((sum, claim) => sum + Number(claim.refund_amount || 0), 0)
-        const cashExpenses = expenses
-            .filter(e => e.payment_method === 'cash_box' && !isCashTransfer(e))
-            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
-        const cashDeposits = expenses
-            .filter(e => e.payment_method === 'cash_box' && isCashDeposit(e))
-            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
-        const cashWithdrawals = expenses
-            .filter(e => e.payment_method === 'cash_box' && isCashWithdrawal(e))
-            .reduce((sum, e) => sum + Number(e.amount || 0), 0)
-        return cashSales + cashDeposits - cashWithdrawals - cashExpenses - cashRefunds
+        return calculateCashBalance({ sales, claims, expenses, cashMovements })
     }
 
     const uploadEmployeePhoto = async (file, employeeId = 'temp') => {
@@ -2609,6 +2624,7 @@ export function StoreProvider({ children }) {
             products, addProduct, updateProduct, deleteProduct, recalculateAllProducts,
             suppliers, supplies, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,
             expenses, addExpense, updateExpense, deleteExpense,
+            cashMovements, addCashMovement, refreshCashMovements,
             sales, addSale, updateSale, deleteSale, markCourierPaid,
             claims, addClaim, updateClaim, deleteClaim, getSaleClaims, getCustomerClaims,
             tasks, addTask, toggleTask, deleteTask, toggleTaskImportance, clearCompletedTasks,
