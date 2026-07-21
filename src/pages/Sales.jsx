@@ -8,6 +8,7 @@ import ClaimModal from '../components/claims/ClaimModal'
 import QuantityStepper from '../components/ui/QuantityStepper'
 import CompositionPicker from '../components/sales/CompositionPicker'
 import { CASH_IN_OPTIONS, CASH_MOVEMENT_TYPES, CASH_OUT_OPTIONS, buildCashActivities } from '../lib/cashLedger'
+import { calculateSalePricing, deriveStoredSalePricing } from '../lib/salePricing'
 
 // Enums
 const PAYMENT_METHODS = [
@@ -208,7 +209,9 @@ export default function Sales() {
         pickup_discount: '',
         extra_delivery_cost: null,
         extra_delivery_reason: '',
-        sale_price_override: ''
+        sale_price_override: '',
+        price_before_discount: '',
+        pickup_discount_applied: false
     }
     const [salonFormData, setSalonFormData] = useState(emptySalonForm)
     const [editingSalonSaleId, setEditingSalonSaleId] = useState(null)
@@ -234,6 +237,8 @@ export default function Sales() {
         courier_id: '',
         florist_id: '',
         sale_price: '',
+        price_before_discount: '',
+        pickup_discount_applied: false,
         delivery_method: 'delivery',
         payment_method: 'cash',
         payment_status: 'unpaid',
@@ -538,6 +543,14 @@ export default function Sales() {
     const currentDeliveryFee = isDeliveryOrder ? parseMoney(formData.delivery_fee !== '' ? formData.delivery_fee : (formData.extra_delivery_cost ?? defaultDeliveryFee)) : 0
     const currentCourierPayout = isDeliveryOrder ? parseMoney(formData.courier_payout !== '' ? formData.courier_payout : currentDeliveryFee) : 0
     const currentPickupDiscount = !isDeliveryOrder ? parseMoney(formData.pickup_discount !== '' ? formData.pickup_discount : defaultPickupDiscount) : 0
+    const pricingFields = (priceBeforeDiscount, deliveryMethod = formData.delivery_method, pickupDiscount = currentPickupDiscount) => {
+        const pricing = calculateSalePricing({ priceBeforeDiscount, deliveryMethod, pickupDiscount })
+        return {
+            price_before_discount: String(pricing.priceBeforeDiscount),
+            sale_price: String(pricing.salePrice),
+            pickup_discount_applied: deliveryMethod === 'pickup' && pricing.pickupDiscount > 0
+        }
+    }
     const editableCompositionCost = (composition) => composition.reduce((s, i) => s + (parseDecimal(i.cost) * parseDecimal(i.quantity)), 0)
     const editableCompositionSale = (composition) => composition.reduce((s, i) => s + (parseDecimal(i.price) * parseDecimal(i.quantity)), 0)
     const readyProductBasePrice = selectedProduct ? Math.max(0, Number(selectedProduct.price || 0) - defaultDeliveryFee) : 0
@@ -553,7 +566,7 @@ export default function Sales() {
         ? editableCompositionCost(siteComposition) + currentCourierPayout
         : (selectedProduct ? calculateCostPrice(selectedProduct.composition, currentCourierPayout) : currentCourierPayout)
     const calculatedSalePrice = calculatedBouquetPrice + currentDeliveryFee
-    const salePrice = Number(formData.sale_price) || calculatedSalePrice
+    const salePrice = formData.sale_price === '' ? calculatedSalePrice : parseMoney(formData.sale_price)
     const profit = salePrice - costPrice
 
     // Product search
@@ -592,6 +605,7 @@ export default function Sales() {
     }
 
     const handleEditClick = (sale) => {
+        const storedPricing = deriveStoredSalePricing(sale)
         // Check if this is a custom/salon sale
         if (sale.is_custom && sale.sales_channel === 'store') {
             // Open Salon Sale modal for editing
@@ -616,7 +630,9 @@ export default function Sales() {
                 pickup_discount: sale.pickup_discount ?? '',
                 extra_delivery_cost: sale.extra_delivery_cost ?? null,
                 extra_delivery_reason: sale.extra_delivery_reason || '',
-                sale_price_override: sale.sale_price || ''
+                sale_price_override: storedPricing.priceBeforeDiscount || '',
+                price_before_discount: storedPricing.priceBeforeDiscount || '',
+                pickup_discount_applied: sale.delivery_method === 'pickup' && storedPricing.pickupDiscount > 0
             })
             setSelectedShowcaseId('')
             setIsSalonModalOpen(true)
@@ -636,7 +652,9 @@ export default function Sales() {
                 card_text: sale.card_text || '',
                 courier_id: sale.courier_id || '',
                 florist_id: sale.florist_id || '',
-                sale_price: sale.sale_price || '',
+                sale_price: storedPricing.salePrice || '',
+                price_before_discount: storedPricing.priceBeforeDiscount || '',
+                pickup_discount_applied: sale.delivery_method === 'pickup' && storedPricing.pickupDiscount > 0,
                 payment_method: sale.payment_method || 'cash',
                 payment_status: sale.payment_status || 'unpaid',
                 delivery_status: sale.delivery_status || 'not_delivered',
@@ -721,7 +739,11 @@ export default function Sales() {
             courier_payout: formData.delivery_method === 'delivery' ? (formData.courier_payout !== '' ? formData.courier_payout : deliveryFee) : '',
             pickup_discount: pickupDiscount,
             extra_delivery_cost: formData.delivery_method === 'delivery' ? deliveryFee : null,
-            sale_price: String(nextPrice)
+            ...pricingFields(
+                formData.delivery_method === 'pickup' ? catalogPrice : nextPrice,
+                formData.delivery_method,
+                pickupDiscount
+            )
         })
         setProductSearch(product.name)
         setSiteSaleMode('catalog')
@@ -734,9 +756,9 @@ export default function Sales() {
         const basePrice = siteSaleMode === 'custom'
             ? calculateSiteCompositionPrice(siteComposition)
             : (selectedProduct ? Math.max(0, Number(selectedProduct.price || 0) - defaultDeliveryFee) : 0)
-        const nextPrice = method === 'delivery'
+        const priceBeforeDiscount = method === 'delivery'
             ? basePrice + parseMoney(deliveryFee)
-            : (selectedProduct ? Math.max(0, Number(selectedProduct.price || 0) - parseMoney(pickupDiscount)) : basePrice)
+            : (selectedProduct ? Number(selectedProduct.price || 0) : basePrice)
 
         setFormData({
             ...formData,
@@ -745,7 +767,7 @@ export default function Sales() {
             courier_payout: method === 'delivery' ? (formData.courier_payout !== '' ? formData.courier_payout : deliveryFee) : '',
             pickup_discount: pickupDiscount,
             extra_delivery_cost: method === 'delivery' ? deliveryFee : null,
-            sale_price: String(nextPrice)
+            ...pricingFields(priceBeforeDiscount, method, pickupDiscount)
         })
     }
 
@@ -784,7 +806,7 @@ export default function Sales() {
         }
 
         setLoading(true)
-        const salePrice = Number(formData.sale_price) || calculatedSalePrice
+        const salePrice = formData.sale_price === '' ? calculatedSalePrice : parseMoney(formData.sale_price)
         const deliveryFee = formData.delivery_method === 'delivery' ? currentDeliveryFee : 0
         const courierPayout = formData.delivery_method === 'delivery' ? currentCourierPayout : 0
         const pickupDiscount = formData.delivery_method === 'pickup' ? currentPickupDiscount : 0
@@ -802,6 +824,8 @@ export default function Sales() {
             delivery_fee: deliveryFee,
             courier_payout: courierPayout,
             pickup_discount: pickupDiscount,
+            price_before_discount: parseMoney(formData.price_before_discount || salePrice + pickupDiscount),
+            pickup_discount_applied: formData.delivery_method === 'pickup' && pickupDiscount > 0,
             extra_delivery_cost: formData.delivery_method === 'delivery' ? deliveryFee : null,
             extra_delivery_reason: formData.delivery_method === 'delivery' ? (formData.extra_delivery_reason || null) : null
         }
@@ -1809,15 +1833,31 @@ export default function Sales() {
 
                             {/* Sale Price */}
                             <div>
-                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Цена продажи (lei)</label>
+                                <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>
+                                    {formData.delivery_method === 'pickup' ? 'Цена до скидки (lei)' : 'Цена продажи (lei)'}
+                                </label>
                                 <input
                                     type="number"
                                     className="input"
                                     placeholder={calculatedSalePrice || '0'}
-                                    value={formData.sale_price}
-                                    onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
+                                    value={formData.price_before_discount || formData.sale_price}
+                                    onChange={(e) => {
+                                        const value = e.target.value
+                                        setFormData({
+                                            ...formData,
+                                            price_before_discount: value,
+                                            sale_price: value === '' ? '' : pricingFields(value).sale_price,
+                                            pickup_discount_applied: formData.delivery_method === 'pickup' && currentPickupDiscount > 0
+                                        })
+                                    }}
                                     style={{ fontSize: '1.1rem', fontWeight: 700, width: '100%' }}
                                 />
+                                {formData.delivery_method === 'pickup' && currentPickupDiscount > 0 && formData.price_before_discount !== '' && (
+                                    <div style={{ marginTop: '0.45rem', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', color: '#047857', fontSize: '0.8rem', fontWeight: 750 }}>
+                                        <span>Скидка: -{currentPickupDiscount} lei</span>
+                                        <span>К оплате: {parseMoney(formData.sale_price)} lei</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -1834,7 +1874,7 @@ export default function Sales() {
                                                     const newComp = siteComposition.map((c, i) => i === idx ? { ...c, quantity: val } : c)
                                                     setSiteComposition(newComp)
                                                     const withMarkup = calculateSiteCompositionPrice(newComp)
-                                                    setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
+                                                    setFormData({ ...formData, ...pricingFields(withMarkup + currentDeliveryFee) })
                                                 }} step={1} min={0.01} unit={item.type === 'good' ? (goods.find(good => String(good.id) === String(item.item_id))?.stock_unit || 'шт') : 'шт'} style={{ width: isMobile ? '148px' : '154px' }} inputStyle={{ height: '36px' }} buttonStyle={{ height: '36px' }} />
                                                 <span style={{ minWidth: 58, marginLeft: isMobile ? 'auto' : 0, textAlign: 'right', fontWeight: 750 }}>{parseDecimal(item.price) * parseDecimal(item.quantity)} L</span>
                                                 <button type="button" onClick={() => {
@@ -1842,8 +1882,8 @@ export default function Sales() {
                                                     setSiteComposition(newComp)
                                                     if (newComp.length > 0) {
                                                         const withMarkup = calculateSiteCompositionPrice(newComp)
-                                                        setFormData({ ...formData, sale_price: String(withMarkup + currentDeliveryFee) })
-                                                    } else setFormData({ ...formData, sale_price: '' })
+                                                        setFormData({ ...formData, ...pricingFields(withMarkup + currentDeliveryFee) })
+                                                    } else setFormData({ ...formData, sale_price: '', price_before_discount: '' })
                                                 }} style={{ padding: '0.25rem', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Trash2 size={14} /></button>
                                             </div>
                                         ))}
@@ -2076,12 +2116,13 @@ export default function Sales() {
                                                 const val = e.target.value
                                                 const oldFee = parseMoney(formData.delivery_fee)
                                                 const newFee = parseMoney(val)
-                                                const currentPrice = Number(formData.sale_price || calculatedSalePrice)
+                                                const currentPrice = parseMoney(formData.price_before_discount || formData.sale_price || calculatedSalePrice)
+                                                const nextPrice = Math.max(0, currentPrice - oldFee + newFee)
                                                 setFormData({
                                                     ...formData,
                                                     delivery_fee: val,
                                                     extra_delivery_cost: val,
-                                                    sale_price: String(Math.max(0, currentPrice - oldFee + newFee))
+                                                    ...pricingFields(nextPrice, 'delivery', 0)
                                                 })
                                             }}
                                             placeholder={String(defaultDeliveryFee)}
@@ -2125,10 +2166,9 @@ export default function Sales() {
                                         value={formData.pickup_discount}
                                         onChange={(e) => {
                                             const val = e.target.value
-                                            const oldDiscount = parseMoney(formData.pickup_discount)
                                             const newDiscount = parseMoney(val)
-                                            const currentPrice = Number(formData.sale_price || calculatedSalePrice)
-                                            setFormData({ ...formData, pickup_discount: val, sale_price: String(Math.max(0, currentPrice + oldDiscount - newDiscount)) })
+                                            const priceBeforeDiscount = parseMoney(formData.price_before_discount || formData.sale_price || calculatedSalePrice)
+                                            setFormData({ ...formData, pickup_discount: val, ...pricingFields(priceBeforeDiscount, 'pickup', newDiscount) })
                                         }}
                                         placeholder={String(defaultPickupDiscount)}
                                     />
@@ -2194,7 +2234,7 @@ export default function Sales() {
                 onChange={nextComposition => {
                     setSiteComposition(nextComposition)
                     const withMarkup = calculateSiteCompositionPrice(nextComposition)
-                    setFormData(current => ({ ...current, sale_price: String(withMarkup + currentDeliveryFee) }))
+                    setFormData(current => ({ ...current, ...pricingFields(withMarkup + currentDeliveryFee) }))
                 }}
             />
 
@@ -3197,7 +3237,14 @@ export default function Sales() {
                                     const courierPayout = salonFormData.needs_delivery ? parseMoney(salonFormData.courier_payout !== '' ? salonFormData.courier_payout : deliveryFee) : 0
                                     const costPrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.cost) * parseDecimal(item.quantity)), 0) + courierPayout
                                     const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.price) * parseDecimal(item.quantity)), 0)
-                                    const salePrice = (selectedShowcaseId ? parseDecimal(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + deliveryFee
+                                    const priceBeforeDiscount = (selectedShowcaseId ? parseDecimal(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + deliveryFee
+                                    const pickupDiscount = salonFormData.needs_delivery ? 0 : parseMoney(salonFormData.pickup_discount)
+                                    const salonPricing = calculateSalePricing({
+                                        priceBeforeDiscount,
+                                        deliveryMethod: salonFormData.needs_delivery ? 'delivery' : 'pickup',
+                                        pickupDiscount
+                                    })
+                                    const salePrice = salonPricing.salePrice
 
                                     // Create/Update sale record
                                     const saleData = {
@@ -3210,6 +3257,8 @@ export default function Sales() {
                                         florist_id: salonFormData.florist_id || null,
                                         cost_price: costPrice,
                                         sale_price: salePrice,
+                                        price_before_discount: salonPricing.priceBeforeDiscount,
+                                        pickup_discount_applied: !salonFormData.needs_delivery && pickupDiscount > 0,
                                         delivery_method: salonFormData.needs_delivery ? 'delivery' : 'pickup',
                                         delivery_date: salonFormData.needs_delivery ? localDateTimeInputToIso(salonFormData.delivery_date) : null,
                                         delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
@@ -3217,7 +3266,7 @@ export default function Sales() {
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
                                         delivery_fee: deliveryFee,
                                         courier_payout: courierPayout,
-                                        pickup_discount: 0,
+                                        pickup_discount: pickupDiscount,
                                         extra_delivery_cost: salonFormData.needs_delivery ? deliveryFee : null,
                                         extra_delivery_reason: salonFormData.needs_delivery ? (salonFormData.extra_delivery_reason || null) : null,
                                         project: 'flowerbox',

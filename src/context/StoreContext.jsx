@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import { calculateCashBalance } from '../lib/cashLedger'
+import { calculateSalePricing, toMoney } from '../lib/salePricing'
 
 const StoreContext = createContext()
 
@@ -1076,6 +1077,23 @@ export function StoreProvider({ children }) {
             salePayload.pickup_discount = pickupDiscount
             salePayload.extra_delivery_cost = isDelivery ? deliveryFee : null
 
+            const submittedPrice = Math.max(0, toMoney(salePayload.sale_price))
+            const submittedBeforeDiscount = toMoney(salePayload.price_before_discount, Number.NaN)
+            const priceBeforeDiscount = Number.isFinite(submittedBeforeDiscount)
+                ? submittedBeforeDiscount
+                : (salePayload.pickup_discount_applied === true ? submittedPrice + pickupDiscount : submittedPrice)
+            const normalizedPricing = calculateSalePricing({
+                priceBeforeDiscount,
+                deliveryMethod: salePayload.delivery_method,
+                pickupDiscount
+            })
+            salePayload.price_before_discount = normalizedPricing.priceBeforeDiscount
+            salePayload.sale_price = normalizedPricing.salePrice
+            salePayload.pickup_discount_applied = !isDelivery && pickupDiscount > 0
+            if (salePayload.cost_price !== undefined) {
+                salePayload.profit = normalizedPricing.salePrice - toMoney(salePayload.cost_price)
+            }
+
             // Очищаем customer_id
             if (customerId && typeof customerId === 'string' && customerId.length > 0) {
                 salePayload.customer_id = customerId
@@ -1100,8 +1118,8 @@ export function StoreProvider({ children }) {
                 setSales([saleData, ...sales])
 
                 // 3. Обновить статистику клиента
-                if (customerId && sale.sale_price) {
-                    await updateCustomerStats(customerId, Number(sale.sale_price), customerData)
+                if (customerId && salePayload.sale_price) {
+                    await updateCustomerStats(customerId, Number(salePayload.sale_price), customerData)
                 }
 
                 // 3.0 Синхронизация клиента в state (чтобы сразу отображался на вкладке Клиенты)
@@ -1161,6 +1179,20 @@ export function StoreProvider({ children }) {
             payload.courier_payout = courierPayout
             payload.pickup_discount = pickupDiscount
             payload.extra_delivery_cost = isDelivery ? deliveryFee : null
+
+            if (payload.sale_price !== undefined || payload.price_before_discount !== undefined) {
+                const submittedPrice = Math.max(0, toMoney(payload.sale_price ?? existing.sale_price))
+                const submittedBeforeDiscount = toMoney(payload.price_before_discount, Number.NaN)
+                const priceBeforeDiscount = Number.isFinite(submittedBeforeDiscount)
+                    ? submittedBeforeDiscount
+                    : (payload.pickup_discount_applied === true ? submittedPrice + pickupDiscount : submittedPrice)
+                const normalizedPricing = calculateSalePricing({ priceBeforeDiscount, deliveryMethod: method, pickupDiscount })
+                payload.price_before_discount = normalizedPricing.priceBeforeDiscount
+                payload.sale_price = normalizedPricing.salePrice
+                payload.pickup_discount_applied = !isDelivery && pickupDiscount > 0
+                const costPrice = payload.cost_price ?? existing.cost_price
+                if (costPrice !== undefined) payload.profit = normalizedPricing.salePrice - toMoney(costPrice)
+            }
         }
         const uuidFields = ['customer_id', 'product_id', 'courier_id', 'florist_id']
         uuidFields.forEach(field => {
