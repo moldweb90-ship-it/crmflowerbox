@@ -589,6 +589,15 @@ export default function Sales() {
     const calculatedSalePrice = calculatedBouquetPrice + currentDeliveryFee
     const salePrice = formData.sale_price === '' ? calculatedSalePrice : parseMoney(formData.sale_price)
     const profit = salePrice - costPrice
+    const salonCompositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.price) * parseDecimal(item.quantity)), 0)
+    const salonDeliveryFee = salonFormData.needs_delivery ? parseMoney(salonFormData.delivery_fee !== '' ? salonFormData.delivery_fee : defaultDeliveryFee) : 0
+    const salonPriceBeforeDiscount = (selectedShowcaseId ? parseDecimal(salonFormData.sale_price_override || salonCompositionSalePrice) : salonCompositionSalePrice) + salonDeliveryFee
+    const salonPickupDiscount = salonFormData.needs_delivery ? 0 : parseMoney(salonFormData.pickup_discount)
+    const salonCheckoutPrice = calculateSalePricing({
+        priceBeforeDiscount: salonPriceBeforeDiscount,
+        deliveryMethod: salonFormData.needs_delivery ? 'delivery' : 'pickup',
+        pickupDiscount: salonPickupDiscount
+    }).salePrice
 
     // Product search
     // Product search (init from saved formData if present)
@@ -3216,9 +3225,19 @@ export default function Sales() {
                                     ))}
                                 </div>
                                 {salonFormData.payment_status === 'partial' && !editingSalonSaleId && (
-                                    <div style={{ marginTop: '0.6rem' }}>
+                                    <div style={{ marginTop: '0.65rem', padding: '0.75rem', borderRadius: 10, border: '1px solid #fbbf24', background: '#fff7d6' }}>
                                         <label style={{ fontSize: '0.78rem', marginBottom: '0.25rem', display: 'block', fontWeight: 700, color: '#92400e' }}>Сумма аванса, lei</label>
                                         <input className="input" inputMode="decimal" placeholder="Например: 2000" value={salonFormData.initial_payment_amount} onChange={(e) => setSalonFormData({ ...salonFormData, initial_payment_amount: e.target.value })} />
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem', marginTop: '0.55rem' }}>
+                                            <div style={{ padding: '0.55rem 0.65rem', borderRadius: 8, background: '#fff', border: '1px solid #fde68a', minWidth: 0 }}>
+                                                <div style={{ color: '#a16207', fontSize: '0.7rem', fontWeight: 700 }}>Стоимость заказа</div>
+                                                <div style={{ color: '#1f2937', fontWeight: 800 }}>{salonCheckoutPrice.toLocaleString('ru-RU')} lei</div>
+                                            </div>
+                                            <div style={{ padding: '0.55rem 0.65rem', borderRadius: 8, background: '#fff', border: '1px solid #fde68a', minWidth: 0 }}>
+                                                <div style={{ color: '#a16207', fontSize: '0.7rem', fontWeight: 700 }}>Останется доплатить</div>
+                                                <div style={{ color: '#b45309', fontWeight: 800 }}>{Math.max(0, salonCheckoutPrice - parseMoney(salonFormData.initial_payment_amount)).toLocaleString('ru-RU')} lei</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                                 {editingSalonSaleId && <div style={{ marginTop: '0.45rem', color: '#92400e', fontSize: '0.72rem', fontWeight: 700 }}>Оплата изменяется через карточку заказа.</div>}
