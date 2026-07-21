@@ -13,6 +13,7 @@ import { calculateSalePricing, deriveStoredSalePricing } from '../lib/salePricin
 // Enums
 const PAYMENT_METHODS = [
     { id: 'cash', label: 'Наличные', icon: '💵' },
+    { id: 'terminal', label: 'Терминал', icon: '💳' },
     { id: 'paynet', label: 'Paynet', icon: '📱' },
     { id: 'card_transfer', label: 'Перевод на карту', icon: '💳' },
     { id: 'card_ru', label: 'Карта РФ', icon: '🇷🇺' }
@@ -85,14 +86,16 @@ const getStatusData = (arr, id) => arr.find(s => s.id === id) || arr[0]
 const padDatePart = (value) => String(value).padStart(2, '0')
 
 const toLocalDateKey = (value = new Date()) => {
+    if (value === null || value === '') return ''
     const date = value instanceof Date ? value : new Date(value)
     if (Number.isNaN(date.getTime())) return ''
     return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`
 }
 
 const toLocalDateTimeInput = (value = new Date()) => {
+    if (value === null || value === '') return ''
     const date = value instanceof Date ? value : new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
+    if (Number.isNaN(date.getTime()) || date.getTime() < 86400000) return ''
     return `${toLocalDateKey(date)}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`
 }
 
@@ -197,7 +200,7 @@ export default function Sales() {
         payment_status: 'paid',
         florist_id: '',
         needs_delivery: false,
-        delivery_date: '',
+        delivery_date: toLocalDateTimeInput(),
         delivery_address: '',
         delivery_status: 'not_delivered',
         courier_id: '',
@@ -228,7 +231,7 @@ export default function Sales() {
         product_id: '',
         order_number: '',
         order_date: toLocalDateTimeInput(),
-        delivery_date: '',
+        delivery_date: toLocalDateTimeInput(),
         delivery_address: '',
         customer_phone: '',
         customer_email: '',
@@ -591,6 +594,7 @@ export default function Sales() {
         setFormData({
             ...emptyForm,
             order_date: toLocalDateTimeInput(),
+            delivery_date: toLocalDateTimeInput(),
             delivery_fee: String(defaultDeliveryFee),
             courier_payout: String(defaultDeliveryFee),
             extra_delivery_cost: defaultDeliveryFee
@@ -816,7 +820,7 @@ export default function Sales() {
             is_custom: isCustomSiteSale,
             custom_name: isCustomSiteSale ? siteCustomName.trim() : undefined,
             order_date: localDateTimeInputToIso(formData.order_date),
-            delivery_date: formData.delivery_method === 'delivery' ? localDateTimeInputToIso(formData.delivery_date) : null,
+            delivery_date: localDateTimeInputToIso(formData.delivery_date),
             sale_price: salePrice,
             cost_price: costPrice,
             profit: salePrice - costPrice,
@@ -1991,7 +1995,9 @@ export default function Sales() {
 
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
                             <div>
-                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>Дата и время</label>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>
+                                    {formData.delivery_method === 'pickup' ? 'Дата и время выдачи' : 'Дата и время доставки'}
+                                </label>
                                 <input type="datetime-local" className="input" value={formData.delivery_date} onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })} />
                             </div>
 
@@ -2998,11 +3004,7 @@ export default function Sales() {
                             <div>
                                 <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Способ оплаты</label>
                                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                    {[
-                                        { id: 'cash', label: '💵 Наличные' },
-                                        { id: 'paynet', label: '📱 Paynet' },
-                                        { id: 'card_transfer', label: '💳 Карта' }
-                                    ].map(pm => (
+                                    {PAYMENT_METHODS.map(pm => (
                                         <button
                                             key={pm.id}
                                             type="button"
@@ -3016,7 +3018,7 @@ export default function Sales() {
                                                 fontWeight: salonFormData.payment_method === pm.id ? 600 : 400,
                                                 fontSize: '0.85rem'
                                             }}
-                                        >{pm.label}</button>
+                                        >{pm.icon} {pm.label}</button>
                                     ))}
                                 </div>
                             </div>
@@ -3260,7 +3262,7 @@ export default function Sales() {
                                         price_before_discount: salonPricing.priceBeforeDiscount,
                                         pickup_discount_applied: !salonFormData.needs_delivery && pickupDiscount > 0,
                                         delivery_method: salonFormData.needs_delivery ? 'delivery' : 'pickup',
-                                        delivery_date: salonFormData.needs_delivery ? localDateTimeInputToIso(salonFormData.delivery_date) : null,
+                                        delivery_date: localDateTimeInputToIso(salonFormData.delivery_date),
                                         delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
                                         delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
