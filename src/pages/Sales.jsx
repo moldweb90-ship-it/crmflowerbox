@@ -112,6 +112,52 @@ const localDateTimeInputToIso = (value) => {
 
 const formatSignedLei = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${Number(value || 0).toLocaleString('ru-RU')} lei`
 
+const SALES_LIST_FILTERS_KEY = 'sales_list_filters'
+const SALES_DATE_PRESETS = ['today', 'yesterday', 'week', 'month', 'all', 'custom']
+const SALES_SOURCE_FILTERS = ['all', 'online', 'salon']
+
+const buildSalesDateFilter = (preset = 'today', custom = {}) => {
+    if (preset === 'custom') {
+        return { start: custom.start || '', end: custom.end || '', preset: 'custom' }
+    }
+
+    const now = new Date()
+    const today = toLocalDateKey(now)
+    let start = today
+    let end = today
+
+    if (preset === 'yesterday') {
+        const date = new Date(now)
+        date.setDate(date.getDate() - 1)
+        start = end = toLocalDateKey(date)
+    } else if (preset === 'week') {
+        const date = new Date(now)
+        date.setDate(date.getDate() - 7)
+        start = toLocalDateKey(date)
+    } else if (preset === 'month') {
+        start = toLocalDateKey(new Date(now.getFullYear(), now.getMonth(), 1))
+    } else if (preset === 'all') {
+        start = ''
+        end = ''
+    }
+
+    return { start, end, preset }
+}
+
+const loadSalesListFilters = () => {
+    try {
+        const saved = JSON.parse(localStorage.getItem(SALES_LIST_FILTERS_KEY) || '{}')
+        const preset = SALES_DATE_PRESETS.includes(saved?.dateFilter?.preset) ? saved.dateFilter.preset : 'today'
+        const sourceFilter = SALES_SOURCE_FILTERS.includes(saved?.sourceFilter) ? saved.sourceFilter : 'all'
+        return {
+            dateFilter: buildSalesDateFilter(preset, saved.dateFilter),
+            sourceFilter
+        }
+    } catch {
+        return { dateFilter: buildSalesDateFilter('today'), sourceFilter: 'all' }
+    }
+}
+
 export default function Sales() {
     const { user } = useAuth()
     const {
@@ -227,10 +273,10 @@ export default function Sales() {
     const [showSalonItemDropdown, setShowSalonItemDropdown] = useState(false)
 
     // Date filter
-    const [dateFilter, setDateFilter] = useState({ start: '', end: '', preset: 'today' })
+    const [dateFilter, setDateFilter] = useState(() => loadSalesListFilters().dateFilter)
     const [deliveryDateFilter, setDeliveryDateFilter] = useState(null) // For calendar click - filter by delivery date
     const [orderSearch, setOrderSearch] = useState('') // For order number search from global search
-    const [sourceFilter, setSourceFilter] = useState('all')
+    const [sourceFilter, setSourceFilter] = useState(() => loadSalesListFilters().sourceFilter)
 
     // Form state
     const emptyForm = {
@@ -315,32 +361,15 @@ export default function Sales() {
     }, [])
 
     useEffect(() => {
-        applyPreset('today')
-    }, [])
+        try {
+            localStorage.setItem(SALES_LIST_FILTERS_KEY, JSON.stringify({ dateFilter, sourceFilter }))
+        } catch {
+            // The filters still work for the current session if storage is unavailable.
+        }
+    }, [dateFilter, sourceFilter])
 
     const applyPreset = (preset) => {
-        const now = new Date()
-        const today = toLocalDateKey(now)
-        let start = today
-        let end = today
-
-        if (preset === 'yesterday') {
-            const d = new Date()
-            d.setDate(d.getDate() - 1)
-            start = end = toLocalDateKey(d)
-        } else if (preset === 'week') {
-            const d = new Date()
-            d.setDate(d.getDate() - 7)
-            start = toLocalDateKey(d)
-        } else if (preset === 'month') {
-            const d = new Date(now.getFullYear(), now.getMonth(), 1)
-            start = toLocalDateKey(d)
-        } else if (preset === 'all') {
-            start = ''
-            end = ''
-        }
-
-        setDateFilter({ start, end, preset })
+        setDateFilter(buildSalesDateFilter(preset))
         setDeliveryDateFilter(null) // Reset delivery date filter when using presets
     }
 
