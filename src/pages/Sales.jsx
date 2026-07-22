@@ -3517,7 +3517,8 @@ export default function Sales() {
                                         delete saleData.initial_payment_performed_by
                                         delete saleData.payment_status
                                         delete saleData.payment_method
-                                        await updateSale(editingSalonSaleId, saleData)
+                                        const result = await updateSale(editingSalonSaleId, saleData)
+                                        if (!result.success) throw result.error
                                     } else {
                                         // Create new sale
                                         const result = await addSale(saleData)

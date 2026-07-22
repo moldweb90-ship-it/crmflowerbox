@@ -360,12 +360,32 @@ export default function MyDeliveries() {
                         ['Завтра', stats.tomorrow, '#7c3aed'],
                         ['В пути', stats.active, '#f97316'],
                         ['Готово', stats.done, '#16a34a']
-                    ].map(([label, value, color]) => (
-                        <div key={label} style={{ background: 'rgba(255,255,255,0.84)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.8)', borderRadius: 18, padding: '0.72rem', boxShadow: '0 12px 30px rgba(15,23,42,0.07)' }}>
+                    ].map(([label, value, color], index) => {
+                        const cardFilter = ['today', 'tomorrow', 'route', 'done'][index]
+                        const isActive = filter === cardFilter
+                        return (
+                        <button
+                            type="button"
+                            key={label}
+                            onClick={() => setFilter(cardFilter)}
+                            aria-pressed={isActive}
+                            style={{
+                                textAlign: 'left',
+                                background: isActive ? `${color}0D` : 'rgba(255,255,255,0.84)',
+                                backdropFilter: 'blur(16px)',
+                                border: isActive ? `2px solid ${color}` : '2px solid transparent',
+                                borderRadius: 18,
+                                padding: '0.66rem',
+                                boxShadow: isActive ? `0 12px 30px ${color}24` : '0 12px 30px rgba(15,23,42,0.07)',
+                                cursor: 'pointer',
+                                transition: 'border-color 160ms ease, background 160ms ease, box-shadow 160ms ease'
+                            }}
+                        >
                             <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 850 }}>{label}</div>
                             <div style={{ color, fontSize: '1.35rem', fontWeight: 950 }}>{value}</div>
-                        </div>
-                    ))}
+                        </button>
+                        )
+                    })}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.35rem', padding: 5, borderRadius: 18, background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 10px 30px rgba(15,23,42,0.06)' }}>

@@ -1200,6 +1200,7 @@ export function StoreProvider({ children }) {
         // Sanitize UUID fields (convert empty strings to null or remove them)
         const payload = { ...updates }
         // These fields control creation of the first payment and are not columns of sales.
+        delete payload.skip_stock_deduction
         delete payload.initial_payment_amount
         delete payload.initial_payment_performed_by
         if (payload.delivery_method !== undefined || payload.delivery_fee !== undefined || payload.courier_payout !== undefined || payload.pickup_discount !== undefined || payload.extra_delivery_cost !== undefined) {
