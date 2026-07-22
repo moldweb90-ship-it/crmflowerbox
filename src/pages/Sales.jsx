@@ -264,7 +264,7 @@ export default function Sales() {
         products, couriers, florists, employees, addCourier, addFlorist,
         expenses, addExpense, cashMovements, addCashMovement, supplyPayments,
         calculateCostPrice,
-        flowers, goods, stock, settings,
+        flowers, goods, stock, stockTransactions, settings,
         showcaseBouquets, markShowcaseBouquetSold,
         claims, getSaleClaims, getStockQty, getItemName
     } = useStore()
@@ -543,8 +543,9 @@ export default function Sales() {
         stock,
         flowers,
         goods,
+        stockTransactions,
         days: 7,
-    }), [sales, stock, flowers, goods])
+    }), [sales, stock, stockTransactions, flowers, goods])
     const shortageBySaleId = useMemo(() => new Map(upcomingShortages.map(item => [String(item.sale.id), item])), [upcomingShortages])
 
     const orderSearchSale = useMemo(() => {

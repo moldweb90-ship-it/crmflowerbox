@@ -138,7 +138,16 @@ async function scanStockShortages(alertKind = 'new') {
       SELECT s.*, p.name AS product_name, p.composition AS product_composition
       FROM public.sales s
       LEFT JOIN public.products p ON p.id = s.product_id
-      WHERE s.stock_deducted = false
+      WHERE (
+          s.stock_deducted = false
+          OR NOT EXISTS (
+            SELECT 1
+            FROM public.stock_transactions st
+            WHERE st.reference_id = s.id
+              AND st.transaction_type = 'sale'
+              AND st.quantity < 0
+          )
+        )
         AND COALESCE(s.production_status, 'in_work') <> 'assembled'
         AND COALESCE(s.delivery_status, 'not_delivered') NOT IN ('delivered', 'cancelled', 'canceled', 'returned')
         AND s.delivery_date IS NOT NULL

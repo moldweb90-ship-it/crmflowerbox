@@ -433,10 +433,10 @@ export default function Dashboard() {
             }
         })
 
-        const shortageOrders = buildUpcomingShortages({ sales: ordersTomorrow, stock, flowers, goods, days: 2 })
+        const shortageOrders = buildUpcomingShortages({ sales: ordersTomorrow, stock, flowers, goods, stockTransactions, days: 2 })
 
         return { count, sum, alert: shortageOrders.length > 0, shortageOrders, deliveryList, deliveryCount, pickupCount }
-    }, [sales, stock, flowers, goods, claims])
+    }, [sales, stock, stockTransactions, flowers, goods, claims])
 
     // 4. Sources (Marketing)
     const sourceStats = React.useMemo(() => {

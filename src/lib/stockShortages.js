@@ -34,7 +34,18 @@ export const getSaleLabel = sale => sale?.custom_name
     || sale?.products?.name
     || (sale?.order_number ? `Заказ #${sale.order_number}` : `Заказ ${String(sale?.id || '').slice(0, 8)}`)
 
-export const buildUpcomingShortages = ({ sales = [], stock = [], flowers = [], goods = [], days = 7 }) => {
+const hasRecordedSaleDeduction = (sale, stockTransactions) => {
+    if (!sale?.stock_deducted) return false
+    if (!Array.isArray(stockTransactions)) return true
+
+    return stockTransactions.some(transaction =>
+        transaction.transaction_type === 'sale'
+        && Number(transaction.quantity || 0) < 0
+        && String(transaction.reference_id || '') === String(sale.id || '')
+    )
+}
+
+export const buildUpcomingShortages = ({ sales = [], stock = [], flowers = [], goods = [], stockTransactions, days = 7 }) => {
     const now = new Date()
     const limit = new Date(now)
     limit.setDate(limit.getDate() + days)
@@ -51,7 +62,7 @@ export const buildUpcomingShortages = ({ sales = [], stock = [], flowers = [], g
 
     const candidates = sales
         .filter(sale => {
-            if (!sale?.delivery_date || sale.stock_deducted || sale.production_status === 'assembled') return false
+            if (!sale?.delivery_date || hasRecordedSaleDeduction(sale, stockTransactions) || sale.production_status === 'assembled') return false
             if (CLOSED_DELIVERY_STATUSES.has(sale.delivery_status)) return false
             const dueAt = new Date(sale.delivery_date)
             return !Number.isNaN(dueAt.getTime()) && dueAt <= limit
