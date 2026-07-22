@@ -1002,6 +1002,7 @@ export default function Stock() {
                         </section>
                     )}
 
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {filter === 'goods' && (
                         <section style={{ marginBottom: '1rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.65rem' }}>
@@ -1100,21 +1101,21 @@ export default function Stock() {
                                     style={{
                                         display: 'grid',
                                         gridTemplateColumns: isMobile ? '2fr 1fr 1fr' : 'minmax(260px,3fr) 1fr 0.8fr 1fr 1fr 1fr 100px',
-                                        padding: '0.875rem 1rem',
+                                        padding: isMobile ? '0.75rem 0.8rem' : '0.45rem 0.75rem',
                                         borderBottom: '1px solid var(--border)',
                                         alignItems: 'center',
                                         background: item.quantity <= 0 ? '#fef2f2' : (item.is_low ? '#fffbeb' : 'white')
                                     }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.65rem' : '0.55rem' }}>
                                         {item.type === 'good' && item.image_url ? (
                                             <button
                                                 type="button"
                                                 onClick={() => setImagePreview(item)}
                                                 title="Открыть фотографию"
                                                 style={{
-                                                    width: isMobile ? 48 : 58,
-                                                    height: isMobile ? 48 : 58,
+                                                    width: isMobile ? 48 : 40,
+                                                    height: isMobile ? 48 : 40,
                                                     borderRadius: 8,
                                                     overflow: 'hidden',
                                                     padding: 0,
@@ -1128,8 +1129,8 @@ export default function Stock() {
                                             </button>
                                         ) : (
                                             <span style={{
-                                                width: isMobile ? 40 : 48,
-                                                height: isMobile ? 40 : 48,
+                                                width: isMobile ? 40 : 38,
+                                                height: isMobile ? 40 : 38,
                                                 borderRadius: 8,
                                                 background: item.type === 'flower' ? '#f0fdf4' : '#fef3c7',
                                                 display: 'flex',
@@ -1195,20 +1196,30 @@ export default function Stock() {
                                         </div>
                                     </div>
 
-                                    <div style={{ textAlign: 'center' }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        flexDirection: isMobile ? 'column' : 'row',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: isMobile ? 0 : '0.4rem',
+                                        textAlign: 'center'
+                                    }}>
                                         <div style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'baseline',
+                                            gap: '0.22rem',
                                             fontWeight: 800,
-                                            fontSize: '1.1rem',
+                                            fontSize: isMobile ? '1.1rem' : '0.98rem',
                                             color: item.quantity === 0 ? '#ef4444' : item.is_low ? '#f59e0b' : 'var(--text-main)'
                                         }}>
                                             {item.quantity.toLocaleString('ru-RU')}
+                                            <span style={{ color: '#94a3b8', fontSize: '0.66rem', fontWeight: 700 }}>{item.stock_unit}</span>
                                         </div>
-                                        <div style={{ color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>{item.stock_unit}</div>
                                         {item.type === 'flower' && item.quantity > 0 && (
                                             <button
                                                 onClick={() => setSupplierBreakdownItem(item)}
                                                 style={{
-                                                    marginTop: '0.25rem',
+                                                    marginTop: isMobile ? '0.25rem' : 0,
                                                     display: 'inline-flex',
                                                     alignItems: 'center',
                                                     gap: '0.25rem',
@@ -1216,8 +1227,8 @@ export default function Stock() {
                                                     background: '#eff6ff',
                                                     color: '#2563eb',
                                                     borderRadius: '999px',
-                                                    padding: '0.18rem 0.45rem',
-                                                    fontSize: '0.68rem',
+                                                    padding: isMobile ? '0.18rem 0.4rem' : '0.16rem 0.38rem',
+                                                    fontSize: isMobile ? '0.68rem' : '0.64rem',
                                                     fontWeight: 800,
                                                     cursor: 'pointer',
                                                     whiteSpace: 'nowrap'
@@ -1354,7 +1365,7 @@ export default function Stock() {
                     )}
 
                     {/* Recent Transactions */}
-                    <div style={{ marginBottom: isMobile ? '5.5rem' : '1.5rem' }}>
+                    <div style={{ order: -1, marginBottom: '1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
                             <h3 style={{ fontSize: '1rem', fontWeight: 850, margin: 0, display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                                 <TrendingUp size={18} /> Последние движения
@@ -1465,6 +1476,7 @@ export default function Stock() {
                                 })
                             )}
                         </div>
+                    </div>
                     </div>
                 </>
             )}
