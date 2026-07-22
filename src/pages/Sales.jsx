@@ -876,6 +876,7 @@ export default function Sales() {
                 : undefined
         } else {
             delete payload.initial_payment_amount
+            delete payload.initial_payment_performed_by
             delete payload.payment_status
             delete payload.payment_method
         }
@@ -2338,6 +2339,8 @@ export default function Sales() {
                                     <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#047857' }}>Скидка самовывоза (lei)</label>
                                     <input
                                         type="number"
+                                        min="0"
+                                        step="1"
                                         className="input"
                                         value={formData.pickup_discount}
                                         onChange={(e) => {
@@ -2348,6 +2351,7 @@ export default function Sales() {
                                         }}
                                         placeholder={String(defaultPickupDiscount)}
                                     />
+                                    <small style={{ display: 'block', marginTop: '0.25rem', color: '#047857', fontWeight: 600 }}>Укажите 0, если скидки нет.</small>
                                 </div>
                             )}
 
