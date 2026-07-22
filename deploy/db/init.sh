@@ -215,7 +215,18 @@ CREATE TABLE IF NOT EXISTS public.sales (
   custom_composition jsonb DEFAULT '[]'::jsonb,
   production_status text NOT NULL DEFAULT 'in_work' CHECK (production_status IN ('planned', 'in_work', 'assembled')),
   stock_deducted boolean NOT NULL DEFAULT false,
+  shortage_status text CHECK (shortage_status IS NULL OR shortage_status IN ('unresolved', 'ordered')),
+  shortage_updated_at timestamptz,
   created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.stock_shortage_alerts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  fingerprint text NOT NULL UNIQUE,
+  sale_id uuid REFERENCES public.sales(id) ON DELETE CASCADE,
+  alert_kind text NOT NULL DEFAULT 'new',
+  details jsonb NOT NULL DEFAULT '{}'::jsonb,
+  sent_at timestamptz DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public.stock_transactions (

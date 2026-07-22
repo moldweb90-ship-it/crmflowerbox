@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal'
 import TasksWidget from '../components/TasksWidget'
 import { getDailyFlowerNote } from '../lib/dailyFlowerNotes'
 import { getSalePaymentSummary } from '../lib/salePayments'
+import { buildUpcomingShortages } from '../lib/stockShortages'
 
 const STALE_DAYS = 7
 const SHIFT_START_H = 9
@@ -432,47 +433,10 @@ export default function Dashboard() {
             }
         })
 
-        // Shortage (unchanged logic)
-        const neededFlowers = {}
-        let alert = false
+        const shortageOrders = buildUpcomingShortages({ sales: ordersTomorrow, stock, flowers, goods, days: 2 })
 
-        ordersTomorrow.forEach(order => {
-            if (order.products?.composition) {
-                try {
-                    const comp = typeof order.products.composition === 'string' ? JSON.parse(order.products.composition) : order.products.composition
-                    if (Array.isArray(comp)) {
-                        comp.forEach(item => {
-                            if (item.type === 'flower' && item.id) {
-                                neededFlowers[item.id] = (neededFlowers[item.id] || 0) + (Number(item.quantity) || 0)
-                            }
-                        })
-                    }
-                } catch (e) { }
-            } else if (order.custom_composition) {
-                const comp = order.custom_composition
-                if (Array.isArray(comp)) {
-                    comp.forEach(item => {
-                        if (item.type === 'flower' && item.item_id) {
-                            neededFlowers[item.item_id] = (neededFlowers[item.item_id] || 0) + (Number(item.quantity) || 0)
-                        }
-                    })
-                }
-            }
-        })
-
-        const shortageList = []
-        Object.entries(neededFlowers).forEach(([id, qty]) => {
-            const inStock = stock.find(s => s.item_id === id && s.item_type === 'flower')
-            const stockQty = inStock ? inStock.quantity : 0
-            if (stockQty < qty) {
-                alert = true
-                const flower = flowers.find(f => f.id === id)
-                if (flower) shortageList.push({ name: flower.name, need: qty, have: stockQty })
-            }
-        })
-
-        return { count, sum, alert, shortageList, deliveryList, deliveryCount, pickupCount }
-    }, [sales, stock, flowers, claims])
+        return { count, sum, alert: shortageOrders.length > 0, shortageOrders, deliveryList, deliveryCount, pickupCount }
+    }, [sales, stock, flowers, goods, claims])
 
     // 4. Sources (Marketing)
     const sourceStats = React.useMemo(() => {
@@ -1160,16 +1124,23 @@ export default function Dashboard() {
                         </div>
 
                         {tomorrowStats.alert && (
-                            <div style={{ borderTop: '1px solid #f5d0fe', paddingTop: '0.75rem' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#dc2626', marginBottom: '0.25rem' }}>
-                                    🔴 НЕ ХВАТАЕТ:
+                            <button
+                                type="button"
+                                onClick={() => navigate('/sales?shortages=true')}
+                                style={{ width: '100%', border: '2px solid #dc2626', borderRadius: 8, padding: '0.75rem', background: '#fff1f2', color: '#991b1b', textAlign: 'left', cursor: 'pointer', boxShadow: '0 8px 20px rgba(220,38,38,0.16)' }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', fontWeight: 950, marginBottom: '0.45rem' }}>
+                                    <AlertOctagon size={18} /> КРИТИЧНО: НЕ ХВАТАЕТ ЦВЕТОВ
                                 </div>
-                                <div style={{ fontSize: '0.75rem', color: '#b91c1c', display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '60px', overflowY: 'auto' }}>
-                                    {tomorrowStats.shortageList.map((s, i) => (
-                                        <span key={i}>- {s.name}: нужно {s.need}, есть {s.have}</span>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 800, marginBottom: '0.35rem' }}>
+                                    Проблемных заказов: {tomorrowStats.shortageOrders.length}. Нажмите, чтобы открыть.
+                                </div>
+                                <div style={{ fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 72, overflowY: 'auto' }}>
+                                    {tomorrowStats.shortageOrders.flatMap(order => order.shortages).slice(0, 4).map((item, index) => (
+                                        <span key={`${item.type}-${item.id}-${index}`}>• {item.name}: не хватает {item.missing}</span>
                                     ))}
                                 </div>
-                            </div>
+                            </button>
                         )}
                     </div>
                 </div>
