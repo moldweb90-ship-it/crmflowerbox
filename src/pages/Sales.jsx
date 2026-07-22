@@ -264,6 +264,10 @@ export default function Sales() {
         extra_delivery_cost: null,
         extra_delivery_reason: '',
         sale_price_override: '',
+        final_sale_price_override: '',
+        price_adjustment_reason: '',
+        price_adjusted_by: '',
+        price_adjusted_at: null,
         price_before_discount: '',
         pickup_discount_applied: false
     }
@@ -627,6 +631,10 @@ export default function Sales() {
         deliveryMethod: salonFormData.needs_delivery ? 'delivery' : 'pickup',
         pickupDiscount: salonPickupDiscount
     }).salePrice
+    const salonFinalSalePrice = salonFormData.final_sale_price_override === ''
+        ? salonCheckoutPrice
+        : Math.max(0, parseMoney(salonFormData.final_sale_price_override))
+    const salonPriceAdjustment = salonFinalSalePrice - salonCheckoutPrice
 
     // Product search
     // Product search (init from saved formData if present)
@@ -692,6 +700,13 @@ export default function Sales() {
                 extra_delivery_cost: sale.extra_delivery_cost ?? null,
                 extra_delivery_reason: sale.extra_delivery_reason || '',
                 sale_price_override: storedPricing.priceBeforeDiscount || '',
+                final_sale_price_override: sale.calculated_sale_price !== null && sale.calculated_sale_price !== undefined
+                    && Math.abs(Number(sale.sale_price || 0) - Number(sale.calculated_sale_price || 0)) > 0.009
+                    ? String(sale.sale_price || 0)
+                    : '',
+                price_adjustment_reason: sale.price_adjustment_reason || '',
+                price_adjusted_by: sale.price_adjusted_by || '',
+                price_adjusted_at: sale.price_adjusted_at || null,
                 price_before_discount: storedPricing.priceBeforeDiscount || '',
                 pickup_discount_applied: sale.delivery_method === 'pickup' && storedPricing.pickupDiscount > 0
             })
@@ -2627,6 +2642,36 @@ export default function Sales() {
                             </div>
                         </div>
 
+                        {viewingSale.calculated_sale_price !== null && viewingSale.calculated_sale_price !== undefined
+                            && Math.abs(Number(viewingSale.sale_price || 0) - Number(viewingSale.calculated_sale_price || 0)) > 0.009 && (() => {
+                                const adjustment = Number(viewingSale.sale_price || 0) - Number(viewingSale.calculated_sale_price || 0)
+                                const adjustmentPercent = Number(viewingSale.calculated_sale_price || 0) > 0
+                                    ? Math.abs(adjustment / Number(viewingSale.calculated_sale_price)) * 100
+                                    : 0
+                                return (
+                                    <div style={{ background: adjustment < 0 ? '#fff7ed' : '#ecfdf5', border: `1px solid ${adjustment < 0 ? '#fdba74' : '#86efac'}`, padding: '1rem', borderRadius: '12px', marginBottom: '1rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                            <div style={{ fontWeight: 800, color: adjustment < 0 ? '#9a3412' : '#166534' }}>{adjustment < 0 ? 'Скидка вручную' : 'Наценка вручную'}</div>
+                                            <div style={{ fontWeight: 900, color: adjustment < 0 ? '#c2410c' : '#15803d' }}>{adjustment > 0 ? '+' : '−'}{Math.abs(adjustment).toLocaleString('ru-RU')} lei · {adjustmentPercent.toFixed(1)}%</div>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.65rem' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Расчётная → итоговая</div>
+                                                <div style={{ fontWeight: 800 }}>{Number(viewingSale.calculated_sale_price).toLocaleString('ru-RU')} → {Number(viewingSale.sale_price || 0).toLocaleString('ru-RU')} lei</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Изменил</div>
+                                                <div style={{ fontWeight: 700 }}>{viewingSale.price_adjusted_by || 'Сотрудник'}{viewingSale.price_adjusted_at ? ` · ${new Date(viewingSale.price_adjusted_at).toLocaleString('ru-RU')}` : ''}</div>
+                                            </div>
+                                            <div style={{ gridColumn: isMobile ? '1' : '1 / -1' }}>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Причина</div>
+                                                <div style={{ fontWeight: 700 }}>{viewingSale.price_adjustment_reason || 'Не указана'}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })()}
+
                         {/* Delivery Info */}
                         <div style={{ background: '#eff6ff', padding: '1rem', borderRadius: '12px', marginBottom: '1rem' }}>
                             <h4 style={{ fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -3020,7 +3065,7 @@ export default function Sales() {
                                         type="button"
                                         onClick={() => {
                                             setSelectedShowcaseId('')
-                                            setSalonFormData({ ...salonFormData, custom_name: '', composition: [], sale_price_override: '' })
+                                            setSalonFormData({ ...salonFormData, custom_name: '', composition: [], sale_price_override: '', final_sale_price_override: '', price_adjustment_reason: '' })
                                         }}
                                         style={{
                                             padding: '0.75rem',
@@ -3044,7 +3089,9 @@ export default function Sales() {
                                                     ...salonFormData,
                                                     custom_name: bouquet.name,
                                                     composition: (bouquet.composition || []).map(item => ({ ...item })),
-                                                    sale_price_override: String(bouquet.sale_price || 0)
+                                                    sale_price_override: String(bouquet.sale_price || 0),
+                                                    final_sale_price_override: '',
+                                                    price_adjustment_reason: ''
                                                 })
                                             }
                                         }}
@@ -3147,33 +3194,69 @@ export default function Sales() {
                         {!selectedShowcaseId && <button type="button" className="input" onClick={() => setShowSalonItemDropdown(true)} style={{ width: '100%', minHeight: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem', color: '#475569', background: '#fff', fontWeight: 850 }}><Plus size={18} /> Добавить цветок или товар</button>}
                         {/* Price Summary */}
                         {salonFormData.composition.length > 0 && (() => {
-                            const costPrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.cost) * parseDecimal(item.quantity)), 0)
-                            const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.price) * parseDecimal(item.quantity)), 0)
-                            const salePrice = selectedShowcaseId ? parseDecimal(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice
+                            const compositionCost = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.cost) * parseDecimal(item.quantity)), 0)
+                            const courierPayout = salonFormData.needs_delivery ? parseMoney(salonFormData.courier_payout !== '' ? salonFormData.courier_payout : salonDeliveryFee) : 0
+                            const costPrice = compositionCost + courierPayout
+                            const salePrice = salonFinalSalePrice
                             const margin = salePrice - costPrice
                             const marginPercent = costPrice > 0 ? ((margin / costPrice) * 100).toFixed(0) : 0
+                            const adjustmentPercent = salonCheckoutPrice > 0 ? Math.abs((salonPriceAdjustment / salonCheckoutPrice) * 100) : 0
+                            const hasAdjustment = Math.abs(salonPriceAdjustment) > 0.009
+                            const marginColor = margin < 0 ? '#fecaca' : marginPercent < 30 ? '#fde68a' : '#a7f3d0'
                             return (
-                                <div style={{ marginTop: '1rem', padding: '1rem', background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)', borderRadius: '16px' }}>
-                                    {/* Big Sale Price */}
-                                    <div style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
-                                        <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', marginBottom: '0.25rem' }}>Цена продажи</div>
-                                        {selectedShowcaseId ? (
+                                <div style={{ marginTop: '1rem', padding: '1rem', background: 'linear-gradient(135deg, #6d28d9 0%, #9333ea 100%)', borderRadius: '16px', color: '#fff' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(180px, 0.8fr)', gap: '0.75rem', alignItems: 'end' }}>
+                                        <div>
+                                            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.72)', fontWeight: 700 }}>Расчётная цена</div>
+                                            <div style={{ fontSize: '1.15rem', fontWeight: 850 }}>{salonCheckoutPrice.toLocaleString('ru-RU')} lei</div>
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.72rem', color: '#fff', fontWeight: 800, marginBottom: '0.3rem' }}>Итоговая цена продажи</label>
+                                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    className="input no-spinners"
+                                                    value={salonFormData.final_sale_price_override}
+                                                    placeholder={String(salonCheckoutPrice)}
+                                                    onChange={(e) => setSalonFormData({ ...salonFormData, final_sale_price_override: e.target.value })}
+                                                    style={{ width: '100%', height: 44, textAlign: 'center', fontSize: '1.2rem', fontWeight: 900, color: '#5b21b6', background: '#fff' }}
+                                                />
+                                                {salonFormData.final_sale_price_override !== '' && (
+                                                    <button
+                                                        type="button"
+                                                        title="Вернуть расчётную цену"
+                                                        onClick={() => setSalonFormData({ ...salonFormData, final_sale_price_override: '', price_adjustment_reason: '' })}
+                                                        style={{ width: 44, height: 44, flex: '0 0 44px', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 10, background: 'rgba(255,255,255,0.16)', color: '#fff', fontSize: '1.2rem', cursor: 'pointer' }}
+                                                    >↺</button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {hasAdjustment && (
+                                        <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: salonPriceAdjustment < 0 ? 'rgba(127,29,29,0.32)' : 'rgba(6,95,70,0.32)', border: '1px solid rgba(255,255,255,0.22)', borderRadius: 10 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.55rem', fontSize: '0.82rem', fontWeight: 800 }}>
+                                                <span>{salonPriceAdjustment < 0 ? 'Скидка' : 'Наценка'}</span>
+                                                <span>{salonPriceAdjustment > 0 ? '+' : '−'}{Math.abs(salonPriceAdjustment).toLocaleString('ru-RU')} lei · {adjustmentPercent.toFixed(1)}%</span>
+                                            </div>
                                             <input
-                                                type="number"
                                                 className="input"
-                                                value={salonFormData.sale_price_override}
-                                                onChange={(e) => setSalonFormData({ ...salonFormData, sale_price_override: e.target.value })}
-                                                style={{ maxWidth: '220px', margin: '0 auto', textAlign: 'center', fontSize: '1.55rem', fontWeight: 900, color: '#7c3aed', background: 'white' }}
+                                                value={salonFormData.price_adjustment_reason}
+                                                onChange={(e) => setSalonFormData({ ...salonFormData, price_adjustment_reason: e.target.value })}
+                                                placeholder="Причина изменения цены (обязательно)"
+                                                style={{ width: '100%', height: 42, background: '#fff' }}
                                             />
-                                        ) : (
-                                            <div style={{ fontSize: '2rem', fontWeight: 800, color: 'white', letterSpacing: '-0.02em' }}>{salePrice.toFixed(0)} lei</div>
-                                        )}
-                                    </div>
-                                    {/* Cost and Margin Row */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.15)', borderRadius: '8px' }}>
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', justifyContent: 'space-between', marginTop: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.15)', borderRadius: '8px' }}>
                                         <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.8rem' }}>Себест: <b>{costPrice.toFixed(0)} L</b></span>
-                                        <span style={{ color: '#a7f3d0', fontSize: '0.8rem', fontWeight: 600 }}>Маржа: {margin.toFixed(0)} L ({marginPercent}%)</span>
+                                        <span style={{ color: marginColor, fontSize: '0.8rem', fontWeight: 800 }}>Маржа: {margin.toFixed(0)} L ({marginPercent}%)</span>
                                     </div>
+                                    {salonFormData.price_adjusted_by && (
+                                        <div style={{ marginTop: '0.55rem', color: 'rgba(255,255,255,0.72)', fontSize: '0.7rem' }}>
+                                            Последнее изменение: {salonFormData.price_adjusted_by}{salonFormData.price_adjusted_at ? ` · ${new Date(salonFormData.price_adjusted_at).toLocaleString('ru-RU')}` : ''}
+                                        </div>
+                                    )}
                                 </div>
                             )
                         })()}
@@ -3264,11 +3347,11 @@ export default function Sales() {
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem', marginTop: '0.55rem' }}>
                                             <div style={{ padding: '0.55rem 0.65rem', borderRadius: 8, background: '#fff', border: '1px solid #fde68a', minWidth: 0 }}>
                                                 <div style={{ color: '#a16207', fontSize: '0.7rem', fontWeight: 700 }}>Стоимость заказа</div>
-                                                <div style={{ color: '#1f2937', fontWeight: 800 }}>{salonCheckoutPrice.toLocaleString('ru-RU')} lei</div>
+                                                <div style={{ color: '#1f2937', fontWeight: 800 }}>{salonFinalSalePrice.toLocaleString('ru-RU')} lei</div>
                                             </div>
                                             <div style={{ padding: '0.55rem 0.65rem', borderRadius: 8, background: '#fff', border: '1px solid #fde68a', minWidth: 0 }}>
                                                 <div style={{ color: '#a16207', fontSize: '0.7rem', fontWeight: 700 }}>Останется доплатить</div>
-                                                <div style={{ color: '#b45309', fontWeight: 800 }}>{Math.max(0, salonCheckoutPrice - parseMoney(salonFormData.initial_payment_amount)).toLocaleString('ru-RU')} lei</div>
+                                                <div style={{ color: '#b45309', fontWeight: 800 }}>{Math.max(0, salonFinalSalePrice - parseMoney(salonFormData.initial_payment_amount)).toLocaleString('ru-RU')} lei</div>
                                             </div>
                                         </div>
                                     </div>
@@ -3474,7 +3557,17 @@ export default function Sales() {
                                         deliveryMethod: salonFormData.needs_delivery ? 'delivery' : 'pickup',
                                         pickupDiscount
                                     })
-                                    const salePrice = salonPricing.salePrice
+                                    const calculatedSalePrice = salonPricing.salePrice
+                                    const salePrice = salonFormData.final_sale_price_override === ''
+                                        ? calculatedSalePrice
+                                        : Math.max(0, parseMoney(salonFormData.final_sale_price_override))
+                                    const hasPriceAdjustment = Math.abs(salePrice - calculatedSalePrice) > 0.009
+                                    if (salePrice <= 0) {
+                                        throw new Error('Итоговая цена продажи должна быть больше 0')
+                                    }
+                                    if (hasPriceAdjustment && !salonFormData.price_adjustment_reason.trim()) {
+                                        throw new Error('Укажите причину изменения итоговой цены')
+                                    }
                                     const initialPaymentAmount = parseMoney(salonFormData.initial_payment_amount)
                                     if (!editingSalonSaleId && salonFormData.payment_status === 'partial' && (initialPaymentAmount <= 0 || initialPaymentAmount >= salePrice)) {
                                         throw new Error(`Аванс должен быть больше 0 и меньше суммы заказа (${salePrice.toLocaleString('ru-RU')} lei)`)
@@ -3493,6 +3586,10 @@ export default function Sales() {
                                         florist_id: salonFormData.florist_id || null,
                                         cost_price: costPrice,
                                         sale_price: salePrice,
+                                        calculated_sale_price: calculatedSalePrice,
+                                        price_adjustment_reason: hasPriceAdjustment ? salonFormData.price_adjustment_reason.trim() : null,
+                                        price_adjusted_by: hasPriceAdjustment ? (user?.user_metadata?.name || user?.email || 'Сотрудник') : null,
+                                        price_adjusted_at: hasPriceAdjustment ? new Date().toISOString() : null,
                                         price_before_discount: salonPricing.priceBeforeDiscount,
                                         pickup_discount_applied: !salonFormData.needs_delivery && pickupDiscount > 0,
                                         delivery_method: salonFormData.needs_delivery ? 'delivery' : 'pickup',

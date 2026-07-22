@@ -1099,10 +1099,13 @@ export function StoreProvider({ children }) {
                 pickupDiscount
             })
             salePayload.price_before_discount = normalizedPricing.priceBeforeDiscount
-            salePayload.sale_price = normalizedPricing.salePrice
+            const submittedCalculatedPrice = toMoney(salePayload.calculated_sale_price, Number.NaN)
+            const hasManualPrice = Number.isFinite(submittedCalculatedPrice)
+            salePayload.calculated_sale_price = hasManualPrice ? Math.max(0, submittedCalculatedPrice) : normalizedPricing.salePrice
+            salePayload.sale_price = hasManualPrice ? submittedPrice : normalizedPricing.salePrice
             salePayload.pickup_discount_applied = !isDelivery && pickupDiscount > 0
             if (salePayload.cost_price !== undefined) {
-                salePayload.profit = normalizedPricing.salePrice - toMoney(salePayload.cost_price)
+                salePayload.profit = salePayload.sale_price - toMoney(salePayload.cost_price)
             }
 
             // Очищаем customer_id
@@ -1223,10 +1226,13 @@ export function StoreProvider({ children }) {
                     : (payload.pickup_discount_applied === true ? submittedPrice + pickupDiscount : submittedPrice)
                 const normalizedPricing = calculateSalePricing({ priceBeforeDiscount, deliveryMethod: method, pickupDiscount })
                 payload.price_before_discount = normalizedPricing.priceBeforeDiscount
-                payload.sale_price = normalizedPricing.salePrice
+                const submittedCalculatedPrice = toMoney(payload.calculated_sale_price, Number.NaN)
+                const hasManualPrice = Number.isFinite(submittedCalculatedPrice)
+                payload.calculated_sale_price = hasManualPrice ? Math.max(0, submittedCalculatedPrice) : normalizedPricing.salePrice
+                payload.sale_price = hasManualPrice ? submittedPrice : normalizedPricing.salePrice
                 payload.pickup_discount_applied = !isDelivery && pickupDiscount > 0
                 const costPrice = payload.cost_price ?? existing.cost_price
-                if (costPrice !== undefined) payload.profit = normalizedPricing.salePrice - toMoney(costPrice)
+                if (costPrice !== undefined) payload.profit = payload.sale_price - toMoney(costPrice)
             }
         }
         const uuidFields = ['customer_id', 'product_id', 'courier_id', 'florist_id']
