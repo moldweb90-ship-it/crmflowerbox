@@ -355,15 +355,19 @@ export default function Dashboard() {
             if (!s.delivery_date) return false
             if (isOperationallyClosedSale(s, claims)) return false
             const dDate = new Date(s.delivery_date)
+            if (s.delivery_time_mode === 'day') dDate.setHours(23, 59, 59, 999)
             // Buffer: 15 mins late is a problem? Or strict?
             return dDate < now
         }).map(s => ({
             id: s.id,
             orderNumber: s.order_number || s.id.substring(0, 6).toUpperCase(),
             clientName: s.customer_name || 'Клиент',
-            time: new Date(s.delivery_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            time: s.delivery_time_mode === 'day'
+                ? 'В течение дня'
+                : new Date(s.delivery_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             status: s.status,
-            amount: s.sale_price
+            amount: s.sale_price,
+            note: s.order_notes || ''
         }))
 
         // Recent (Top 10)
@@ -419,9 +423,12 @@ export default function Dashboard() {
                 id: s.id,
                 orderNumber: s.order_number,
                 name: prodName,
-                time: new Date(s.delivery_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                time: s.delivery_time_mode === 'day'
+                    ? 'В течение дня'
+                    : new Date(s.delivery_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
                 amount: s.sale_price,
-                type: isDelivery ? 'delivery' : 'pickup'
+                type: isDelivery ? 'delivery' : 'pickup',
+                note: s.order_notes || ''
             }
         })
 
@@ -1104,7 +1111,7 @@ export default function Dashboard() {
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>
                                     {problemOrders.slice(0, 2).map(p => (
-                                        <div key={p.id}>#{p.orderNumber} - {p.time} ({p.status})</div>
+                                        <div key={p.id} title={p.note || ''}>#{p.orderNumber} - {p.time} ({p.status})</div>
                                     ))}
                                     {problemOrders.length > 2 && <div>...и еще {problemOrders.length - 2}</div>}
                                 </div>
@@ -1149,7 +1156,7 @@ export default function Dashboard() {
                         {/* Delivery List */}
                         <div style={{ flex: 1, overflowY: 'auto', maxHeight: '120px', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', borderTop: '1px solid #f5d0fe', paddingTop: '0.75rem' }}>
                             {tomorrowStats.deliveryList && tomorrowStats.deliveryList.length > 0 ? tomorrowStats.deliveryList.map(d => (
-                                <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px dashed #f5d0fe', paddingBottom: '0.25rem' }}>
+                                <div key={d.id} title={d.note || ''} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px dashed #f5d0fe', paddingBottom: '0.25rem' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                         {d.type === 'delivery' ? <Truck size={12} color="#c026d3" /> : <UserPlus size={12} color="#c026d3" />}
                                         <div>

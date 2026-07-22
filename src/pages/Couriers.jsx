@@ -40,6 +40,13 @@ const formatDateTime = (value) => {
     if (Number.isNaN(date.getTime())) return 'Без времени'
     return date.toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
+const formatSaleDateTime = (sale) => {
+    const value = sale.delivery_date || sale.order_date
+    if (sale.delivery_time_mode !== 'day') return formatDateTime(value)
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return 'В течение дня'
+    return `${date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}, в течение дня`
+}
 const isDeliverySale = (sale) => sale.delivery_method !== 'pickup' && sale.is_pickup !== true && !!(sale.delivery_address || sale.courier_id)
 const isActiveDelivery = (sale) => !['delivered', 'cancelled', 'returned'].includes(sale.delivery_status)
 const getStatus = (status) => STATUS_META[status] || STATUS_META.not_delivered
@@ -266,7 +273,8 @@ export default function Couriers() {
                                     <span style={{ borderRadius: 999, padding: '0.25rem 0.55rem', background: status.bg, color: status.color, fontWeight: 900, fontSize: '0.75rem' }}>{status.label}</span>
                                 </div>
                                 <div style={{ fontWeight: 900, marginBottom: '0.35rem' }}>{getSaleTitle(sale)}</div>
-                                <div style={{ color: '#64748b', fontWeight: 700, display: 'flex', gap: '0.45rem', alignItems: 'center' }}><Clock size={16} /> {formatDateTime(sale.delivery_date || sale.order_date)}</div>
+                                <div style={{ color: '#64748b', fontWeight: 700, display: 'flex', gap: '0.45rem', alignItems: 'center' }}><Clock size={16} /> {formatSaleDateTime(sale)}</div>
+                                {sale.order_notes && <div style={{ marginTop: '0.45rem', color: '#9a3412', fontWeight: 800, whiteSpace: 'pre-wrap' }}>Заметка: {sale.order_notes}</div>}
                             </div>
                             <div>
                                 <div style={{ fontWeight: 900, marginBottom: '0.35rem' }}>{courier?.name || 'Без курьера'}</div>
@@ -349,7 +357,10 @@ export default function Couriers() {
                                             <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 900 }}>#{sale.order_number || sale.id?.slice(0, 8)}</div>
                                             <div style={{ fontWeight: 900 }}>{getSaleTitle(sale)}</div>
                                         </div>
-                                        <div style={{ color: '#475569', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={16} /> {formatDateTime(sale.delivery_date || sale.order_date)}</div>
+                                        <div style={{ color: '#475569', fontWeight: 800 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={16} /> {formatSaleDateTime(sale)}</div>
+                                            {sale.order_notes && <div style={{ marginTop: 4, color: '#9a3412', fontSize: '0.78rem', whiteSpace: 'pre-wrap' }}>Заметка: {sale.order_notes}</div>}
+                                        </div>
                                         <div style={{ color: '#475569', fontWeight: 800, display: 'flex', alignItems: 'flex-start', gap: 6, minWidth: 0 }}>
                                             <MapPin size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
                                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap' }}>{sale.delivery_address || 'Адрес не указан'}</span>

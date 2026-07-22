@@ -107,6 +107,7 @@ const getStatus = (status) => STATUS_META[status] || STATUS_META.not_delivered
 const mapUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || '')}`
 const firstPhone = (sale) => sale.recipient_phone || sale.customer_phone || ''
 const deliveryDate = (sale) => sale.delivery_date || sale.order_date
+const formatSaleTime = (sale) => sale.delivery_time_mode === 'day' ? 'В течение дня' : formatTime(deliveryDate(sale))
 const isActiveDelivery = (sale) => !DONE_STATUSES.includes(sale.delivery_status)
 const isRouteDelivery = (sale) => sale.delivery_status === 'delivering'
 const hasFullRefundClaim = (saleId, claims = []) => claims.some(claim => claim.sale_id === saleId && claim.resolution === 'full_refund')
@@ -425,8 +426,9 @@ export default function MyDeliveries() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginTop: '0.55rem' }}>
                         <div>
-                            <div style={{ fontSize: '1.55rem', fontWeight: 950 }}>{formatTime(deliveryDate(nextDelivery))}</div>
+                            <div style={{ fontSize: nextDelivery.delivery_time_mode === 'day' ? '1rem' : '1.55rem', fontWeight: 950 }}>{formatSaleTime(nextDelivery)}</div>
                             <div style={{ fontWeight: 800, opacity: 0.86, lineHeight: 1.35 }}>{nextDelivery.delivery_address || 'Адрес не указан'}</div>
+                            {nextDelivery.order_notes && <div style={{ marginTop: '0.35rem', fontSize: '0.82rem', fontWeight: 800, opacity: 0.9 }}>Заметка: {nextDelivery.order_notes}</div>}
                         </div>
                         {nextDelivery.delivery_address && (
                             <a href={mapUrl(nextDelivery.delivery_address)} target="_blank" rel="noreferrer" style={{ width: 54, height: 54, borderRadius: 18, background: 'rgba(255,255,255,0.18)', color: 'white', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -487,7 +489,7 @@ export default function MyDeliveries() {
                                             <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: '0.7rem', alignItems: 'stretch', marginBottom: '0.75rem' }}>
                                                 <div style={{ borderRadius: 20, background: '#f8fafc', border: '1px solid #e5e7eb', display: 'grid', placeItems: 'center', color: '#111827' }}>
                                                     <div style={{ textAlign: 'center' }}>
-                                                        <div style={{ fontSize: '1.05rem', fontWeight: 950 }}>{formatTime(deliveryDate(sale))}</div>
+                                                        <div style={{ fontSize: sale.delivery_time_mode === 'day' ? '0.72rem' : '1.05rem', fontWeight: 950 }}>{formatSaleTime(sale)}</div>
                                                         <Clock3 size={17} color="#64748b" style={{ marginTop: 3 }} />
                                                     </div>
                                                 </div>
@@ -508,6 +510,12 @@ export default function MyDeliveries() {
                                             {composition && (
                                                 <div style={{ background: '#f8fafc', borderRadius: 15, padding: '0.62rem 0.7rem', color: '#475569', fontWeight: 750, marginBottom: '0.68rem' }}>
                                                     {composition}
+                                                </div>
+                                            )}
+
+                                            {sale.order_notes && (
+                                                <div style={{ background: '#fff7ed', borderRadius: 15, padding: '0.68rem 0.75rem', color: '#9a3412', fontWeight: 800, marginBottom: '0.68rem', whiteSpace: 'pre-wrap' }}>
+                                                    Заметка: {sale.order_notes}
                                                 </div>
                                             )}
 
@@ -587,7 +595,7 @@ export default function MyDeliveries() {
                                 <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: '0.75rem', alignItems: 'stretch', marginBottom: '1rem' }}>
                                     <div style={{ borderRadius: 22, background: '#f8fafc', border: '1px solid #e5e7eb', display: 'grid', placeItems: 'center', color: '#111827' }}>
                                         <div style={{ textAlign: 'center' }}>
-                                            <div style={{ fontSize: '1.2rem', fontWeight: 950 }}>{formatTime(deliveryDate(sale))}</div>
+                                            <div style={{ fontSize: sale.delivery_time_mode === 'day' ? '0.78rem' : '1.2rem', fontWeight: 950 }}>{formatSaleTime(sale)}</div>
                                             <Clock3 size={18} color="#64748b" style={{ marginTop: 4 }} />
                                         </div>
                                     </div>
@@ -605,6 +613,12 @@ export default function MyDeliveries() {
                                 {composition && (
                                     <div style={{ background: '#f8fafc', borderRadius: 16, padding: '0.7rem 0.75rem', color: '#475569', fontWeight: 750, marginBottom: '0.7rem' }}>
                                         {composition}
+                                    </div>
+                                )}
+
+                                {sale.order_notes && (
+                                    <div style={{ background: '#fff7ed', borderRadius: 16, padding: '0.75rem', color: '#9a3412', fontWeight: 800, marginBottom: '0.75rem', whiteSpace: 'pre-wrap' }}>
+                                        Заметка: {sale.order_notes}
                                     </div>
                                 )}
 
@@ -937,7 +951,8 @@ export default function MyDeliveries() {
                                                 <span style={{ whiteSpace: 'nowrap', borderRadius: 999, padding: '0.32rem 0.58rem', background: status.bg, color: status.color, fontWeight: 900, fontSize: '0.74rem' }}>{status.label}</span>
                                             </div>
                                             <div style={{ display: 'grid', gap: '0.38rem', color: '#475569', fontWeight: 800, marginBottom: '0.7rem' }}>
-                                                <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}><Clock3 size={16} /> {formatTime(deliveryDate(sale))}</div>
+                                                <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}><Clock3 size={16} /> {formatSaleTime(sale)}</div>
+                                                {sale.order_notes && <div style={{ color: '#9a3412', whiteSpace: 'pre-wrap' }}>Заметка: {sale.order_notes}</div>}
                                                 <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'flex-start' }}><MapPin size={16} color="#ef4444" style={{ marginTop: 2, flexShrink: 0 }} /> {address || 'Адрес не указан'}</div>
                                             </div>
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>

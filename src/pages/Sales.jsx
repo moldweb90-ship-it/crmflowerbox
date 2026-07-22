@@ -110,6 +110,59 @@ const localDateTimeInputToIso = (value) => {
     return date.toISOString()
 }
 
+const fulfillmentInputToIso = (value, mode = 'exact') => {
+    if (!value) return null
+    const normalized = mode === 'day' ? `${String(value).slice(0, 10)}T12:00` : value
+    return localDateTimeInputToIso(normalized)
+}
+
+const fulfillmentInputValue = (value, mode = 'exact') => {
+    if (mode === 'day') return String(value || '').slice(0, 10)
+    const normalized = String(value || '')
+    return normalized.length === 10 ? `${normalized}T12:00` : normalized
+}
+
+const formatFulfillmentDate = (sale, options = {}) => {
+    if (!sale?.delivery_date) return '—'
+    const date = new Date(sale.delivery_date)
+    if (Number.isNaN(date.getTime())) return '—'
+    const dateLabel = date.toLocaleDateString('ru-RU', options.withYear
+        ? { day: '2-digit', month: '2-digit', year: 'numeric' }
+        : { day: '2-digit', month: '2-digit' })
+    if (sale.delivery_time_mode === 'day') return `${dateLabel}, в течение дня`
+    return date.toLocaleString('ru-RU', options.withYear
+        ? { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+        : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function FulfillmentTimeField({ value, mode = 'exact', onChange, label = 'Дата и время' }) {
+    const setMode = (nextMode) => {
+        onChange({
+            mode: nextMode,
+            value: fulfillmentInputValue(value || toLocalDateTimeInput(), nextMode)
+        })
+    }
+
+    return (
+        <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e3a8a' }}>{label}</label>
+                <div style={{ display: 'flex', padding: 3, borderRadius: 8, background: '#dbeafe' }}>
+                    <button type="button" onClick={() => setMode('exact')} style={{ padding: '0.32rem 0.55rem', borderRadius: 6, border: 0, background: mode === 'exact' ? '#fff' : 'transparent', color: mode === 'exact' ? '#1d4ed8' : '#64748b', fontSize: '0.72rem', fontWeight: 800 }}>Точное время</button>
+                    <button type="button" onClick={() => setMode('day')} style={{ padding: '0.32rem 0.55rem', borderRadius: 6, border: 0, background: mode === 'day' ? '#fff' : 'transparent', color: mode === 'day' ? '#1d4ed8' : '#64748b', fontSize: '0.72rem', fontWeight: 800 }}>В течение дня</button>
+                </div>
+            </div>
+            <input
+                type={mode === 'day' ? 'date' : 'datetime-local'}
+                className="input"
+                value={fulfillmentInputValue(value, mode)}
+                onChange={(event) => onChange({ mode, value: event.target.value })}
+                style={{ width: '100%' }}
+            />
+        </div>
+    )
+}
+
 const formatSignedLei = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${Number(value || 0).toLocaleString('ru-RU')} lei`
 
 const SALES_LIST_FILTERS_KEY = 'sales_list_filters'
@@ -252,6 +305,12 @@ export default function Sales() {
         florist_id: '',
         needs_delivery: false,
         delivery_date: toLocalDateTimeInput(),
+        delivery_time_mode: 'exact',
+        order_notes: '',
+        customer_name: '',
+        customer_phone: '',
+        customer_email: '',
+        recipient_phone: '',
         delivery_address: '',
         delivery_status: 'not_delivered',
         courier_id: '',
@@ -288,7 +347,10 @@ export default function Sales() {
         order_number: '',
         order_date: toLocalDateTimeInput(),
         delivery_date: toLocalDateTimeInput(),
+        delivery_time_mode: 'exact',
+        order_notes: '',
         delivery_address: '',
+        customer_name: '',
         customer_phone: '',
         customer_email: '',
         recipient_phone: '',
@@ -315,7 +377,7 @@ export default function Sales() {
         extra_delivery_cost: null,
         extra_delivery_reason: null
     }
-    const [formData, setFormData] = useState(savedState?.formData || emptyForm)
+    const [formData, setFormData] = useState({ ...emptyForm, ...(savedState?.formData || {}) })
     const [productSearch, setProductSearch] = useState('')
     const [newCourierName, setNewCourierName] = useState('')
     const [newFloristName, setNewFloristName] = useState('')
@@ -687,7 +749,13 @@ export default function Sales() {
                 initial_payment_amount: '',
                 florist_id: sale.florist_id || '',
                 needs_delivery: sale.delivery_method === 'delivery',
-                delivery_date: toLocalDateTimeInput(sale.delivery_date),
+                delivery_date: (sale.delivery_time_mode || 'exact') === 'day' ? toLocalDateKey(sale.delivery_date) : toLocalDateTimeInput(sale.delivery_date),
+                delivery_time_mode: sale.delivery_time_mode || 'exact',
+                order_notes: sale.order_notes || '',
+                customer_name: sale.customer_name || '',
+                customer_phone: sale.customer_phone || '',
+                customer_email: sale.customer_email || '',
+                recipient_phone: sale.recipient_phone || '',
                 delivery_address: sale.delivery_address || '',
                 delivery_status: sale.delivery_status || 'not_delivered',
                 courier_id: sale.courier_id || '',
@@ -720,8 +788,9 @@ export default function Sales() {
                 product_id: sale.product_id || '',
                 order_number: sale.order_number || '',
                 order_date: toLocalDateTimeInput(sale.order_date),
-                delivery_date: toLocalDateTimeInput(sale.delivery_date),
+                delivery_date: (sale.delivery_time_mode || 'exact') === 'day' ? toLocalDateKey(sale.delivery_date) : toLocalDateTimeInput(sale.delivery_date),
                 delivery_address: sale.delivery_address || '',
+                customer_name: sale.customer_name || '',
                 customer_phone: sale.customer_phone || '',
                 customer_email: sale.customer_email || '',
                 recipient_phone: sale.recipient_phone || '',
@@ -746,7 +815,9 @@ export default function Sales() {
                 courier_paid_amount: sale.courier_paid_amount || 0,
                 pickup_discount: sale.pickup_discount ?? '',
                 extra_delivery_cost: sale.extra_delivery_cost || null,
-                extra_delivery_reason: sale.extra_delivery_reason || null
+                extra_delivery_reason: sale.extra_delivery_reason || null,
+                delivery_time_mode: sale.delivery_time_mode || 'exact',
+                order_notes: sale.order_notes || ''
             })
             const prod = products.find(p => p.id === sale.product_id)
             setProductSearch(prod?.name || '')
@@ -899,7 +970,7 @@ export default function Sales() {
             is_custom: isCustomSiteSale,
             custom_name: isCustomSiteSale ? siteCustomName.trim() : undefined,
             order_date: localDateTimeInputToIso(formData.order_date),
-            delivery_date: localDateTimeInputToIso(formData.delivery_date),
+            delivery_date: fulfillmentInputToIso(formData.delivery_date, formData.delivery_time_mode),
             sale_price: salePrice,
             cost_price: costPrice,
             profit: salePrice - costPrice,
@@ -1656,9 +1727,15 @@ export default function Sales() {
                                                 </div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: sale.delivery_date ? '#10b981' : 'var(--text-muted)' }}>
                                                     <Truck size={12} />
-                                                    <span>Доставка: {sale.delivery_date ? new Date(sale.delivery_date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                                                    <span>{sale.delivery_method === 'pickup' ? 'Самовывоз' : 'Доставка'}: {formatFulfillmentDate(sale)}</span>
                                                 </div>
                                             </div>
+
+                                            {sale.order_notes && (
+                                                <div title={sale.order_notes} style={{ maxWidth: 620, marginBottom: '0.35rem', color: '#475569', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    Заметка: {sale.order_notes}
+                                                </div>
+                                            )}
 
                                             {/* Full Address */}
                                             {sale.delivery_address && (
@@ -2067,7 +2144,11 @@ export default function Sales() {
                     {/* Section 3: Client (One Row) */}
                     <div style={{ background: '#f0fdf4', padding: '1rem', borderRadius: '16px', border: '1px solid #bbf7d0' }}>
                         <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, color: '#166534' }}>👤 Клиент</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '1rem' }}>
+                            <div>
+                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#15803d' }}>Имя клиента <span style={{ color: '#94a3b8', fontWeight: 500 }}>(необязательно)</span></label>
+                                <input className="input" placeholder="Например: Анна" value={formData.customer_name} onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })} />
+                            </div>
                             <div>
                                 <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#15803d' }}>Телефон клиента</label>
                                 <input className="input" placeholder="+373..." value={formData.customer_phone} onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })} />
@@ -2096,6 +2177,18 @@ export default function Sales() {
                                 </select>
                             </div>
                         </div>
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', border: '1px solid #cbd5e1' }}>
+                        <label style={{ display: 'block', marginBottom: '0.35rem', color: '#334155', fontSize: '0.85rem', fontWeight: 800 }}>Заметка к заказу</label>
+                        <textarea
+                            className="input"
+                            rows={3}
+                            value={formData.order_notes}
+                            onChange={(event) => setFormData({ ...formData, order_notes: event.target.value })}
+                            placeholder="Например: синяя лента, позвонить перед выдачей, заберут после 18:00"
+                            style={{ width: '100%', resize: 'vertical' }}
+                        />
                     </div>
 
                     {/* Section 4: Payment */}
@@ -2209,12 +2302,12 @@ export default function Sales() {
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
-                            <div>
-                                <label style={{ fontSize: '0.8rem', marginBottom: '0.25rem', display: 'block', color: '#1e3a8a' }}>
-                                    {formData.delivery_method === 'pickup' ? 'Дата и время выдачи' : 'Дата и время доставки'}
-                                </label>
-                                <input type="datetime-local" className="input" value={formData.delivery_date} onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })} />
-                            </div>
+                            <FulfillmentTimeField
+                                label={formData.delivery_method === 'pickup' ? 'Когда выдавать' : 'Когда доставить'}
+                                value={formData.delivery_date}
+                                mode={formData.delivery_time_mode}
+                                onChange={({ value, mode }) => setFormData({ ...formData, delivery_date: value, delivery_time_mode: mode })}
+                            />
 
                             {formData.delivery_method === 'delivery' && (
                                 <div>
@@ -2672,19 +2765,27 @@ export default function Sales() {
                                 )
                             })()}
 
+                        {viewingSale.order_notes && (
+                            <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '1rem', borderRadius: '12px', marginBottom: '1rem' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 800, marginBottom: '0.35rem' }}>Заметка к заказу</div>
+                                <div style={{ color: '#1e293b', fontWeight: 700, whiteSpace: 'pre-wrap' }}>{viewingSale.order_notes}</div>
+                            </div>
+                        )}
+
                         {/* Delivery Info */}
                         <div style={{ background: '#eff6ff', padding: '1rem', borderRadius: '12px', marginBottom: '1rem' }}>
                             <h4 style={{ fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <Truck size={18} /> Доставка
+                                <Truck size={18} /> {viewingSale.delivery_method === 'pickup' ? 'Самовывоз' : 'Доставка'}
                             </h4>
                             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
                                 <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Имя заказчика</div>
+                                    <div style={{ fontWeight: 600 }}>{viewingSale.customer_name || 'Клиент'}</div>
+                                </div>
+                                <div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Дата и время</div>
                                     <div style={{ fontWeight: 600 }}>
-                                        {viewingSale.delivery_date ? new Date(viewingSale.delivery_date).toLocaleString('ru-RU', {
-                                            day: 'numeric', month: 'long',
-                                            hour: '2-digit', minute: '2-digit'
-                                        }) : 'Не указано'}
+                                        {viewingSale.delivery_date ? formatFulfillmentDate(viewingSale, { withYear: true }) : 'Не указано'}
                                     </div>
                                 </div>
                                 <div>
@@ -2765,7 +2866,7 @@ export default function Sales() {
                                     const paymentSummary = getSalePaymentSummary(sale, salePayments || [])
                                     const paymentStatusInfo = getPaymentStatusMeta(paymentSummary.status)
                                     const orderDate = sale.order_date ? new Date(sale.order_date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
-                                    const deliveryDate = sale.delivery_date ? new Date(sale.delivery_date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+                                    const deliveryDate = sale.delivery_date ? formatFulfillmentDate(sale, { withYear: true }) : '—'
                                     const courierName = couriers.find(c => c.id === sale.courier_id)?.name || '—'
                                     const floristName = florists.find(f => f.id === sale.florist_id)?.name || '—'
                                     const paymentMethods = [...new Set(paymentSummary.payments.map(payment => (
@@ -2926,11 +3027,16 @@ export default function Sales() {
             </div>
         </div>
         ${sale.delivery_address ? `<div class="address-box"><strong>Адрес:</strong> ${sale.delivery_address}</div>` : ''}
+        ${sale.order_notes ? `<div class="card-text"><strong>Заметка к заказу:</strong> ${sale.order_notes}</div>` : ''}
     </div>
 
     <div class="section">
         <div class="section-title">👤 Клиент</div>
         <div class="grid">
+            <div class="field">
+                <div class="field-label">Имя заказчика</div>
+                <div class="field-value">${sale.customer_name || 'Клиент'}</div>
+            </div>
             <div class="field">
                 <div class="field-label">Телефон заказчика</div>
                 <div class="field-value">${sale.customer_phone || '—'}</div>
@@ -3267,6 +3373,35 @@ export default function Sales() {
                         <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
                             📋 Детали заказа
                         </h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1rem', padding: '0.85rem', borderRadius: 12, background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                            <div>
+                                <label style={{ fontSize: '0.78rem', marginBottom: '0.25rem', display: 'block', fontWeight: 700, color: '#15803d' }}>Имя клиента <span style={{ color: '#94a3b8', fontWeight: 500 }}>(необязательно)</span></label>
+                                <input className="input" placeholder="Например: Анна" value={salonFormData.customer_name} onChange={(e) => setSalonFormData({ ...salonFormData, customer_name: e.target.value })} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.78rem', marginBottom: '0.25rem', display: 'block', fontWeight: 700, color: '#15803d' }}>Телефон клиента</label>
+                                <input className="input" placeholder="+373..." value={salonFormData.customer_phone} onChange={(e) => setSalonFormData({ ...salonFormData, customer_phone: e.target.value })} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.78rem', marginBottom: '0.25rem', display: 'block', fontWeight: 700, color: '#15803d' }}>Email</label>
+                                <input className="input" type="email" placeholder="example@mail.com" value={salonFormData.customer_email} onChange={(e) => setSalonFormData({ ...salonFormData, customer_email: e.target.value })} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: '0.78rem', marginBottom: '0.25rem', display: 'block', fontWeight: 700, color: '#15803d' }}>Телефон получателя</label>
+                                <input className="input" placeholder="+373..." value={salonFormData.recipient_phone} onChange={(e) => setSalonFormData({ ...salonFormData, recipient_phone: e.target.value })} />
+                            </div>
+                        </div>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label style={{ fontSize: '0.85rem', marginBottom: '0.3rem', display: 'block', fontWeight: 700, color: '#334155' }}>Заметка к заказу</label>
+                            <textarea
+                                className="input"
+                                rows={3}
+                                value={salonFormData.order_notes}
+                                onChange={(event) => setSalonFormData({ ...salonFormData, order_notes: event.target.value })}
+                                placeholder="Например: синяя лента, позвонить перед выдачей, заберут после 18:00"
+                                style={{ width: '100%', resize: 'vertical' }}
+                            />
+                        </div>
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
                             <div>
                                 <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Дата заказа</label>
@@ -3380,6 +3515,15 @@ export default function Sales() {
                             <span style={{ fontWeight: 600, color: '#92400e' }}>🚚 Нужна доставка</span>
                         </label>
 
+                        <div style={{ marginTop: '1rem' }}>
+                            <FulfillmentTimeField
+                                label={salonFormData.needs_delivery ? 'Когда доставить' : 'Когда выдавать самовывоз'}
+                                value={salonFormData.delivery_date}
+                                mode={salonFormData.delivery_time_mode}
+                                onChange={({ value, mode }) => setSalonFormData({ ...salonFormData, delivery_date: value, delivery_time_mode: mode })}
+                            />
+                        </div>
+
                         {salonFormData.needs_delivery && (
                             <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
                                 <div>
@@ -3405,16 +3549,6 @@ export default function Sales() {
                                         onChange={(e) => setSalonFormData({ ...salonFormData, courier_payout: e.target.value })}
                                         className="input"
                                         placeholder={salonFormData.delivery_fee || defaultDeliveryFee}
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>Дата и время доставки</label>
-                                    <input
-                                        type="datetime-local"
-                                        value={salonFormData.delivery_date}
-                                        onChange={(e) => setSalonFormData({ ...salonFormData, delivery_date: e.target.value })}
-                                        className="input"
                                         style={{ width: '100%' }}
                                     />
                                 </div>
@@ -3579,6 +3713,10 @@ export default function Sales() {
                                         custom_name: salonFormData.custom_name,
                                         custom_composition: salonFormData.composition,
                                         order_date: localDateTimeInputToIso(salonFormData.order_date),
+                                        customer_name: salonFormData.customer_name.trim() || null,
+                                        customer_phone: salonFormData.customer_phone.trim() || null,
+                                        customer_email: salonFormData.customer_email.trim() || null,
+                                        recipient_phone: salonFormData.recipient_phone.trim() || null,
                                         payment_method: salonFormData.payment_method,
                                         payment_status: salonFormData.payment_status,
                                         initial_payment_amount: salonFormData.payment_status === 'partial' ? initialPaymentAmount : undefined,
@@ -3593,7 +3731,9 @@ export default function Sales() {
                                         price_before_discount: salonPricing.priceBeforeDiscount,
                                         pickup_discount_applied: !salonFormData.needs_delivery && pickupDiscount > 0,
                                         delivery_method: salonFormData.needs_delivery ? 'delivery' : 'pickup',
-                                        delivery_date: localDateTimeInputToIso(salonFormData.delivery_date),
+                                        delivery_date: fulfillmentInputToIso(salonFormData.delivery_date, salonFormData.delivery_time_mode),
+                                        delivery_time_mode: salonFormData.delivery_time_mode,
+                                        order_notes: salonFormData.order_notes.trim() || null,
                                         delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
                                         delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,

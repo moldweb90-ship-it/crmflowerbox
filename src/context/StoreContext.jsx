@@ -1060,7 +1060,7 @@ export function StoreProvider({ children }) {
             let customerData = null
             if (!customerId && (hasEmail || hasPhone)) {
                 const customerResult = await findOrCreateCustomer({
-                    name: sale.customer_name || sale.recipient_name || 'Клиент',
+                    name: sale.customer_name || sale.recipient_name || '',
                     email: sale.customer_email,
                     phone: sale.customer_phone,
                     occasion: sale.occasion
@@ -1202,6 +1202,7 @@ export function StoreProvider({ children }) {
     const updateSale = async (id, updates) => {
         // Sanitize UUID fields (convert empty strings to null or remove them)
         const payload = { ...updates }
+        const existingSale = sales.find(sale => String(sale.id) === String(id)) || {}
         // These fields control creation of the first payment and are not columns of sales.
         delete payload.skip_stock_deduction
         delete payload.initial_payment_amount
@@ -1241,6 +1242,15 @@ export function StoreProvider({ children }) {
                 payload[field] = null
             }
         })
+
+        if (payload.customer_name !== undefined || payload.customer_phone !== undefined || payload.customer_email !== undefined) {
+            const customerResult = await findOrCreateCustomer({
+                name: payload.customer_name ?? existingSale.customer_name,
+                phone: payload.customer_phone ?? existingSale.customer_phone,
+                email: payload.customer_email ?? existingSale.customer_email
+            })
+            if (customerResult.customerId) payload.customer_id = customerResult.customerId
+        }
 
         const salePaymentsForOrder = salePayments.filter(payment => String(payment.sale_id) === String(id))
         if (payload.sale_price !== undefined && salePaymentsForOrder.length > 0) {
@@ -2275,11 +2285,24 @@ export function StoreProvider({ children }) {
             }
 
             if (customer) {
+                const cleanName = String(name || '').trim()
+                if (cleanName && customer.name !== cleanName) {
+                    const { data: renamedCustomer, error: renameError } = await supabase
+                        .from('customers')
+                        .update({ name: cleanName, updated_at: new Date().toISOString() })
+                        .eq('id', customer.id)
+                        .select()
+                        .single()
+                    if (!renameError && renamedCustomer) {
+                        customer = renamedCustomer
+                        setCustomers(current => current.map(item => item.id === customer.id ? customer : item))
+                    }
+                }
                 return { customerId: customer.id, isNew: false, customer }
             }
 
             const { data: newCustomer, error } = await supabase.from('customers').insert([{
-                name: name || 'Клиент',
+                name: String(name || '').trim() || 'Клиент',
                 email: cleanEmail,
                 phone: cleanPhone,
                 status: 'regular'

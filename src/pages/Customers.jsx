@@ -89,6 +89,14 @@ export default function Customers() {
         await updateCustomer(customerId, { preferences })
     }
 
+    const handleUpdateIdentity = async (customerId, updates) => {
+        const result = await updateCustomer(customerId, updates)
+        if (result.success) {
+            setSelectedCustomer(current => current?.id === customerId ? { ...current, ...updates } : current)
+        }
+        return result
+    }
+
     const handleDeleteCustomer = async (customerId) => {
         if (!confirm('Удалить клиента? Связанные заказы останутся, но будут отвязаны от клиента.')) return
         
@@ -307,7 +315,7 @@ export default function Customers() {
 
             {/* Карточка клиента */}
             <Modal isOpen={isViewOpen} onClose={() => setIsViewOpen(false)} title="Карточка клиента" maxWidth="900px">
-                {selectedCustomer && <CustomerCard customer={selectedCustomer} onUpdate={handleUpdateStatus} onUpdatePreferences={handleUpdatePreferences} onDelete={handleDeleteCustomer} getCustomerOrders={getCustomerOrders} getCustomerClaims={getCustomerClaims} getImportantDates={getCustomerImportantDates} onSaveDate={saveImportantDate} onDeleteDate={deleteImportantDate} />}
+                {selectedCustomer && <CustomerCard customer={selectedCustomer} onUpdate={handleUpdateStatus} onUpdateIdentity={handleUpdateIdentity} onUpdatePreferences={handleUpdatePreferences} onDelete={handleDeleteCustomer} getCustomerOrders={getCustomerOrders} getCustomerClaims={getCustomerClaims} getImportantDates={getCustomerImportantDates} onSaveDate={saveImportantDate} onDeleteDate={deleteImportantDate} />}
             </Modal>
         </div>
     )
@@ -321,9 +329,11 @@ const DATE_TYPE_OPTIONS = [
 ]
 
 // Компонент карточки клиента
-function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCustomerOrders, getCustomerClaims, getImportantDates, onSaveDate, onDeleteDate }) {
+function CustomerCard({ customer, onUpdate, onUpdateIdentity, onUpdatePreferences, onDelete, getCustomerOrders, getCustomerClaims, getImportantDates, onSaveDate, onDeleteDate }) {
     const [editPreferences, setEditPreferences] = useState(false)
     const [preferences, setPreferences] = useState(customer.preferences || '')
+    const [editName, setEditName] = useState(false)
+    const [customerName, setCustomerName] = useState(customer.name === 'Клиент' ? '' : customer.name || '')
     const [isAddingDate, setIsAddingDate] = useState(false)
     const [newDateType, setNewDateType] = useState('birthday')
     const [newDateValue, setNewDateValue] = useState('')
@@ -338,13 +348,27 @@ function CustomerCard({ customer, onUpdate, onUpdatePreferences, onDelete, getCu
         setEditPreferences(false)
     }
 
+    const handleSaveName = async () => {
+        const result = await onUpdateIdentity(customer.id, { name: customerName.trim() || 'Клиент' })
+        if (result.success) setEditName(false)
+    }
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Инфо */}
             <div className="card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                     <div>
-                        <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>{customer.name}</h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                            {editName ? (
+                                <input className="input" value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Имя клиента" style={{ maxWidth: 280, fontWeight: 800 }} autoFocus />
+                            ) : (
+                                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>{customer.name || 'Клиент'}</h3>
+                            )}
+                            <button type="button" onClick={() => editName ? handleSaveName() : setEditName(true)} title={editName ? 'Сохранить имя' : 'Изменить имя'} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'white', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                                {editName ? '✓' : <Edit2 size={15} />}
+                            </button>
+                        </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                             {customer.phone && (
                                 <a href={`tel:${customer.phone}`} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'inherit', textDecoration: 'none' }}>
