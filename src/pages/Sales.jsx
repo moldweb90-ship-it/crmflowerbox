@@ -173,19 +173,32 @@ const formatSignedLei = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${Numbe
 
 const OrderPlanningSelector = ({ value, onChange }) => (
     <div style={{ padding: '0.85rem', border: '1px solid #bfdbfe', background: '#f8fbff', borderRadius: 8 }}>
-        <div style={{ fontSize: '0.82rem', fontWeight: 900, color: '#1e3a8a', marginBottom: '0.55rem' }}>Когда списывать состав со склада</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
-            <button type="button" onClick={() => onChange('planned')} style={{ minHeight: 44, borderRadius: 8, border: value === 'planned' ? '2px solid #2563eb' : '1px solid #dbe4ef', background: value === 'planned' ? '#eff6ff' : '#fff', color: value === 'planned' ? '#1d4ed8' : '#475569', fontWeight: 900, cursor: 'pointer' }}>
-                Запланировать
-            </button>
-            <button type="button" onClick={() => onChange('in_work')} style={{ minHeight: 44, borderRadius: 8, border: value !== 'planned' ? '2px solid #ea580c' : '1px solid #dbe4ef', background: value !== 'planned' ? '#fff7ed' : '#fff', color: value !== 'planned' ? '#c2410c' : '#475569', fontWeight: 900, cursor: 'pointer' }}>
-                Состав утверждён
-            </button>
+        <div style={{ fontSize: '0.82rem', fontWeight: 900, color: '#1e3a8a', marginBottom: '0.55rem' }}>Готовность букета</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.45rem' }}>
+            {[
+                { id: 'planned', label: 'План', color: '#2563eb', background: '#eff6ff' },
+                { id: 'in_work', label: 'Не собран', color: '#c2410c', background: '#fff7ed' },
+                { id: 'assembled', label: 'Собран', color: '#15803d', background: '#f0fdf4' }
+            ].map(status => {
+                const selected = value === status.id
+                return (
+                    <button
+                        key={status.id}
+                        type="button"
+                        onClick={() => onChange(status.id)}
+                        style={{ minHeight: 44, padding: '0.35rem', borderRadius: 8, border: selected ? `2px solid ${status.color}` : '1px solid #dbe4ef', background: selected ? status.background : '#fff', color: selected ? status.color : '#475569', fontWeight: 900, cursor: 'pointer' }}
+                    >
+                        {status.label}
+                    </button>
+                )
+            })}
         </div>
         <div style={{ marginTop: '0.5rem', color: '#64748b', fontSize: '0.78rem', lineHeight: 1.4 }}>
             {value === 'planned'
                 ? 'Можно указать только бюджет и данные клиента. Склад не изменится, пока заказ не переведут в работу.'
-                : 'После сохранения утверждённый состав будет списан со склада один раз.'}
+                : value === 'assembled'
+                    ? 'Состав спишется со склада один раз, а заказ сразу будет отмечен как собранный.'
+                    : 'Состав спишется со склада один раз, заказ останется в списке несобранных.'}
         </div>
     </div>
 )
@@ -1737,9 +1750,9 @@ export default function Sales() {
                                 const productionStatus = PRODUCTION_STATUSES.find(status => status.id === productionStatusId) || PRODUCTION_STATUSES[1]
                                 const isCompleted = effectiveDeliveryStatus === 'delivered'
                                 const isCancelled = ['cancelled', 'returned'].includes(effectiveDeliveryStatus)
-                                const cardBackground = isCompleted ? '#f4faf6' : isCancelled ? '#fafafa' : productionStatus.background
-                                const cardBorder = isCompleted ? '#bbdfc7' : isCancelled ? '#e5e7eb' : `${productionStatus.color}35`
-                                const baseCardShadow = `inset 4px 0 0 ${isCompleted ? '#22c55e' : isCancelled ? '#94a3b8' : productionStatus.color}`
+                                const cardBackground = isCompleted ? '#e8f6ed' : isCancelled ? '#fafafa' : productionStatus.background
+                                const cardBorder = isCompleted ? '#86c99b' : isCancelled ? '#e5e7eb' : `${productionStatus.color}35`
+                                const baseCardShadow = `inset ${isCompleted ? 6 : 4}px 0 0 ${isCompleted ? '#16a34a' : isCancelled ? '#94a3b8' : productionStatus.color}`
                                 return (
                                     <div
                                         key={sale.id}
@@ -1755,7 +1768,7 @@ export default function Sales() {
                                             background: cardBackground,
                                             border: `1px solid ${cardBorder}`,
                                             boxShadow: baseCardShadow,
-                                            opacity: isCompleted || isCancelled ? 0.9 : 1
+                                            opacity: isCancelled ? 0.82 : 1
                                         }}
                                         onClick={() => { setViewingSale(sale); setIsViewOpen(true) }}
                                         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `${baseCardShadow}, 0 8px 25px rgba(15,23,42,0.1)`; e.currentTarget.style.transform = 'translateY(-2px)' }}
