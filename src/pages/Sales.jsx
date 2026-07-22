@@ -2377,7 +2377,9 @@ export default function Sales() {
                                                     const withMarkup = calculateSiteCompositionPrice(newComp)
                                                     setFormData({ ...formData, ...pricingFields(withMarkup + currentDeliveryFee) })
                                                 }} step={1} min={0.01} unit={item.type === 'good' ? (goods.find(good => String(good.id) === String(item.item_id))?.stock_unit || 'шт') : 'шт'} style={{ width: isMobile ? '148px' : '154px' }} inputStyle={{ height: '36px' }} buttonStyle={{ height: '36px' }} />
-                                                <span style={{ minWidth: 58, marginLeft: isMobile ? 'auto' : 0, textAlign: 'right', fontWeight: 750 }}>{parseDecimal(item.price) * parseDecimal(item.quantity)} L</span>
+                                                <span style={{ minWidth: 58, marginLeft: isMobile ? 'auto' : 0, textAlign: 'right', fontWeight: 750 }}>
+                                                    {(parseDecimal(item.price) * parseDecimal(item.quantity)).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} L
+                                                </span>
                                                 <button type="button" onClick={() => {
                                                     const newComp = siteComposition.filter((_, i) => i !== idx)
                                                     setSiteComposition(newComp)
