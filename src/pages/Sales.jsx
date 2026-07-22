@@ -2716,7 +2716,11 @@ export default function Sales() {
                         </button>
                         <button
                             className="btn btn-primary"
-                            disabled={loading || (siteSaleMode === 'catalog' && !formData.product_id) || (siteSaleMode === 'custom' && !siteCustomName.trim()) || siteComposition.length === 0}
+                            disabled={loading || (formData.production_status === 'planned'
+                                ? parseMoney(formData.sale_price) <= 0
+                                : ((siteSaleMode === 'catalog' && !formData.product_id)
+                                    || (siteSaleMode === 'custom' && !siteCustomName.trim())
+                                    || siteComposition.length === 0))}
                             onClick={handleSaveSale}
                             style={{ flex: 2, justifyContent: 'center', padding: '1rem', fontSize: '1.1rem' }}
                         >
