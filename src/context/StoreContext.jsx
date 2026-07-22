@@ -490,9 +490,9 @@ export function StoreProvider({ children }) {
             }
 
             // 2. Create Supply Record
-            const totalAmount = normalizedItems.reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
-            const flowersAmount = normalizedItems.filter(i => i.type === 'flower').reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
-            const goodsAmount = normalizedItems.filter(i => i.type === 'good').reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
+            const totalAmount = toMoney(normalizedItems.reduce((sum, item) => sum + getSupplyLineAmount(item), 0))
+            const flowersAmount = toMoney(normalizedItems.filter(i => i.type === 'flower').reduce((sum, item) => sum + getSupplyLineAmount(item), 0))
+            const goodsAmount = toMoney(normalizedItems.filter(i => i.type === 'good').reduce((sum, item) => sum + getSupplyLineAmount(item), 0))
 
             const { data: newSupply, error: supplyError } = await supabase.from('supplies').insert([{
                 supplier_id: supplierId,
@@ -509,44 +509,21 @@ export function StoreProvider({ children }) {
             // 3. Insert Items & Update Flowers/Goods
             const supplyItemsPayload = normalizedItems.map(item => toSupplyItemPayload(newSupply.id, item))
 
-            await supabase.from('supply_items').insert(supplyItemsPayload)
-
-            // 3.5. Update Stock - auto add to inventory from supply
-            const createdLots = []
-            for (const item of inventoryItems) {
-                const existing = stock.find(s => s.item_type === item.type && s.item_id === item.id)
-                if (existing) {
-                    const newQty = existing.quantity + item.stockQuantity
-                    await supabase.from('stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', existing.id)
-                    setStock(prev => prev.map(s => s.id === existing.id ? { ...s, quantity: newQty } : s))
-                } else {
-                    const { data: newStock } = await supabase.from('stock').insert([{ item_type: item.type, item_id: item.id, quantity: item.stockQuantity }]).select()
-                    if (newStock) setStock(prev => [...prev, newStock[0]])
-                }
-                // Log transaction
-                await supabase.from('stock_transactions').insert([{
-                    item_type: item.type,
-                    item_id: item.id,
-                    quantity: item.stockQuantity,
-                    transaction_type: 'supply',
-                    reference_id: newSupply.id,
-                    cost_price: item.stockUnitCost,
-                    supplier_id: supplierId
-                }])
-
-                const { data: lotData } = await supabase.from('stock_lots').insert([{
-                    item_type: item.type,
-                    item_id: item.id,
-                    supplier_id: supplierId,
-                    supply_id: newSupply.id,
-                    quantity: item.stockQuantity,
-                    remaining_quantity: item.stockQuantity,
-                    unit_cost: item.stockUnitCost
-                }]).select('*, suppliers(name)')
-
-                if (lotData?.[0]) createdLots.push(lotData[0])
+            const { error: itemsError } = await supabase.from('supply_items').insert(supplyItemsPayload)
+            if (itemsError) {
+                await supabase.from('supplies').delete().eq('id', newSupply.id)
+                throw itemsError
             }
-            if (createdLots.length > 0) setStockLots(prev => [...prev, ...createdLots])
+
+            // Inventory receipt is atomic and idempotent on the database side. Payment status
+            // never affects receipt: an unpaid supply must still replenish physical stock.
+            const { error: inventoryError } = await supabase.rpc('receive_supply_inventory', {
+                p_supply_id: newSupply.id
+            })
+            if (inventoryError) {
+                await supabase.from('supplies').delete().eq('id', newSupply.id)
+                throw inventoryError
+            }
 
             // 4. Update Costs & Prices only when this delivery should affect the catalog.
             // Stock lots still keep the real batch price above, so FIFO profit stays honest.
@@ -604,6 +581,7 @@ export function StoreProvider({ children }) {
                 if (!paymentResult.success) paymentError = paymentResult.error
             }
 
+            await fetchAll()
             return { success: true, data: newSupply, paymentError }
         } catch (error) {
             console.error('Supply Save Error:', error)
@@ -628,9 +606,9 @@ export function StoreProvider({ children }) {
             }
 
             // 2. Calc Totals
-            const totalAmount = normalizedItems.reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
-            const flowersAmount = normalizedItems.filter(i => i.type === 'flower').reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
-            const goodsAmount = normalizedItems.filter(i => i.type === 'good').reduce((sum, item) => sum + getSupplyLineAmount(item), 0)
+            const totalAmount = toMoney(normalizedItems.reduce((sum, item) => sum + getSupplyLineAmount(item), 0))
+            const flowersAmount = toMoney(normalizedItems.filter(i => i.type === 'flower').reduce((sum, item) => sum + getSupplyLineAmount(item), 0))
+            const goodsAmount = toMoney(normalizedItems.filter(i => i.type === 'good').reduce((sum, item) => sum + getSupplyLineAmount(item), 0))
 
             // 3. Update Supply Header
             const { error: headerError } = await supabase.from('supplies').update({
@@ -643,11 +621,13 @@ export function StoreProvider({ children }) {
             if (headerError) throw headerError
 
             // 4. Replace Items (Delete All + Insert All) - Easiest valid strategy
-            await supabase.from('supply_items').delete().eq('supply_id', supplyId)
+            const { error: deleteItemsError } = await supabase.from('supply_items').delete().eq('supply_id', supplyId)
+            if (deleteItemsError) throw deleteItemsError
 
             const supplyItemsPayload = normalizedItems.map(item => toSupplyItemPayload(supplyId, item))
 
-            await supabase.from('supply_items').insert(supplyItemsPayload)
+            const { error: replaceItemsError } = await supabase.from('supply_items').insert(supplyItemsPayload)
+            if (replaceItemsError) throw replaceItemsError
 
             // 5. Re-run Cost Logic only when this edit should refresh catalog prices.
             if (shouldUpdateCatalogPrices) {

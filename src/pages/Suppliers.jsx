@@ -105,14 +105,16 @@ export default function Suppliers() {
         setLoadingStats(true)
         setIsDetailsOpen(true)
 
-        // Basic info
-        const volume = supplierVolumes[s.id] || 0
-
         // Fetch deep stats and global stats
         const [stats, globals] = await Promise.all([
             getSupplierStats(s.id),
             getGlobalItemStats()
         ])
+
+        const volume = (stats.purchases || []).reduce(
+            (sum, supply) => sum + Number(supply.total_amount || 0),
+            0
+        )
 
         setGlobalStats(globals)
 
@@ -276,7 +278,7 @@ export default function Suppliers() {
                                         <div className="card" style={{ padding: '1.25rem', background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
                                             <div style={{ fontSize: '0.85rem', color: '#047857', fontWeight: 600 }}>Всего закуплено</div>
                                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#064e3b', marginTop: '0.25rem' }}>
-                                                {viewingSupplier.volume.toLocaleString()} <span style={{ fontSize: '0.6em' }}>lei</span>
+                                                {viewingSupplier.volume.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} <span style={{ fontSize: '0.6em' }}>lei</span>
                                             </div>
                                             <div style={{ fontSize: '0.85rem', color: '#047857', marginTop: '0.5rem' }}>
                                                 {viewingSupplier.stats.purchases.length} поставок
@@ -386,7 +388,7 @@ export default function Suppliers() {
                                                 {viewingSupplier.stats.purchases.slice(0, 10).map(sub => (
                                                     <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem', background: '#f9fafb', borderRadius: '8px' }}>
                                                         <div style={{ fontSize: '0.9rem' }}>{new Date(sub.date).toLocaleDateString()}</div>
-                                                        <div style={{ fontWeight: 600 }}>{Number(sub.total_amount).toLocaleString()} lei</div>
+                                                        <div style={{ fontWeight: 600 }}>{Number(sub.total_amount).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} lei</div>
                                                     </div>
                                                 ))}
                                                 {viewingSupplier.stats.purchases.length === 0 && (
