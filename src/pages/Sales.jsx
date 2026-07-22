@@ -1379,38 +1379,35 @@ export default function Sales() {
             </div>
 
             {/* Stats Cards (Now 4 Columns) */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(210px, 1fr))', gap: isMobile ? '0.65rem' : '0.85rem', marginBottom: '1.25rem' }}>
                 {/* Total */}
                 <div className="card" style={{
                     background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
                     color: 'white',
-                    padding: '1.5rem',
-                    borderRadius: '20px',
+                    padding: isMobile ? '1rem' : '0.85rem 1.1rem',
+                    borderRadius: '12px',
                     boxShadow: '0 10px 25px -5px rgba(139, 92, 246, 0.4)'
                 }}>
-                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи (Всего)</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                    <div style={{ opacity: 0.9, fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.1rem' }}>Продажи (Всего)</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 850 }}>
                         {formatSignedLei(periodTotal)}
                     </div>
-                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginTop: '0.5rem' }}>{filteredSales.length} заказов</div>
-                    {showProfit && (
-                        <div style={{ marginTop: '1rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.15)', borderRadius: '12px' }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>Прибыль</div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{periodProfit.toLocaleString('ru-RU')} lei</div>
-                        </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginTop: '0.45rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(255,255,255,0.2)', fontSize: '0.76rem', fontWeight: 700 }}>
+                        <span style={{ opacity: 0.9 }}>{filteredSales.length} заказов</span>
+                        {showProfit && <span>Прибыль: {periodProfit.toLocaleString('ru-RU')} lei</span>}
+                    </div>
                 </div>
 
                 {/* Site */}
                 <div className="card" style={{
                     background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                     color: 'white',
-                    padding: '1.5rem',
-                    borderRadius: '20px',
+                    padding: isMobile ? '1rem' : '0.85rem 1.1rem',
+                    borderRadius: '12px',
                     boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)'
                 }}>
-                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Онлайн-заказы</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                    <div style={{ opacity: 0.9, fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.1rem' }}>Онлайн-заказы</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 850 }}>
                         {formatSignedLei(siteTotal)}
                     </div>
                 </div>
@@ -1419,12 +1416,12 @@ export default function Sales() {
                 <div className="card" style={{
                     background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                     color: 'white',
-                    padding: '1.5rem',
-                    borderRadius: '20px',
+                    padding: isMobile ? '1rem' : '0.85rem 1.1rem',
+                    borderRadius: '12px',
                     boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.4)'
                 }}>
-                    <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>Продажи в салоне</div>
-                    <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                    <div style={{ opacity: 0.9, fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.1rem' }}>Продажи в салоне</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 850 }}>
                         {formatSignedLei(salonTotal)}
                     </div>
                 </div>
@@ -1433,36 +1430,36 @@ export default function Sales() {
                 <div className="card" style={{
                     background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
                     color: 'white',
-                    padding: '1.5rem',
-                    borderRadius: '20px',
+                    padding: isMobile ? '1rem' : '0.85rem 1.1rem',
+                    borderRadius: '12px',
                     boxShadow: '0 10px 25px -5px rgba(245, 158, 11, 0.4)',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between'
                 }}>
                     <div>
-                        <div style={{ opacity: 0.9, fontSize: '0.875rem', fontWeight: 700, marginBottom: '0.25rem' }}>Физическая касса</div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                        <div style={{ opacity: 0.9, fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.1rem' }}>Физическая касса</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 850 }}>
                             {cashBalance.toLocaleString('ru-RU')} lei
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
                         <button
                             onClick={() => openCashModal('expense')}
                             title="Оплатить расход бизнеса наличными"
-                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                            style={{ flex: 1, padding: '0.38rem 0.3rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 750, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
                             <ArrowUpFromLine size={15} /> Расход
                         </button>
                         <button
                             onClick={() => openCashModal('withdrawal')}
                             title="Выдать владельцу, в сейф или сотруднику"
-                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                            style={{ flex: 1, padding: '0.38rem 0.3rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 750, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
                             <ArrowUpFromLine size={15} /> Выдать
                         </button>
                         <button
                             onClick={() => openCashModal('deposit')}
                             title="Внести деньги владельца, из сейфа или возврат подотчёта"
-                            style={{ flex: 1, padding: '0.5rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                            style={{ flex: 1, padding: '0.38rem 0.3rem', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 750, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
                             <ArrowDownToLine size={15} /> Внести
                         </button>
                     </div>
