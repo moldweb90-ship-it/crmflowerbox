@@ -1651,36 +1651,36 @@ export default function Sales() {
             </Modal>
 
             {upcomingShortages.length > 0 && (
-                <section style={{ marginBottom: '1rem', border: '2px solid #dc2626', borderRadius: 8, background: '#fff1f2', boxShadow: '0 12px 28px rgba(220,38,38,0.14)', overflow: 'hidden' }}>
-                    <div style={{ padding: '0.8rem 1rem', background: '#b91c1c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                <section style={{ marginBottom: '1rem', border: '1px solid #fbbf24', borderRadius: 8, background: '#fffbeb', boxShadow: '0 8px 22px rgba(217,119,6,0.08)', overflow: 'hidden' }}>
+                    <div style={{ padding: '0.8rem 1rem', background: '#fff7ed', color: '#9a3412', borderBottom: '1px solid #fed7aa', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                             <AlertCircle size={22} />
                             <div>
-                                <div style={{ fontWeight: 950 }}>КРИТИЧНО: НЕ ХВАТАЕТ ПОЗИЦИЙ ДЛЯ ЗАКАЗОВ</div>
+                                <div style={{ fontWeight: 950 }}>ВНИМАНИЕ: НЕ ХВАТАЕТ ПОЗИЦИЙ ДЛЯ ЗАКАЗОВ</div>
                                 <div style={{ fontSize: '0.78rem', opacity: 0.9 }}>Проблемных заказов: {upcomingShortages.length}. Сначала решите их, затем отмечайте букет собранным.</div>
                             </div>
                         </div>
-                        <button type="button" onClick={() => { setDateFilter({ start: '', end: '', preset: 'all' }); setFulfillmentFilter('active'); setProductionFilter('all') }} style={{ border: '1px solid rgba(255,255,255,0.7)', borderRadius: 8, background: '#fff', color: '#991b1b', padding: '0.5rem 0.75rem', fontWeight: 900, cursor: 'pointer' }}>
+                        <button type="button" onClick={() => { setDateFilter({ start: '', end: '', preset: 'all' }); setFulfillmentFilter('active'); setProductionFilter('all') }} style={{ border: '1px solid #f59e0b', borderRadius: 8, background: '#fff', color: '#9a3412', padding: '0.5rem 0.75rem', fontWeight: 900, cursor: 'pointer' }}>
                             Показать проблемные заказы
                         </button>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', gap: '0.65rem', padding: '0.75rem' }}>
                         {upcomingShortages.map(({ sale, shortages, label }) => (
-                            <article key={sale.id} style={{ border: '1px solid #fca5a5', background: '#fff', borderRadius: 8, padding: '0.75rem', display: 'grid', gap: '0.55rem' }}>
+                            <article key={sale.id} style={{ border: '1px solid #fed7aa', background: '#fff', borderRadius: 8, padding: '0.75rem', display: 'grid', gap: '0.55rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
                                     <div>
-                                        <div style={{ fontWeight: 900, color: '#7f1d1d' }}>{label}</div>
-                                        <div style={{ fontSize: '0.75rem', color: '#9f1239', marginTop: 2 }}>К выдаче: {formatShortageTime(sale.delivery_date)}</div>
+                                        <div style={{ fontWeight: 900, color: '#78350f' }}>{label}</div>
+                                        <div style={{ fontSize: '0.75rem', color: '#b45309', marginTop: 2 }}>К выдаче: {formatShortageTime(sale.delivery_date)}</div>
                                     </div>
                                     <span style={{ alignSelf: 'flex-start', padding: '0.2rem 0.45rem', borderRadius: 6, background: sale.shortage_status === 'ordered' ? '#fff7ed' : '#fee2e2', color: sale.shortage_status === 'ordered' ? '#9a3412' : '#b91c1c', fontSize: '0.7rem', fontWeight: 900 }}>
                                         {sale.shortage_status === 'ordered' ? 'ЗАКАЗАНО' : 'НЕ РЕШЕНО'}
                                     </span>
                                 </div>
-                                <div style={{ display: 'grid', gap: 3, fontSize: '0.78rem', color: '#991b1b' }}>
+                                <div style={{ display: 'grid', gap: 3, fontSize: '0.78rem', color: '#92400e' }}>
                                     {shortages.map(item => <div key={`${item.type}-${item.id}`}>• {item.name}: нужно {item.quantity}, есть {item.have}, <b>не хватает {item.missing}</b></div>)}
                                 </div>
                                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                                    <button type="button" onClick={() => { setOrderSearch(String(sale.id)); setDateFilter({ start: '', end: '', preset: 'all' }); setFulfillmentFilter('active') }} style={{ border: '1px solid #dc2626', borderRadius: 7, background: '#fff', color: '#b91c1c', padding: '0.42rem 0.6rem', fontWeight: 850, cursor: 'pointer' }}>Открыть в списке</button>
+                                    <button type="button" onClick={() => { setOrderSearch(String(sale.id)); setDateFilter({ start: '', end: '', preset: 'all' }); setFulfillmentFilter('active') }} style={{ border: '1px solid #f59e0b', borderRadius: 7, background: '#fff', color: '#9a3412', padding: '0.42rem 0.6rem', fontWeight: 850, cursor: 'pointer' }}>Открыть в списке</button>
                                     <button type="button" onClick={() => updateSale(sale.id, { shortage_status: sale.shortage_status === 'ordered' ? 'unresolved' : 'ordered', shortage_updated_at: new Date().toISOString() })} style={{ border: 0, borderRadius: 7, background: sale.shortage_status === 'ordered' ? '#f1f5f9' : '#f59e0b', color: sale.shortage_status === 'ordered' ? '#475569' : '#fff', padding: '0.42rem 0.6rem', fontWeight: 850, cursor: 'pointer' }}>
                                         {sale.shortage_status === 'ordered' ? 'Вернуть «не решено»' : 'Отметить «заказано»'}
                                     </button>
@@ -1809,21 +1809,21 @@ export default function Sales() {
                                 const isCancelled = ['cancelled', 'returned'].includes(effectiveDeliveryStatus)
                                 const isAssembled = productionStatusId === 'assembled' && !isCompleted
                                 const cardBackground = shortage
-                                    ? '#fff1f2'
+                                    ? '#fffaf2'
                                     : isCompleted
                                     ? '#d8f2e1'
                                     : isAssembled
                                         ? '#e8f7ed'
                                         : isCancelled ? '#fafafa' : productionStatus.background
                                 const cardBorder = shortage
-                                    ? '#ef4444'
+                                    ? '#fdba74'
                                     : isCompleted
                                     ? '#54b978'
                                     : isAssembled
                                         ? '#8bd2a4'
                                         : isCancelled ? '#e5e7eb' : `${productionStatus.color}35`
-                                const statusAccent = shortage ? '#dc2626' : isCompleted ? '#07883f' : isAssembled ? '#22a35a' : isCancelled ? '#94a3b8' : productionStatus.color
-                                const baseCardShadow = `inset ${shortage || isCompleted ? 7 : isAssembled ? 6 : 4}px 0 0 ${statusAccent}`
+                                const statusAccent = shortage ? '#f59e0b' : isCompleted ? '#07883f' : isAssembled ? '#22a35a' : isCancelled ? '#94a3b8' : productionStatus.color
+                                const baseCardShadow = `inset ${shortage ? 4 : isCompleted ? 7 : isAssembled ? 6 : 4}px 0 0 ${statusAccent}`
                                 return (
                                     <div
                                         key={sale.id}
@@ -1927,7 +1927,7 @@ export default function Sales() {
                                                     {sale.is_custom ? (sale.custom_name || 'Индивидуальный букет') : (sale.products?.name || 'Букет')}
                                                 </div>
                                                 {shortage && (
-                                                    <span title={shortage.shortages.map(item => `${item.name}: −${item.missing}`).join('\n')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.22rem 0.5rem', borderRadius: 6, background: '#dc2626', color: '#fff', fontSize: '0.72rem', fontWeight: 950 }}>
+                                                    <span title={shortage.shortages.map(item => `${item.name}: −${item.missing}`).join('\n')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.22rem 0.5rem', borderRadius: 6, background: '#f59e0b', color: '#fff', fontSize: '0.72rem', fontWeight: 950 }}>
                                                         <AlertCircle size={14} /> НЕ ХВАТАЕТ: {shortage.shortages.reduce((sum, item) => sum + item.missing, 0)}
                                                     </span>
                                                 )}

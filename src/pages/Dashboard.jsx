@@ -1127,10 +1127,10 @@ export default function Dashboard() {
                             <button
                                 type="button"
                                 onClick={() => navigate('/sales?shortages=true')}
-                                style={{ width: '100%', border: '2px solid #dc2626', borderRadius: 8, padding: '0.75rem', background: '#fff1f2', color: '#991b1b', textAlign: 'left', cursor: 'pointer', boxShadow: '0 8px 20px rgba(220,38,38,0.16)' }}
+                                style={{ width: '100%', border: '1px solid #fbbf24', borderRadius: 8, padding: '0.75rem', background: '#fffbeb', color: '#92400e', textAlign: 'left', cursor: 'pointer', boxShadow: '0 5px 14px rgba(217,119,6,0.09)' }}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', fontWeight: 950, marginBottom: '0.45rem' }}>
-                                    <AlertOctagon size={18} /> КРИТИЧНО: НЕ ХВАТАЕТ ЦВЕТОВ
+                                    <AlertOctagon size={18} color="#d97706" /> ВНИМАНИЕ: НЕ ХВАТАЕТ ЦВЕТОВ
                                 </div>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 800, marginBottom: '0.35rem' }}>
                                     Проблемных заказов: {tomorrowStats.shortageOrders.length}. Нажмите, чтобы открыть.
