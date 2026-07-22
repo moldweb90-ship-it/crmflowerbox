@@ -213,6 +213,8 @@ CREATE TABLE IF NOT EXISTS public.sales (
   is_custom boolean DEFAULT false,
   custom_name text,
   custom_composition jsonb DEFAULT '[]'::jsonb,
+  production_status text NOT NULL DEFAULT 'in_work' CHECK (production_status IN ('planned', 'in_work', 'assembled')),
+  stock_deducted boolean NOT NULL DEFAULT false,
   created_at timestamptz DEFAULT now()
 );
 

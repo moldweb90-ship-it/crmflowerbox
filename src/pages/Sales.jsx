@@ -53,6 +53,12 @@ const SALES_PROJECTS = [
     { id: 'flowersmafia', label: 'FlowersMafia', short: 'FM', color: '#111827', bg: '#fee2e2' }
 ]
 
+const PRODUCTION_STATUSES = [
+    { id: 'planned', label: 'Запланирован', shortLabel: 'План', color: '#2563eb', background: '#eff6ff' },
+    { id: 'in_work', label: 'Не собран', shortLabel: 'Не собран', color: '#c2410c', background: '#fff7ed' },
+    { id: 'assembled', label: 'Собран', shortLabel: 'Собран', color: '#15803d', background: '#f0fdf4' }
+]
+
 const QUICK_EXPENSE_CATEGORIES = [
     { id: 'rent', label: 'Аренда' },
     { id: 'salaries', label: 'Зарплаты' },
@@ -165,9 +171,30 @@ function FulfillmentTimeField({ value, mode = 'exact', onChange, label = 'Дат
 
 const formatSignedLei = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${Number(value || 0).toLocaleString('ru-RU')} lei`
 
+const OrderPlanningSelector = ({ value, onChange }) => (
+    <div style={{ padding: '0.85rem', border: '1px solid #bfdbfe', background: '#f8fbff', borderRadius: 8 }}>
+        <div style={{ fontSize: '0.82rem', fontWeight: 900, color: '#1e3a8a', marginBottom: '0.55rem' }}>Когда списывать состав со склада</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
+            <button type="button" onClick={() => onChange('planned')} style={{ minHeight: 44, borderRadius: 8, border: value === 'planned' ? '2px solid #2563eb' : '1px solid #dbe4ef', background: value === 'planned' ? '#eff6ff' : '#fff', color: value === 'planned' ? '#1d4ed8' : '#475569', fontWeight: 900, cursor: 'pointer' }}>
+                Запланировать
+            </button>
+            <button type="button" onClick={() => onChange('in_work')} style={{ minHeight: 44, borderRadius: 8, border: value !== 'planned' ? '2px solid #ea580c' : '1px solid #dbe4ef', background: value !== 'planned' ? '#fff7ed' : '#fff', color: value !== 'planned' ? '#c2410c' : '#475569', fontWeight: 900, cursor: 'pointer' }}>
+                Состав утверждён
+            </button>
+        </div>
+        <div style={{ marginTop: '0.5rem', color: '#64748b', fontSize: '0.78rem', lineHeight: 1.4 }}>
+            {value === 'planned'
+                ? 'Можно указать только бюджет и данные клиента. Склад не изменится, пока заказ не переведут в работу.'
+                : 'После сохранения утверждённый состав будет списан со склада один раз.'}
+        </div>
+    </div>
+)
+
 const SALES_LIST_FILTERS_KEY = 'sales_list_filters'
 const SALES_DATE_PRESETS = ['today', 'yesterday', 'week', 'month', 'all', 'custom']
 const SALES_SOURCE_FILTERS = ['all', 'online', 'salon']
+const SALES_FULFILLMENT_FILTERS = ['all', 'active', 'completed']
+const SALES_PRODUCTION_FILTERS = ['all', 'planned', 'in_work', 'assembled']
 
 const buildSalesDateFilter = (preset = 'today', custom = {}) => {
     if (preset === 'custom') {
@@ -202,26 +229,30 @@ const loadSalesListFilters = () => {
         const saved = JSON.parse(localStorage.getItem(SALES_LIST_FILTERS_KEY) || '{}')
         const preset = SALES_DATE_PRESETS.includes(saved?.dateFilter?.preset) ? saved.dateFilter.preset : 'today'
         const sourceFilter = SALES_SOURCE_FILTERS.includes(saved?.sourceFilter) ? saved.sourceFilter : 'all'
+        const fulfillmentFilter = SALES_FULFILLMENT_FILTERS.includes(saved?.fulfillmentFilter) ? saved.fulfillmentFilter : 'all'
+        const productionFilter = SALES_PRODUCTION_FILTERS.includes(saved?.productionFilter) ? saved.productionFilter : 'all'
         return {
             dateFilter: buildSalesDateFilter(preset, saved.dateFilter),
-            sourceFilter
+            sourceFilter,
+            fulfillmentFilter,
+            productionFilter
         }
     } catch {
-        return { dateFilter: buildSalesDateFilter('today'), sourceFilter: 'all' }
+        return { dateFilter: buildSalesDateFilter('today'), sourceFilter: 'all', fulfillmentFilter: 'all', productionFilter: 'all' }
     }
 }
 
 export default function Sales() {
     const { user } = useAuth()
     const {
-        sales, salePayments, addSale, updateSale, deleteSale,
+        sales, salePayments, addSale, updateSale, setSaleProductionStatus, deleteSale,
         markCourierPaid,
         products, couriers, florists, employees, addCourier, addFlorist,
         expenses, addExpense, cashMovements, addCashMovement, supplyPayments,
         calculateCostPrice,
         flowers, goods, settings,
         showcaseBouquets, markShowcaseBouquetSold,
-        claims, getSaleClaims, getStockQty
+        claims, getSaleClaims, getStockQty, getItemName
     } = useStore()
 
     const [searchParams, setSearchParams] = useSearchParams()
@@ -328,7 +359,8 @@ export default function Sales() {
         price_adjusted_by: '',
         price_adjusted_at: null,
         price_before_discount: '',
-        pickup_discount_applied: false
+        pickup_discount_applied: false,
+        production_status: 'in_work'
     }
     const [salonFormData, setSalonFormData] = useState(emptySalonForm)
     const [editingSalonSaleId, setEditingSalonSaleId] = useState(null)
@@ -340,6 +372,8 @@ export default function Sales() {
     const [deliveryDateFilter, setDeliveryDateFilter] = useState(null) // For calendar click - filter by delivery date
     const [orderSearch, setOrderSearch] = useState('') // For order number search from global search
     const [sourceFilter, setSourceFilter] = useState(() => loadSalesListFilters().sourceFilter)
+    const [fulfillmentFilter, setFulfillmentFilter] = useState(() => loadSalesListFilters().fulfillmentFilter)
+    const [productionFilter, setProductionFilter] = useState(() => loadSalesListFilters().productionFilter)
 
     // Form state
     const emptyForm = {
@@ -375,7 +409,8 @@ export default function Sales() {
         courier_paid_amount: 0,
         pickup_discount: '',
         extra_delivery_cost: null,
-        extra_delivery_reason: null
+        extra_delivery_reason: null,
+        production_status: 'in_work'
     }
     const [formData, setFormData] = useState({ ...emptyForm, ...(savedState?.formData || {}) })
     const [productSearch, setProductSearch] = useState('')
@@ -428,11 +463,11 @@ export default function Sales() {
 
     useEffect(() => {
         try {
-            localStorage.setItem(SALES_LIST_FILTERS_KEY, JSON.stringify({ dateFilter, sourceFilter }))
+            localStorage.setItem(SALES_LIST_FILTERS_KEY, JSON.stringify({ dateFilter, sourceFilter, fulfillmentFilter, productionFilter }))
         } catch {
             // The filters still work for the current session if storage is unavailable.
         }
-    }, [dateFilter, sourceFilter])
+    }, [dateFilter, sourceFilter, fulfillmentFilter, productionFilter])
 
     const applyPreset = (preset) => {
         setDateFilter(buildSalesDateFilter(preset))
@@ -440,7 +475,7 @@ export default function Sales() {
     }
 
     // Filtered & grouped sales
-    const filteredSales = useMemo(() => {
+    const periodSales = useMemo(() => {
         return sales.filter(sale => {
             if (sourceFilter === 'online' && sale.sales_channel === 'store') return false
             if (sourceFilter === 'salon' && sale.sales_channel !== 'store') return false
@@ -462,6 +497,25 @@ export default function Sales() {
             return true
         })
     }, [sales, dateFilter, deliveryDateFilter, orderSearch, sourceFilter])
+
+    const filteredSales = useMemo(() => periodSales.filter(sale => {
+        const deliveryStatus = sale.delivery_status || 'not_delivered'
+        const productionStatus = sale.production_status || (deliveryStatus === 'delivered' ? 'assembled' : 'in_work')
+        if (fulfillmentFilter === 'active' && ['delivered', 'cancelled', 'returned'].includes(deliveryStatus)) return false
+        if (fulfillmentFilter === 'completed' && deliveryStatus !== 'delivered') return false
+        if (productionFilter !== 'all' && productionStatus !== productionFilter) return false
+        return true
+    }), [periodSales, fulfillmentFilter, productionFilter])
+
+    const workflowCounts = useMemo(() => periodSales.reduce((counts, sale) => {
+        const deliveryStatus = sale.delivery_status || 'not_delivered'
+        const productionStatus = sale.production_status || (deliveryStatus === 'delivered' ? 'assembled' : 'in_work')
+        counts.all += 1
+        if (!['delivered', 'cancelled', 'returned'].includes(deliveryStatus)) counts.active += 1
+        if (deliveryStatus === 'delivered') counts.completed += 1
+        counts[productionStatus] = (counts[productionStatus] || 0) + 1
+        return counts
+    }, { all: 0, active: 0, completed: 0, planned: 0, in_work: 0, assembled: 0 }), [periodSales])
 
     const orderSearchSale = useMemo(() => {
         if (!orderSearch) return null
@@ -776,7 +830,8 @@ export default function Sales() {
                 price_adjusted_by: sale.price_adjusted_by || '',
                 price_adjusted_at: sale.price_adjusted_at || null,
                 price_before_discount: storedPricing.priceBeforeDiscount || '',
-                pickup_discount_applied: sale.delivery_method === 'pickup' && storedPricing.pickupDiscount > 0
+                pickup_discount_applied: sale.delivery_method === 'pickup' && storedPricing.pickupDiscount > 0,
+                production_status: sale.production_status || (sale.delivery_status === 'delivered' ? 'assembled' : 'in_work')
             })
             setSelectedShowcaseId('')
             setIsSalonModalOpen(true)
@@ -817,7 +872,8 @@ export default function Sales() {
                 extra_delivery_cost: sale.extra_delivery_cost || null,
                 extra_delivery_reason: sale.extra_delivery_reason || null,
                 delivery_time_mode: sale.delivery_time_mode || 'exact',
-                order_notes: sale.order_notes || ''
+                order_notes: sale.order_notes || '',
+                production_status: sale.production_status || (sale.delivery_status === 'delivered' ? 'assembled' : 'in_work')
             })
             const prod = products.find(p => p.id === sale.product_id)
             setProductSearch(prod?.name || '')
@@ -939,22 +995,28 @@ export default function Sales() {
 
     const handleSaveSale = async () => {
         const isCustomSiteSale = siteSaleMode === 'custom'
+        const isPlannedSale = formData.production_status === 'planned'
 
-        if (!isCustomSiteSale && !formData.product_id) {
+        if (!isPlannedSale && !isCustomSiteSale && !formData.product_id) {
             alert('Выберите букет')
             return
         }
-        if (isCustomSiteSale && !siteCustomName.trim()) {
+        if (!isPlannedSale && isCustomSiteSale && !siteCustomName.trim()) {
             alert('Введите название индивидуального букета')
             return
         }
-        if (siteComposition.length === 0) {
+        if (!isPlannedSale && siteComposition.length === 0) {
             alert('Добавьте хотя бы одну позицию в состав')
             return
         }
 
         setLoading(true)
         const salePrice = formData.sale_price === '' ? calculatedSalePrice : parseMoney(formData.sale_price)
+        if (salePrice <= 0) {
+            setLoading(false)
+            alert(isPlannedSale ? 'Укажите бюджет планируемого заказа' : 'Укажите стоимость заказа')
+            return
+        }
         const initialPaymentAmount = parseMoney(formData.initial_payment_amount)
         if (modalMode === 'add' && formData.payment_status === 'partial' && (initialPaymentAmount <= 0 || initialPaymentAmount >= salePrice)) {
             setLoading(false)
@@ -963,12 +1025,12 @@ export default function Sales() {
         }
         const deliveryFee = formData.delivery_method === 'delivery' ? currentDeliveryFee : 0
         const courierPayout = formData.delivery_method === 'delivery' ? currentCourierPayout : 0
-        const pickupDiscount = formData.delivery_method === 'pickup' ? currentPickupDiscount : 0
+        const pickupDiscount = isPlannedSale ? 0 : (formData.delivery_method === 'pickup' ? currentPickupDiscount : 0)
         const payload = {
             ...formData,
-            product_id: isCustomSiteSale ? '' : formData.product_id,
-            is_custom: isCustomSiteSale,
-            custom_name: isCustomSiteSale ? siteCustomName.trim() : undefined,
+            product_id: isCustomSiteSale || isPlannedSale ? '' : formData.product_id,
+            is_custom: isCustomSiteSale || isPlannedSale,
+            custom_name: isCustomSiteSale || isPlannedSale ? (siteCustomName.trim() || 'Запланированный букет') : undefined,
             order_date: localDateTimeInputToIso(formData.order_date),
             delivery_date: fulfillmentInputToIso(formData.delivery_date, formData.delivery_time_mode),
             sale_price: salePrice,
@@ -982,7 +1044,9 @@ export default function Sales() {
             pickup_discount_applied: formData.delivery_method === 'pickup' && pickupDiscount > 0,
             extra_delivery_cost: formData.delivery_method === 'delivery' ? deliveryFee : null,
             extra_delivery_reason: formData.delivery_method === 'delivery' ? (formData.extra_delivery_reason || null) : null,
-            initial_payment_performed_by: user?.email || user?.name || 'Сотрудник'
+            initial_payment_performed_by: user?.email || user?.name || 'Сотрудник',
+            production_status: formData.production_status,
+            skip_stock_deduction: isPlannedSale
         }
 
         if (modalMode === 'add') {
@@ -1000,7 +1064,7 @@ export default function Sales() {
         if (payload.delivery_method === 'pickup') {
             payload.delivery_address = ''
             payload.courier_id = ''
-            payload.delivery_status = 'delivered' // Auto-set status or keep as is? User might want to track 'ready for pickup'.
+            payload.delivery_status = isPlannedSale ? 'not_delivered' : payload.delivery_status
             // Usually 'pickup' orders become 'delivered' when they are picked up.
             // But if we are creating it, it's likely 'not_delivered' (not yet picked up).
             // Let's just clear address and courier.
@@ -1008,7 +1072,14 @@ export default function Sales() {
 
         let result
         if (modalMode === 'edit' && editingSaleId) {
+            const editingSale = sales.find(item => String(item.id) === String(editingSaleId))
+            const requestedProductionStatus = payload.production_status
+            delete payload.production_status
+            delete payload.stock_deducted
             result = await updateSale(editingSaleId, payload)
+            if (result.success && requestedProductionStatus !== (editingSale?.production_status || 'in_work')) {
+                result = await setSaleProductionStatus(editingSaleId, requestedProductionStatus, payload)
+            }
         } else {
             result = await addSale(payload)
         }
@@ -1026,7 +1097,29 @@ export default function Sales() {
     }
 
     const handleStatusChange = async (saleId, field, value) => {
-        await updateSale(saleId, { [field]: value })
+        const sale = sales.find(item => String(item.id) === String(saleId))
+        if (field === 'delivery_status' && ['delivering', 'delivered'].includes(value) && sale?.production_status !== 'assembled') {
+            const productionResult = await setSaleProductionStatus(saleId, 'assembled')
+            if (!productionResult.success) {
+                alert(productionResult.error?.message || 'Сначала утвердите состав и отметьте букет собранным')
+                return
+            }
+        }
+        const result = await updateSale(saleId, { [field]: value })
+        if (!result.success) alert(result.error?.message || 'Не удалось обновить статус')
+    }
+
+    const handleProductionStatusChange = async (saleId, value) => {
+        const sale = sales.find(item => String(item.id) === String(saleId))
+        if (sale?.delivery_status === 'delivered' && value !== 'assembled') {
+            alert('Доставленный или выданный заказ должен оставаться собранным. Сначала измените статус доставки.')
+            return
+        }
+        const result = await setSaleProductionStatus(saleId, value)
+        if (!result.success) {
+            const shortage = result.stockIssues?.map(item => `${getItemName(item.type, item.id)}: не хватает ${item.missing}`).join('\n')
+            alert([result.error?.message || 'Не удалось обновить статус сборки', shortage].filter(Boolean).join('\n'))
+        }
     }
 
     const handleMarkCourierPaid = async (sale) => {
@@ -1569,6 +1662,42 @@ export default function Sales() {
                 </div>
             )}
 
+            <div style={{ marginBottom: '1rem', padding: '0.85rem', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(360px, 1fr) minmax(420px, 1.15fr)', gap: '0.85rem' }}>
+                <div>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 900, marginBottom: '0.4rem' }}>Выдача и доставка</div>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {[
+                            { id: 'all', label: 'Все', count: workflowCounts.all },
+                            { id: 'active', label: 'Не завершены', count: workflowCounts.active },
+                            { id: 'completed', label: 'Доставлены / выданы', count: workflowCounts.completed }
+                        ].map(option => (
+                            <button key={option.id} type="button" onClick={() => setFulfillmentFilter(option.id)} style={{ minHeight: 38, padding: '0.45rem 0.65rem', borderRadius: 8, border: fulfillmentFilter === option.id ? '1px solid #0f766e' : '1px solid #dbe4ea', background: fulfillmentFilter === option.id ? '#f0fdfa' : '#fff', color: fulfillmentFilter === option.id ? '#0f766e' : '#475569', fontWeight: 850, cursor: 'pointer' }}>
+                                {option.label} <span style={{ color: '#94a3b8' }}>{option.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 900, marginBottom: '0.4rem' }}>Сборка букета</div>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {[
+                            { id: 'all', label: 'Все', count: workflowCounts.all },
+                            { id: 'planned', label: 'План', count: workflowCounts.planned },
+                            { id: 'in_work', label: 'Не собраны', count: workflowCounts.in_work },
+                            { id: 'assembled', label: 'Собраны', count: workflowCounts.assembled }
+                        ].map(option => {
+                            const meta = PRODUCTION_STATUSES.find(item => item.id === option.id)
+                            const selected = productionFilter === option.id
+                            return (
+                                <button key={option.id} type="button" onClick={() => setProductionFilter(option.id)} style={{ minHeight: 38, padding: '0.45rem 0.65rem', borderRadius: 8, border: selected ? `1px solid ${meta?.color || '#334155'}` : '1px solid #dbe4ea', background: selected ? (meta?.background || '#f8fafc') : '#fff', color: selected ? (meta?.color || '#334155') : '#475569', fontWeight: 850, cursor: 'pointer' }}>
+                                    {option.label} <span style={{ color: '#94a3b8' }}>{option.count}</span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                </div>
+            </div>
+
             {/* Sales List (Grouped by Day) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                 {groupedSales.map(([dateKey, daySales]) => (
@@ -1604,6 +1733,13 @@ export default function Sales() {
                                 const floristName = florists.find(f => f.id === sale.florist_id)?.name
                                 const courierPayout = Number(sale.courier_payout ?? sale.extra_delivery_cost ?? 0)
                                 const shouldShowCourierPay = sale.delivery_method === 'delivery' && sale.courier_id && courierPayout > 0
+                                const productionStatusId = sale.production_status || (effectiveDeliveryStatus === 'delivered' ? 'assembled' : 'in_work')
+                                const productionStatus = PRODUCTION_STATUSES.find(status => status.id === productionStatusId) || PRODUCTION_STATUSES[1]
+                                const isCompleted = effectiveDeliveryStatus === 'delivered'
+                                const isCancelled = ['cancelled', 'returned'].includes(effectiveDeliveryStatus)
+                                const cardBackground = isCompleted ? '#f4faf6' : isCancelled ? '#fafafa' : productionStatus.background
+                                const cardBorder = isCompleted ? '#bbdfc7' : isCancelled ? '#e5e7eb' : `${productionStatus.color}35`
+                                const baseCardShadow = `inset 4px 0 0 ${isCompleted ? '#22c55e' : isCancelled ? '#94a3b8' : productionStatus.color}`
                                 return (
                                     <div
                                         key={sale.id}
@@ -1615,11 +1751,15 @@ export default function Sales() {
                                             gap: '1rem',
                                             alignItems: isMobile ? 'stretch' : 'center',
                                             cursor: 'pointer',
-                                            transition: 'box-shadow 0.2s, transform 0.2s'
+                                            transition: 'box-shadow 0.2s, transform 0.2s',
+                                            background: cardBackground,
+                                            border: `1px solid ${cardBorder}`,
+                                            boxShadow: baseCardShadow,
+                                            opacity: isCompleted || isCancelled ? 0.9 : 1
                                         }}
                                         onClick={() => { setViewingSale(sale); setIsViewOpen(true) }}
-                                        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.1)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-                                        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = ''; e.currentTarget.style.transform = '' }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `${baseCardShadow}, 0 8px 25px rgba(15,23,42,0.1)`; e.currentTarget.style.transform = 'translateY(-2px)' }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = baseCardShadow; e.currentTarget.style.transform = '' }}
                                     >
                                         {/* Left: Number + Order Number Badge */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: isMobile ? 'auto' : '130px' }}>
@@ -1717,6 +1857,9 @@ export default function Sales() {
                                                     {sale.sales_channel === 'store' ? <Store size={12} /> : <Globe2 size={12} />}
                                                     {sale.sales_channel === 'store' ? 'Салон' : 'Онлайн'}
                                                 </div>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 24, padding: '0.2rem 0.5rem', borderRadius: 6, background: productionStatus.background, border: `1px solid ${productionStatus.color}45`, color: productionStatus.color, fontWeight: 900, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                                                    {productionStatus.label}
+                                                </span>
                                             </div>
 
                                             {/* Dates row */}
@@ -1760,6 +1903,25 @@ export default function Sales() {
 
                                         {/* Statuses */}
                                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                                            <select
+                                                value={productionStatusId}
+                                                onChange={(e) => handleProductionStatusChange(sale.id, e.target.value)}
+                                                title="Статус сборки букета"
+                                                style={{
+                                                    padding: '0.25rem 0.5rem',
+                                                    borderRadius: '8px',
+                                                    border: `2px solid ${productionStatus.color}`,
+                                                    background: productionStatus.background,
+                                                    color: productionStatus.color,
+                                                    fontWeight: 700,
+                                                    fontSize: '0.75rem',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                {PRODUCTION_STATUSES
+                                                    .filter(status => status.id !== 'planned' || !sale.stock_deducted)
+                                                    .map(status => <option key={status.id} value={status.id}>{status.label}</option>)}
+                                            </select>
                                             <button
                                                 type="button"
                                                 onClick={() => { setViewingSale(sale); setIsViewOpen(true) }}
@@ -1984,6 +2146,16 @@ export default function Sales() {
                     }}
                 >
 
+                    {modalMode === 'add' && (
+                        <OrderPlanningSelector
+                            value={formData.production_status}
+                            onChange={(production_status) => {
+                                setFormData({ ...formData, production_status })
+                                if (production_status === 'planned') setSiteSaleMode('custom')
+                            }}
+                        />
+                    )}
+
                     {/* Section 1: Product & Price (Combined) */}
                     <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '16px', border: '1px solid #e5e7eb' }}>
                         <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
@@ -2069,7 +2241,7 @@ export default function Sales() {
                             {/* Sale Price */}
                             <div>
                                 <label style={{ fontSize: '0.85rem', marginBottom: '0.25rem', display: 'block', fontWeight: 600, color: '#4b5563' }}>
-                                    {formData.delivery_method === 'pickup' ? 'Цена до скидки (lei)' : 'Цена продажи (lei)'}
+                                    {formData.production_status === 'planned' ? 'Бюджет заказа (lei)' : (formData.delivery_method === 'pickup' ? 'Цена до скидки (lei)' : 'Цена продажи (lei)')}
                                 </label>
                                 <input
                                     type="number"
@@ -2081,13 +2253,13 @@ export default function Sales() {
                                         setFormData({
                                             ...formData,
                                             price_before_discount: value,
-                                            sale_price: value === '' ? '' : pricingFields(value).sale_price,
-                                            pickup_discount_applied: formData.delivery_method === 'pickup' && currentPickupDiscount > 0
+                                            sale_price: value === '' ? '' : (formData.production_status === 'planned' ? value : pricingFields(value).sale_price),
+                                            pickup_discount_applied: formData.production_status !== 'planned' && formData.delivery_method === 'pickup' && currentPickupDiscount > 0
                                         })
                                     }}
                                     style={{ fontSize: '1.1rem', fontWeight: 700, width: '100%' }}
                                 />
-                                {formData.delivery_method === 'pickup' && currentPickupDiscount > 0 && formData.price_before_discount !== '' && (
+                                {formData.production_status !== 'planned' && formData.delivery_method === 'pickup' && currentPickupDiscount > 0 && formData.price_before_discount !== '' && (
                                     <div style={{ marginTop: '0.45rem', display: 'flex', justifyContent: 'space-between', gap: '0.75rem', color: '#047857', fontSize: '0.8rem', fontWeight: 750 }}>
                                         <span>Скидка: -{currentPickupDiscount} lei</span>
                                         <span>К оплате: {parseMoney(formData.sale_price)} lei</span>
@@ -3142,6 +3314,28 @@ export default function Sales() {
                     }}
                 >
 
+                    {!editingSalonSaleId && (
+                        <OrderPlanningSelector
+                            value={salonFormData.production_status}
+                            onChange={(production_status) => setSalonFormData({ ...salonFormData, production_status })}
+                        />
+                    )}
+
+                    {salonFormData.production_status === 'planned' && (
+                        <div style={{ padding: '0.85rem', border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 8 }}>
+                            <label style={{ display: 'block', color: '#1e3a8a', fontSize: '0.82rem', fontWeight: 900, marginBottom: '0.35rem' }}>Бюджет заказа, lei</label>
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                className="input"
+                                value={salonFormData.final_sale_price_override}
+                                onChange={(event) => setSalonFormData({ ...salonFormData, final_sale_price_override: event.target.value })}
+                                placeholder="Например: 5000"
+                                style={{ width: '100%' }}
+                            />
+                        </div>
+                    )}
+
                     {/* Bouquet Name */}
                     <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '16px', border: '1px solid #e5e7eb' }}>
                         <h4 style={{ margin: '0 0 1rem 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
@@ -3676,26 +3870,34 @@ export default function Sales() {
                         </button>
                         <button
                             className="btn btn-primary"
-                            disabled={!salonFormData.custom_name || salonFormData.composition.length === 0 || loading}
+                            disabled={loading || (salonFormData.production_status === 'planned'
+                                ? parseMoney(salonFormData.final_sale_price_override) <= 0
+                                : (!salonFormData.custom_name || salonFormData.composition.length === 0))}
                             onClick={async () => {
                                 setLoading(true)
                                 try {
+                                    const isPlannedSale = salonFormData.production_status === 'planned'
                                     const deliveryFee = salonFormData.needs_delivery ? parseMoney(salonFormData.delivery_fee !== '' ? salonFormData.delivery_fee : defaultDeliveryFee) : 0
                                     const courierPayout = salonFormData.needs_delivery ? parseMoney(salonFormData.courier_payout !== '' ? salonFormData.courier_payout : deliveryFee) : 0
                                     const costPrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.cost) * parseDecimal(item.quantity)), 0) + courierPayout
                                     const compositionSalePrice = salonFormData.composition.reduce((sum, item) => sum + (parseDecimal(item.price) * parseDecimal(item.quantity)), 0)
-                                    const priceBeforeDiscount = (selectedShowcaseId ? parseDecimal(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + deliveryFee
+                                    const plannedBudget = parseMoney(salonFormData.final_sale_price_override)
+                                    const priceBeforeDiscount = isPlannedSale
+                                        ? plannedBudget
+                                        : (selectedShowcaseId ? parseDecimal(salonFormData.sale_price_override || compositionSalePrice) : compositionSalePrice) + deliveryFee
                                     const pickupDiscount = salonFormData.needs_delivery ? 0 : parseMoney(salonFormData.pickup_discount)
                                     const salonPricing = calculateSalePricing({
                                         priceBeforeDiscount,
                                         deliveryMethod: salonFormData.needs_delivery ? 'delivery' : 'pickup',
                                         pickupDiscount
                                     })
-                                    const calculatedSalePrice = salonPricing.salePrice
-                                    const salePrice = salonFormData.final_sale_price_override === ''
+                                    const calculatedSalePrice = isPlannedSale ? plannedBudget : salonPricing.salePrice
+                                    const salePrice = isPlannedSale
+                                        ? plannedBudget
+                                        : salonFormData.final_sale_price_override === ''
                                         ? calculatedSalePrice
                                         : Math.max(0, parseMoney(salonFormData.final_sale_price_override))
-                                    const hasPriceAdjustment = Math.abs(salePrice - calculatedSalePrice) > 0.009
+                                    const hasPriceAdjustment = !isPlannedSale && Math.abs(salePrice - calculatedSalePrice) > 0.009
                                     if (salePrice <= 0) {
                                         throw new Error('Итоговая цена продажи должна быть больше 0')
                                     }
@@ -3710,7 +3912,7 @@ export default function Sales() {
                                     // Create/Update sale record
                                     const saleData = {
                                         is_custom: true,
-                                        custom_name: salonFormData.custom_name,
+                                        custom_name: salonFormData.custom_name.trim() || 'Запланированный букет',
                                         custom_composition: salonFormData.composition,
                                         order_date: localDateTimeInputToIso(salonFormData.order_date),
                                         customer_name: salonFormData.customer_name.trim() || null,
@@ -3735,7 +3937,7 @@ export default function Sales() {
                                         delivery_time_mode: salonFormData.delivery_time_mode,
                                         order_notes: salonFormData.order_notes.trim() || null,
                                         delivery_address: salonFormData.needs_delivery ? salonFormData.delivery_address : null,
-                                        delivery_status: salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered',
+                                        delivery_status: isPlannedSale ? 'not_delivered' : (salonFormData.needs_delivery ? salonFormData.delivery_status : 'delivered'),
                                         courier_id: salonFormData.needs_delivery ? (salonFormData.courier_id || null) : null,
                                         delivery_fee: deliveryFee,
                                         courier_payout: courierPayout,
@@ -3745,17 +3947,27 @@ export default function Sales() {
                                         project: 'flowerbox',
                                         sales_channel: 'store',
                                         profit: salePrice - costPrice,
-                                        skip_stock_deduction: Boolean(selectedShowcaseId)
+                                        production_status: selectedShowcaseId ? 'assembled' : salonFormData.production_status,
+                                        stock_deducted: Boolean(selectedShowcaseId),
+                                        skip_stock_deduction: Boolean(selectedShowcaseId) || isPlannedSale
                                     }
 
                                     if (editingSalonSaleId) {
                                         // Update existing sale
+                                        const existingSale = sales.find(item => String(item.id) === String(editingSalonSaleId))
+                                        const requestedProductionStatus = saleData.production_status
                                         delete saleData.initial_payment_amount
                                         delete saleData.initial_payment_performed_by
                                         delete saleData.payment_status
                                         delete saleData.payment_method
+                                        delete saleData.production_status
+                                        delete saleData.stock_deducted
                                         const result = await updateSale(editingSalonSaleId, saleData)
                                         if (!result.success) throw result.error
+                                        if (requestedProductionStatus !== (existingSale?.production_status || 'in_work')) {
+                                            const productionResult = await setSaleProductionStatus(editingSalonSaleId, requestedProductionStatus, saleData)
+                                            if (!productionResult.success) throw productionResult.error
+                                        }
                                     } else {
                                         // Create new sale
                                         const result = await addSale(saleData)

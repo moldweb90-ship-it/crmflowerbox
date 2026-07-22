@@ -1048,6 +1048,50 @@ export function StoreProvider({ children }) {
         return { success: !error, data: data?.[0], error }
     }
 
+    const normalizeSaleComposition = (sale) => {
+        const source = Array.isArray(sale?.custom_composition) && sale.custom_composition.length > 0
+            ? sale.custom_composition
+            : (products.find(product => String(product.id) === String(sale?.product_id))?.composition || [])
+        const aggregated = new Map()
+
+        source.forEach(item => {
+            const type = item.type
+            const id = item.item_id || item.id
+            const quantity = Number(item.quantity ?? item.qty ?? 1)
+            if (!type || !id || !Number.isFinite(quantity) || quantity <= 0) return
+            const key = `${type}:${id}`
+            const current = aggregated.get(key) || { type, id, qty: 0 }
+            current.qty += quantity
+            aggregated.set(key, current)
+        })
+
+        return [...aggregated.values()]
+    }
+
+    const deductSaleComposition = async (sale, saleId) => {
+        const composition = normalizeSaleComposition(sale)
+        if (composition.length === 0) {
+            return { success: false, error: new Error('Сначала добавьте состав букета') }
+        }
+
+        const stockIssues = composition
+            .map(item => {
+                const available = Number(stock.find(row => row.item_type === item.type && String(row.item_id) === String(item.id))?.quantity || 0)
+                return { ...item, available, missing: Math.max(0, item.qty - available) }
+            })
+            .filter(item => item.missing > 0)
+
+        if (stockIssues.length > 0) {
+            return { success: false, error: new Error('Недостаточно остатков на складе'), stockIssues }
+        }
+
+        for (const item of composition) {
+            const result = await removeFromStock(item.type, item.id, item.qty, 'sale', saleId, 'Списание по заказу')
+            if (!result.success) return result
+        }
+        return { success: true }
+    }
+
     // Sales
     const addSale = async (sale) => {
         try {
@@ -1078,6 +1122,11 @@ export function StoreProvider({ children }) {
             delete salePayload.skip_stock_deduction
             delete salePayload.initial_payment_amount
             delete salePayload.initial_payment_performed_by
+
+            salePayload.production_status = salePayload.production_status || 'in_work'
+            const compositionForSale = normalizeSaleComposition(salePayload)
+            salePayload.stock_deducted = salePayload.stock_deducted === true
+                || (!skipStockDeduction && salePayload.production_status !== 'planned' && compositionForSale.length > 0)
 
             const isDelivery = salePayload.delivery_method === 'delivery'
             const deliveryFee = isDelivery ? Number(salePayload.delivery_fee ?? salePayload.extra_delivery_cost ?? 0) : 0
@@ -1151,6 +1200,15 @@ export function StoreProvider({ children }) {
                     }
                 }
 
+                if (!skipStockDeduction && salePayload.production_status !== 'planned') {
+                    const stockResult = await deductSaleComposition(salePayload, saleData.id)
+                    if (!stockResult.success) {
+                        await supabase.from('sales').delete().eq('id', saleData.id)
+                        setSales(current => current.filter(item => item.id !== saleData.id))
+                        throw stockResult.error || new Error('Не удалось списать состав со склада')
+                    }
+                }
+
                 // 3. Обновить статистику клиента
                 if (customerId && salePayload.sale_price) {
                     await updateCustomerStats(customerId, Number(salePayload.sale_price), customerData)
@@ -1177,21 +1235,6 @@ export function StoreProvider({ children }) {
                     }
                 } catch (e) { console.warn('Could not save important date:', e) }
 
-                // 4. Auto-deduct stock from composition (custom_composition или product.composition)
-                if (!skipStockDeduction) {
-                    const compToDeduct = (salePayload.custom_composition && Array.isArray(salePayload.custom_composition) && salePayload.custom_composition.length > 0)
-                        ? salePayload.custom_composition.map(c => ({ type: c.type, id: c.item_id || c.id, qty: c.quantity || c.qty || 1 }))
-                        : (() => {
-                            const product = products.find(p => p.id === sale.product_id)
-                            return product?.composition || []
-                        })()
-                    for (const comp of compToDeduct) {
-                        const itemType = comp.type
-                        const itemId = comp.id
-                        const qty = comp.qty || 1
-                        await removeFromStock(itemType, itemId, qty, 'sale', saleData.id)
-                    }
-                }
             }
             return { success: !error, error, data: data?.[0] }
         } catch (error) {
@@ -1264,6 +1307,34 @@ export function StoreProvider({ children }) {
             return { success: true }
         }
         return { success: false, error }
+    }
+
+    const setSaleProductionStatus = async (id, productionStatus, saleOverride = null) => {
+        const allowed = ['planned', 'in_work', 'assembled']
+        if (!allowed.includes(productionStatus)) {
+            return { success: false, error: new Error('Неизвестный статус сборки') }
+        }
+
+        const storedSale = sales.find(item => String(item.id) === String(id))
+        const sale = storedSale ? { ...storedSale, ...(saleOverride || {}) } : null
+        if (!sale) return { success: false, error: new Error('Заказ не найден') }
+        if (productionStatus === 'planned' && sale.stock_deducted) {
+            return { success: false, error: new Error('Состав уже списан. Вернуть заказ в план можно только после корректировки склада.') }
+        }
+
+        let stockDeducted = Boolean(sale.stock_deducted)
+        if (productionStatus !== 'planned' && !stockDeducted) {
+            const result = await deductSaleComposition(sale, id)
+            if (!result.success) return result
+            stockDeducted = true
+        }
+
+        const payload = { production_status: productionStatus, stock_deducted: stockDeducted }
+        const { error } = await supabase.from('sales').update(payload).eq('id', id)
+        if (error) return { success: false, error }
+
+        setSales(current => current.map(item => String(item.id) === String(id) ? { ...item, ...payload } : item))
+        return { success: true }
     }
 
     const getSalePayments = saleId => salePayments
@@ -2872,7 +2943,7 @@ export function StoreProvider({ children }) {
             suppliers, supplies, supplyPayments, createSupplier, saveSupply, updateSupply, deleteSupply, toggleSupplyVisibility, getSupplyItems, getSupplyPayments, getSupplyPaymentSummary, addSupplyPayment, deleteSupplyPayment, updateSupplier, deleteSupplier, getSupplierStats, getGlobalItemStats,
             expenses, addExpense, updateExpense, deleteExpense,
             cashMovements, addCashMovement, refreshCashMovements,
-            sales, salePayments, addSale, updateSale, deleteSale, markCourierPaid, getSalePayments, getSalePaymentSummary: getSalePaymentSummaryForSale, addSalePayment, deleteSalePayment,
+            sales, salePayments, addSale, updateSale, setSaleProductionStatus, deleteSale, markCourierPaid, getSalePayments, getSalePaymentSummary: getSalePaymentSummaryForSale, addSalePayment, deleteSalePayment,
             claims, addClaim, updateClaim, deleteClaim, getSaleClaims, getCustomerClaims,
             tasks, addTask, toggleTask, deleteTask, toggleTaskImportance, clearCompletedTasks,
             couriers: couriersList, addCourier,
