@@ -307,6 +307,7 @@ export default function Sales() {
             setDateFilter({ start: '', end: '', preset: 'all' })
             setFulfillmentFilter('active')
             setProductionFilter('all')
+            setShortageOnly(true)
             searchParams.delete('shortages')
             setSearchParams(searchParams, { replace: true })
         }
@@ -395,6 +396,7 @@ export default function Sales() {
     const [sourceFilter, setSourceFilter] = useState(() => loadSalesListFilters().sourceFilter)
     const [fulfillmentFilter, setFulfillmentFilter] = useState(() => loadSalesListFilters().fulfillmentFilter)
     const [productionFilter, setProductionFilter] = useState(() => loadSalesListFilters().productionFilter)
+    const [shortageOnly, setShortageOnly] = useState(false)
 
     // Form state
     const emptyForm = {
@@ -519,14 +521,25 @@ export default function Sales() {
         })
     }, [sales, dateFilter, deliveryDateFilter, orderSearch, sourceFilter])
 
+    const upcomingShortages = useMemo(() => buildUpcomingShortages({
+        sales,
+        stock,
+        flowers,
+        goods,
+        stockTransactions,
+        days: 7,
+    }), [sales, stock, stockTransactions, flowers, goods])
+    const shortageBySaleId = useMemo(() => new Map(upcomingShortages.map(item => [String(item.sale.id), item])), [upcomingShortages])
+
     const filteredSales = useMemo(() => periodSales.filter(sale => {
         const deliveryStatus = sale.delivery_status || 'not_delivered'
         const productionStatus = sale.production_status || (deliveryStatus === 'delivered' ? 'assembled' : 'in_work')
+        if (shortageOnly && !shortageBySaleId.has(String(sale.id))) return false
         if (fulfillmentFilter === 'active' && ['delivered', 'cancelled', 'returned'].includes(deliveryStatus)) return false
         if (fulfillmentFilter === 'completed' && deliveryStatus !== 'delivered') return false
         if (productionFilter !== 'all' && productionStatus !== productionFilter) return false
         return true
-    }), [periodSales, fulfillmentFilter, productionFilter])
+    }), [periodSales, fulfillmentFilter, productionFilter, shortageOnly, shortageBySaleId])
 
     const workflowCounts = useMemo(() => periodSales.reduce((counts, sale) => {
         const deliveryStatus = sale.delivery_status || 'not_delivered'
@@ -537,16 +550,6 @@ export default function Sales() {
         counts[productionStatus] = (counts[productionStatus] || 0) + 1
         return counts
     }, { all: 0, active: 0, completed: 0, planned: 0, in_work: 0, assembled: 0 }), [periodSales])
-
-    const upcomingShortages = useMemo(() => buildUpcomingShortages({
-        sales,
-        stock,
-        flowers,
-        goods,
-        stockTransactions,
-        days: 7,
-    }), [sales, stock, stockTransactions, flowers, goods])
-    const shortageBySaleId = useMemo(() => new Map(upcomingShortages.map(item => [String(item.sale.id), item])), [upcomingShortages])
 
     const orderSearchSale = useMemo(() => {
         if (!orderSearch) return null
@@ -1660,7 +1663,7 @@ export default function Sales() {
                                 <div style={{ fontSize: '0.78rem', opacity: 0.9 }}>Проблемных заказов: {upcomingShortages.length}. Сначала решите их, затем отмечайте букет собранным.</div>
                             </div>
                         </div>
-                        <button type="button" onClick={() => { setDateFilter({ start: '', end: '', preset: 'all' }); setFulfillmentFilter('active'); setProductionFilter('all') }} style={{ border: '1px solid #f59e0b', borderRadius: 8, background: '#fff', color: '#9a3412', padding: '0.5rem 0.75rem', fontWeight: 900, cursor: 'pointer' }}>
+                        <button type="button" onClick={() => { setOrderSearch(''); setDeliveryDateFilter(null); setDateFilter({ start: '', end: '', preset: 'all' }); setFulfillmentFilter('active'); setProductionFilter('all'); setShortageOnly(true) }} style={{ border: '1px solid #f59e0b', borderRadius: 8, background: '#fff', color: '#9a3412', padding: '0.5rem 0.75rem', fontWeight: 900, cursor: 'pointer' }}>
                             Показать проблемные заказы
                         </button>
                     </div>
@@ -1689,6 +1692,15 @@ export default function Sales() {
                         ))}
                     </div>
                 </section>
+            )}
+
+            {shortageOnly && (
+                <div style={{ marginBottom: '0.7rem', padding: '0.55rem 0.75rem', border: '1px solid #fbbf24', borderRadius: 8, background: '#fffbeb', color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.8rem', fontWeight: 850 }}>
+                    <span>Показаны только заказы с нехваткой позиций: {filteredSales.length}</span>
+                    <button type="button" onClick={() => setShortageOnly(false)} style={{ border: 0, background: 'transparent', color: '#9a3412', fontWeight: 900, cursor: 'pointer', padding: '0.2rem 0.35rem' }}>
+                        Показать все
+                    </button>
+                </div>
             )}
 
             {/* Delivery Date Filter Banner */}
@@ -1829,10 +1841,10 @@ export default function Sales() {
                                         key={sale.id}
                                         className="card"
                                         style={{
-                                            padding: '1rem 1.25rem',
+                                            padding: isMobile ? '0.75rem' : '0.55rem 0.8rem',
                                             display: 'flex',
                                             flexDirection: isMobile ? 'column' : 'row',
-                                            gap: '1rem',
+                                            gap: isMobile ? '0.65rem' : '0.55rem',
                                             alignItems: isMobile ? 'stretch' : 'center',
                                             cursor: 'pointer',
                                             transition: 'box-shadow 0.2s, transform 0.2s',
@@ -1846,10 +1858,10 @@ export default function Sales() {
                                         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = baseCardShadow; e.currentTarget.style.transform = '' }}
                                     >
                                         {/* Left: Number + Order Number Badge */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: isMobile ? 'auto' : '130px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
                                             <div style={{
-                                                width: '32px',
-                                                height: '32px',
+                                                width: isMobile ? '30px' : '28px',
+                                                height: isMobile ? '30px' : '28px',
                                                 borderRadius: '50%',
                                                 background: 'var(--primary)',
                                                 color: 'white',
@@ -1866,7 +1878,7 @@ export default function Sales() {
                                                 <div style={{
                                                     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                                                     color: 'white',
-                                                    padding: '0.25rem 0.75rem',
+                                                    padding: '0.2rem 0.55rem',
                                                     borderRadius: '99px',
                                                     fontWeight: 700,
                                                     fontSize: '0.8rem',
@@ -1881,7 +1893,7 @@ export default function Sales() {
                                                     <span style={{
                                                         background: project.bg,
                                                         color: project.color,
-                                                        padding: '0.22rem 0.58rem',
+                                                        padding: '0.18rem 0.45rem',
                                                         borderRadius: '99px',
                                                         fontWeight: 900,
                                                         fontSize: '0.75rem',
@@ -1897,7 +1909,7 @@ export default function Sales() {
                                                     <span style={{
                                                         background: '#fef3c7',
                                                         color: '#92400e',
-                                                        padding: '0.2rem 0.5rem',
+                                                        padding: '0.18rem 0.42rem',
                                                         borderRadius: '99px',
                                                         fontSize: '0.75rem',
                                                         fontWeight: 600
@@ -1922,8 +1934,8 @@ export default function Sales() {
 
                                         {/* Middle: Product + Dates + Address */}
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
-                                                <div style={{ fontWeight: 600, fontSize: '1rem' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.22rem' }}>
+                                                <div style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.2 }}>
                                                     {sale.is_custom ? (sale.custom_name || 'Индивидуальный букет') : (sale.products?.name || 'Букет')}
                                                 </div>
                                                 {shortage && (
@@ -1946,41 +1958,34 @@ export default function Sales() {
                                                     {sale.sales_channel === 'store' ? <Store size={12} /> : <Globe2 size={12} />}
                                                     {sale.sales_channel === 'store' ? 'Салон' : 'Онлайн'}
                                                 </div>
-                                                <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 24, padding: '0.2rem 0.5rem', borderRadius: 6, background: productionStatus.background, border: `1px solid ${productionStatus.color}45`, color: productionStatus.color, fontWeight: 900, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                                                    {productionStatus.label}
-                                                </span>
                                             </div>
 
-                                            {/* Dates row */}
-                                            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                            <div style={{ display: 'flex', gap: isMobile ? '0.5rem' : '0.7rem', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', minWidth: 0, fontSize: '0.72rem', lineHeight: 1.2, color: 'var(--text-muted)' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}>
                                                     <Calendar size={12} />
                                                     <span>Заказ: {sale.order_date ? new Date(sale.order_date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</span>
                                                 </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: sale.delivery_date ? '#10b981' : 'var(--text-muted)' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', color: sale.delivery_date ? '#10b981' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                                     <Truck size={12} />
                                                     <span>{sale.delivery_method === 'pickup' ? 'Самовывоз' : 'Доставка'}: {formatFulfillmentDate(sale)}</span>
                                                 </div>
+                                                {sale.delivery_address && (
+                                                    <div title={sale.delivery_address} style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', minWidth: 0, maxWidth: isMobile ? '100%' : 210 }}>
+                                                        <MapPin size={12} style={{ flexShrink: 0 }} />
+                                                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sale.delivery_address}</span>
+                                                    </div>
+                                                )}
+                                                {sale.order_notes && (
+                                                    <div title={sale.order_notes} style={{ minWidth: 0, maxWidth: isMobile ? '100%' : 180, color: '#475569', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        Заметка: {sale.order_notes}
+                                                    </div>
+                                                )}
                                             </div>
-
-                                            {sale.order_notes && (
-                                                <div title={sale.order_notes} style={{ maxWidth: 620, marginBottom: '0.35rem', color: '#475569', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    Заметка: {sale.order_notes}
-                                                </div>
-                                            )}
-
-                                            {/* Full Address */}
-                                            {sale.delivery_address && (
-                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                                    <MapPin size={12} style={{ flexShrink: 0, marginTop: '2px' }} />
-                                                    <span>{sale.delivery_address}</span>
-                                                </div>
-                                            )}
                                         </div>
 
                                         {/* Price + Profit */}
-                                        <div style={{ textAlign: isMobile ? 'left' : 'right', minWidth: '110px' }}>
-                                            <div style={{ fontWeight: 800, fontSize: '1.25rem', color: '#10b981' }}>
+                                        <div style={{ textAlign: isMobile ? 'left' : 'right', minWidth: '96px', flexShrink: 0 }}>
+                                            <div style={{ fontWeight: 800, fontSize: isMobile ? '1.1rem' : '1rem', color: '#10b981', lineHeight: 1.15 }}>
                                                 +{Number(sale.sale_price || 0).toLocaleString()} lei
                                             </div>
                                             {showProfit && (
@@ -1991,13 +1996,13 @@ export default function Sales() {
                                         </div>
 
                                         {/* Statuses */}
-                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
                                             <select
                                                 value={productionStatusId}
                                                 onChange={(e) => handleProductionStatusChange(sale.id, e.target.value)}
                                                 title="Статус сборки букета"
                                                 style={{
-                                                    padding: '0.25rem 0.5rem',
+                                                    padding: '0.2rem 0.4rem',
                                                     borderRadius: '8px',
                                                     border: `2px solid ${productionStatus.color}`,
                                                     background: productionStatus.background,
@@ -2016,7 +2021,7 @@ export default function Sales() {
                                                 onClick={() => { setViewingSale(sale); setIsViewOpen(true) }}
                                                 title="Открыть оплаты заказа"
                                                 style={{
-                                                    padding: '0.25rem 0.5rem',
+                                                    padding: '0.2rem 0.4rem',
                                                     borderRadius: '8px',
                                                     border: `2px solid ${paymentStatus.color}`,
                                                     background: paymentStatus.background,
@@ -2032,7 +2037,7 @@ export default function Sales() {
                                                 value={effectiveDeliveryStatus}
                                                 onChange={(e) => handleStatusChange(sale.id, 'delivery_status', e.target.value)}
                                                 style={{
-                                                    padding: '0.25rem 0.5rem',
+                                                    padding: '0.2rem 0.4rem',
                                                     borderRadius: '8px',
                                                     border: `2px solid ${deliveryStatus.color}`,
                                                     background: `${deliveryStatus.color}15`,
@@ -2085,17 +2090,17 @@ export default function Sales() {
                                         </div>
 
                                         {/* Actions */}
-                                        <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
-                                            <button onClick={() => { setViewingSale(sale); setIsViewOpen(true) }} style={{ padding: '0.5rem', border: 'none', background: '#e0f2fe', color: '#0284c7', borderRadius: '8px', cursor: 'pointer' }} title="Просмотр">
+                                        <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                                            <button onClick={() => { setViewingSale(sale); setIsViewOpen(true) }} style={{ padding: '0.38rem', border: 'none', background: '#e0f2fe', color: '#0284c7', borderRadius: '7px', cursor: 'pointer' }} title="Просмотр">
                                                 <Eye size={16} />
                                             </button>
-                                            <button onClick={() => handleEditClick(sale)} style={{ padding: '0.5rem', border: 'none', background: '#f3f4f6', borderRadius: '8px', cursor: 'pointer' }} title="Редактировать">
+                                            <button onClick={() => handleEditClick(sale)} style={{ padding: '0.38rem', border: 'none', background: '#f3f4f6', borderRadius: '7px', cursor: 'pointer' }} title="Редактировать">
                                                 <Edit2 size={16} />
                                             </button>
-                                            <button onClick={() => setClaimSale(sale)} style={{ padding: '0.5rem', border: 'none', background: '#fff7ed', color: '#ea580c', borderRadius: '8px', cursor: 'pointer' }} title="Рекламация / возврат">
+                                            <button onClick={() => setClaimSale(sale)} style={{ padding: '0.38rem', border: 'none', background: '#fff7ed', color: '#ea580c', borderRadius: '7px', cursor: 'pointer' }} title="Рекламация / возврат">
                                                 <AlertCircle size={16} />
                                             </button>
-                                            <button onClick={() => handleDeleteClick(sale.id)} style={{ padding: '0.5rem', border: 'none', background: '#fee2e2', color: '#ef4444', borderRadius: '8px', cursor: 'pointer' }} title="Удалить">
+                                            <button onClick={() => handleDeleteClick(sale.id)} style={{ padding: '0.38rem', border: 'none', background: '#fee2e2', color: '#ef4444', borderRadius: '7px', cursor: 'pointer' }} title="Удалить">
                                                 <Trash2 size={16} />
                                             </button>
                                         </div>
