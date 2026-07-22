@@ -518,13 +518,6 @@ export default function Dashboard() {
     // 5. Sales Dynamics (Growth)
     const salesDynamics = React.useMemo(() => {
         const now = new Date()
-        // Helper to get start of day for simpler comparison or use exact timestamps?
-        // User said: "Current 30 days from now".
-        // Let's use exact dates for precision or day-boundaries?
-        // "Inclusive today". So [Now-30d, Now].
-        // Period A: [Now - 30d, Now]
-        // Period B: [Now - 30d - 1yr, Now - 1yr]
-
         const currentEnd = new Date(now)
         const currentStart = new Date(now)
         currentStart.setDate(currentEnd.getDate() - 30)
@@ -534,72 +527,69 @@ export default function Dashboard() {
         const lastYearStart = new Date(currentStart)
         lastYearStart.setFullYear(lastYearStart.getFullYear() - 1)
 
-        // Helper to sum revenue
-        const sumRevenue = (items) => items.reduce((acc, s) => {
-            // Filter: Completed or Paid.
-            const status = (s.status || '').toLowerCase()
-            const payStatus = (s.payment_status || '').toLowerCase()
-            const isPaid = payStatus === 'paid' || status === 'completed' || status === 'delivered'
+        const validSales = sales.map(sale => ({
+            sale,
+            date: new Date(sale.order_date || sale.created_at)
+        })).filter(({ sale, date }) => {
+            if (Number.isNaN(date.getTime())) return false
 
-            // Exclude cancelled explicitly just in case
-            if (status.includes('cancel')) return acc
+            const status = (sale.status || '').toLowerCase()
+            const payStatus = (sale.payment_status || '').toLowerCase()
+            const isCancelledOrReturned = ['cancel', 'return', 'возврат'].some(value => status.includes(value))
+            const isPaidOrCompleted = payStatus === 'paid' || status === 'completed' || status === 'delivered'
 
-            if (!isPaid) return acc
+            return !isCancelledOrReturned && isPaidOrCompleted
+        })
 
-            // Revenue: sale_price. If delivery not included? 
-            // User said: "If delivery not included in revenue, deduct delivery_cost".
-            // usually sale_price IS total. Let's assume sale_price is Revenue.
-            // If we have separate delivery cost stored... StoreContext doesn't show it explicitly in top level.
-            // We use `s.sale_price`.
-            return acc + (Number(s.sale_price) || 0)
+        const sumRevenue = items => items.reduce((acc, { sale }) => {
+            return acc + (Number(sale.sale_price) || 0)
         }, 0)
 
-        const salesA = sales.filter(s => {
-            const d = new Date(s.order_date || s.created_at)
-            return d >= currentStart && d <= currentEnd
+        const salesInRange = (start, end, includeEnd = true) => validSales.filter(({ date }) => {
+            return date >= start && (includeEnd ? date <= end : date < end)
         })
-        const sumA = sumRevenue(salesA)
 
-        const salesB = sales.filter(s => {
-            const d = new Date(s.order_date || s.created_at)
-            return d >= lastYearStart && d <= lastYearEnd
-        })
-        const sumB = sumRevenue(salesB)
+        const sumA = sumRevenue(salesInRange(currentStart, currentEnd))
+        const lastYearSales = salesInRange(lastYearStart, lastYearEnd)
+        const sumB = sumRevenue(lastYearSales)
+        const hasYoYComparison = lastYearSales.length > 0 && sumB > 0
+        const growthPct = hasYoYComparison ? ((sumA - sumB) / sumB) * 100 : null
 
-        // Growth
-        let growthPct = 0
-        if (sumB === 0) growthPct = sumA > 0 ? 100 : 0
-        else growthPct = ((sumA - sumB) / sumB) * 100
+        const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+        const earliestSaleDate = validSales.reduce((earliest, { date }) => {
+            return !earliest || date < earliest ? date : earliest
+        }, null)
 
-        // Averages
-        // 3 months (90 days)
-        const startQ = new Date(now); startQ.setDate(startQ.getDate() - 90)
-        const salesQ = sales.filter(s => { const d = new Date(s.order_date || s.created_at); return d >= startQ && d <= currentEnd })
-        const sumQ = sumRevenue(salesQ)
-        const avgQ = sumQ / 3 // Monthly avg in typical 3 months? User said "Average of Quarter" -> likely Monthly Average within that quarter? 
-        // Or "Average indicator of quarter"?
-        // "Средний показатель квартала" usually means "Total Q / 3 months" to compare with "Monthly Sales".
-        // Let's assume proper monthly average.
+        const getMonthlyAverage = months => {
+            const periodStart = new Date(currentMonthStart)
+            periodStart.setMonth(periodStart.getMonth() - months)
 
-        // 6 months
-        const startHY = new Date(now); startHY.setDate(startHY.getDate() - 180)
-        const salesHY = sales.filter(s => { const d = new Date(s.order_date || s.created_at); return d >= startHY && d <= currentEnd })
-        const sumHY = sumRevenue(salesHY)
-        const avgHY = sumHY / 6
+            // Do not dilute a short CRM history with months for which there is no data.
+            if (!earliestSaleDate || earliestSaleDate > periodStart) {
+                return { value: null, deviation: null }
+            }
 
-        // 12 months
-        const startY = new Date(now); startY.setDate(startY.getDate() - 365)
-        const salesY = sales.filter(s => { const d = new Date(s.order_date || s.created_at); return d >= startY && d <= currentEnd })
-        const sumY = sumRevenue(salesY)
-        const avgY = sumY / 12
+            const value = sumRevenue(salesInRange(periodStart, currentMonthStart, false)) / months
+            const deviation = value > 0 ? ((sumA - value) / value) * 100 : null
+            return { value, deviation }
+        }
 
-        // Deviations
-        // how A (30 days) deviates from AvgQ, AvgHY, AvgY
-        const devQ = avgQ > 0 ? ((sumA - avgQ) / avgQ) * 100 : 0
-        const devHY = avgHY > 0 ? ((sumA - avgHY) / avgHY) * 100 : 0
-        const devY = avgY > 0 ? ((sumA - avgY) / avgY) * 100 : 0
+        const quarter = getMonthlyAverage(3)
+        const halfYear = getMonthlyAverage(6)
+        const year = getMonthlyAverage(12)
 
-        return { sumA, sumB, growthPct, avgQ, avgHY, avgY, devQ, devHY, devY }
+        return {
+            sumA,
+            sumB,
+            growthPct,
+            hasYoYComparison,
+            avgQ: quarter.value,
+            avgHY: halfYear.value,
+            avgY: year.value,
+            devQ: quarter.deviation,
+            devHY: halfYear.deviation,
+            devY: year.deviation
+        }
     }, [sales])
 
     const customerStats = React.useMemo(() => {
@@ -1237,7 +1227,9 @@ export default function Dashboard() {
                             <div style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 600 }}>Продажи (30 дней)</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#111827', lineHeight: 1 }}>{salesDynamics.sumA.toLocaleString()} lei</div>
                             <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                                Год назад: {salesDynamics.sumB.toLocaleString()} lei
+                                {salesDynamics.hasYoYComparison
+                                    ? `Год назад: ${salesDynamics.sumB.toLocaleString()} lei`
+                                    : 'Год назад: нет данных'}
                             </div>
                             <div style={{
                                 marginTop: '0.5rem',
@@ -1248,11 +1240,15 @@ export default function Dashboard() {
                                 borderRadius: '6px',
                                 fontSize: '0.85rem',
                                 fontWeight: 700,
-                                background: salesDynamics.growthPct >= 0 ? '#dcfce7' : '#fee2e2',
-                                color: salesDynamics.growthPct >= 0 ? '#166534' : '#991b1b'
+                                background: salesDynamics.growthPct === null ? '#f3f4f6' : salesDynamics.growthPct >= 0 ? '#dcfce7' : '#fee2e2',
+                                color: salesDynamics.growthPct === null ? '#6b7280' : salesDynamics.growthPct >= 0 ? '#166534' : '#991b1b'
                             }}>
-                                {salesDynamics.growthPct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                {salesDynamics.growthPct > 0 ? '+' : ''}{salesDynamics.growthPct.toFixed(1)}%
+                                {salesDynamics.growthPct === null
+                                    ? <><Clock size={14} /> Недостаточно истории</>
+                                    : <>
+                                        {salesDynamics.growthPct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                        {salesDynamics.growthPct > 0 ? '+' : ''}{salesDynamics.growthPct.toFixed(1)}%
+                                    </>}
                             </div>
                         </div>
 
@@ -1260,20 +1256,26 @@ export default function Dashboard() {
                         <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '0.75rem', fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ color: '#6b7280' }}>Среднее (3 мес):</span>
-                                <span style={{ fontWeight: 600, color: salesDynamics.devQ >= 0 ? '#16a34a' : '#dc2626' }}>
-                                    {salesDynamics.avgQ.toLocaleString()} ({salesDynamics.devQ > 0 ? '+' : ''}{salesDynamics.devQ.toFixed(0)}%)
+                                <span style={{ fontWeight: 600, color: salesDynamics.devQ === null ? '#9ca3af' : salesDynamics.devQ >= 0 ? '#16a34a' : '#dc2626' }}>
+                                    {salesDynamics.avgQ === null
+                                        ? 'Недостаточно данных'
+                                        : `${salesDynamics.avgQ.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} (${salesDynamics.devQ > 0 ? '+' : ''}${salesDynamics.devQ.toFixed(0)}%)`}
                                 </span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ color: '#6b7280' }}>Среднее (6 мес):</span>
-                                <span style={{ fontWeight: 600, color: salesDynamics.devHY >= 0 ? '#16a34a' : '#dc2626' }}>
-                                    {salesDynamics.avgHY.toLocaleString()} ({salesDynamics.devHY > 0 ? '+' : ''}{salesDynamics.devHY.toFixed(0)}%)
+                                <span style={{ fontWeight: 600, color: salesDynamics.devHY === null ? '#9ca3af' : salesDynamics.devHY >= 0 ? '#16a34a' : '#dc2626' }}>
+                                    {salesDynamics.avgHY === null
+                                        ? 'Недостаточно данных'
+                                        : `${salesDynamics.avgHY.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} (${salesDynamics.devHY > 0 ? '+' : ''}${salesDynamics.devHY.toFixed(0)}%)`}
                                 </span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ color: '#6b7280' }}>Среднее (12 мес):</span>
-                                <span style={{ fontWeight: 600, color: salesDynamics.devY >= 0 ? '#16a34a' : '#dc2626' }}>
-                                    {salesDynamics.avgY.toLocaleString()} ({salesDynamics.devY > 0 ? '+' : ''}{salesDynamics.devY.toFixed(0)}%)
+                                <span style={{ fontWeight: 600, color: salesDynamics.devY === null ? '#9ca3af' : salesDynamics.devY >= 0 ? '#16a34a' : '#dc2626' }}>
+                                    {salesDynamics.avgY === null
+                                        ? 'Недостаточно данных'
+                                        : `${salesDynamics.avgY.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} (${salesDynamics.devY > 0 ? '+' : ''}${salesDynamics.devY.toFixed(0)}%)`}
                                 </span>
                             </div>
                         </div>
