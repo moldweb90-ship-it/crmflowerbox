@@ -1750,9 +1750,19 @@ export default function Sales() {
                                 const productionStatus = PRODUCTION_STATUSES.find(status => status.id === productionStatusId) || PRODUCTION_STATUSES[1]
                                 const isCompleted = effectiveDeliveryStatus === 'delivered'
                                 const isCancelled = ['cancelled', 'returned'].includes(effectiveDeliveryStatus)
-                                const cardBackground = isCompleted ? '#e8f6ed' : isCancelled ? '#fafafa' : productionStatus.background
-                                const cardBorder = isCompleted ? '#86c99b' : isCancelled ? '#e5e7eb' : `${productionStatus.color}35`
-                                const baseCardShadow = `inset ${isCompleted ? 6 : 4}px 0 0 ${isCompleted ? '#16a34a' : isCancelled ? '#94a3b8' : productionStatus.color}`
+                                const isAssembled = productionStatusId === 'assembled' && !isCompleted
+                                const cardBackground = isCompleted
+                                    ? '#d8f2e1'
+                                    : isAssembled
+                                        ? '#e8f7ed'
+                                        : isCancelled ? '#fafafa' : productionStatus.background
+                                const cardBorder = isCompleted
+                                    ? '#54b978'
+                                    : isAssembled
+                                        ? '#8bd2a4'
+                                        : isCancelled ? '#e5e7eb' : `${productionStatus.color}35`
+                                const statusAccent = isCompleted ? '#07883f' : isAssembled ? '#22a35a' : isCancelled ? '#94a3b8' : productionStatus.color
+                                const baseCardShadow = `inset ${isCompleted ? 7 : isAssembled ? 6 : 4}px 0 0 ${statusAccent}`
                                 return (
                                     <div
                                         key={sale.id}
