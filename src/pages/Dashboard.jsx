@@ -972,6 +972,44 @@ export default function Dashboard() {
                 </div>
             )}
 
+            {tomorrowStats.alert && (
+                <button
+                    type="button"
+                    onClick={() => navigate('/sales?shortages=true')}
+                    style={{
+                        width: '100%',
+                        minHeight: 44,
+                        marginBottom: '0.75rem',
+                        padding: isMobile ? '0.6rem 0.75rem' : '0.5rem 0.8rem',
+                        border: '1px solid #fbbf24',
+                        borderRadius: 8,
+                        background: '#fffbeb',
+                        color: '#92400e',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.65rem',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(217,119,6,0.06)'
+                    }}
+                >
+                    <AlertOctagon size={18} color="#d97706" style={{ flexShrink: 0 }} />
+                    <strong style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                        Нехватка для {tomorrowStats.shortageOrders.length} {tomorrowStats.shortageOrders.length === 1 ? 'заказа' : 'заказов'}
+                    </strong>
+                    <span style={{ minWidth: 0, flex: 1, color: '#a16207', fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {tomorrowStats.shortageOrders
+                            .flatMap(order => order.shortages)
+                            .slice(0, 4)
+                            .map(item => `${item.name} −${item.missing}`)
+                            .join('  •  ')}
+                    </span>
+                    <span style={{ flexShrink: 0, color: '#b45309', fontSize: '0.75rem', fontWeight: 900 }}>
+                        Открыть →
+                    </span>
+                </button>
+            )}
+
             {/* --- NEW REVAMPED BLOCKS (5) --- */}
             <div className="dashboard-carousel" style={{
                 display: 'flex',
@@ -1123,25 +1161,6 @@ export default function Dashboard() {
                             )) : <div style={{ color: '#c026d3', fontSize: '0.8rem' }}>Нет заказов</div>}
                         </div>
 
-                        {tomorrowStats.alert && (
-                            <button
-                                type="button"
-                                onClick={() => navigate('/sales?shortages=true')}
-                                style={{ width: '100%', border: '1px solid #fbbf24', borderRadius: 8, padding: '0.75rem', background: '#fffbeb', color: '#92400e', textAlign: 'left', cursor: 'pointer', boxShadow: '0 5px 14px rgba(217,119,6,0.09)' }}
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', fontWeight: 950, marginBottom: '0.45rem' }}>
-                                    <AlertOctagon size={18} color="#d97706" /> ВНИМАНИЕ: НЕ ХВАТАЕТ ЦВЕТОВ
-                                </div>
-                                <div style={{ fontSize: '0.72rem', fontWeight: 800, marginBottom: '0.35rem' }}>
-                                    Проблемных заказов: {tomorrowStats.shortageOrders.length}. Нажмите, чтобы открыть.
-                                </div>
-                                <div style={{ fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 72, overflowY: 'auto' }}>
-                                    {tomorrowStats.shortageOrders.flatMap(order => order.shortages).slice(0, 4).map((item, index) => (
-                                        <span key={`${item.type}-${item.id}-${index}`}>• {item.name}: не хватает {item.missing}</span>
-                                    ))}
-                                </div>
-                            </button>
-                        )}
                     </div>
                 </div>
 
