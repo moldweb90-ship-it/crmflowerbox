@@ -287,6 +287,7 @@ export default function Stock() {
                 min_quantity: Number(s.min_quantity || 0),
                 stock_id: s.id,
                 cost: Number(itemDef.cost || 0),
+                sale_price: Number(itemDef.price || 0),
                 image_url: s.item_type === 'good' ? (itemDef.image_url || '') : '',
                 family_name: s.item_type === 'good' ? (itemDef.family_name || '') : '',
                 variant_name: s.item_type === 'good' ? (itemDef.variant_name || '') : '',
@@ -1027,10 +1028,11 @@ export default function Stock() {
                                         {expanded && <div style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
                                             {group.items.map(item => {
                                                 const variant = getGoodsVariantLabel(item) || getGoodsVariantLabel(inferGoodsAttributes(item)) || 'Базовая модификация'
-                                                return <div key={item.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0,1fr) auto' : 'minmax(220px,1fr) 110px 120px 120px 100px', gap: '0.65rem', alignItems: 'center', padding: '0.65rem 0.8rem', borderBottom: '1px solid #e2e8f0', background: item.quantity <= 0 ? '#fef2f2' : item.is_low ? '#fffbeb' : '#f8fafc' }}>
-                                                    <span><b style={{ display: 'block' }}>{variant}</b><small style={{ color: '#94a3b8' }}>{item.name}</small>{isMobile && <small style={{ display: 'block' }}>{item.quantity} {item.stock_unit} · {item.cost} lei</small>}</span>
+                                                return <div key={item.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0,1fr) auto' : 'minmax(220px,1fr) 105px 110px 115px 120px 100px', gap: '0.65rem', alignItems: 'center', padding: '0.65rem 0.8rem', borderBottom: '1px solid #e2e8f0', background: item.quantity <= 0 ? '#fef2f2' : item.is_low ? '#fffbeb' : '#f8fafc' }}>
+                                                    <span><b style={{ display: 'block' }}>{variant}</b><small style={{ color: '#94a3b8' }}>{item.name}</small>{isMobile && <small style={{ display: 'block' }}>Остаток: {item.quantity} {item.stock_unit} · Себест.: {item.cost.toLocaleString('ru-RU')} lei</small>}{isMobile && <small style={{ display: 'block', color: item.sale_price > 0 ? '#059669' : '#dc2626', fontWeight: 800 }}>Продажа: {item.sale_price > 0 ? `${item.sale_price.toLocaleString('ru-RU')} lei` : 'не задана'}</small>}</span>
                                                     {!isMobile && <span style={{ textAlign: 'center', fontWeight: 950, color: item.quantity > 0 ? '#059669' : '#dc2626' }}>{item.quantity} {item.stock_unit}</span>}
                                                     {!isMobile && <span style={{ textAlign: 'right', color: '#64748b' }}>{item.cost} lei</span>}
+                                                    {!isMobile && <span style={{ textAlign: 'right', color: item.sale_price > 0 ? '#059669' : '#dc2626', fontWeight: 850 }}>{item.sale_price > 0 ? `${item.sale_price.toLocaleString('ru-RU')} lei` : 'Не задана'}</span>}
                                                     {!isMobile && <span style={{ textAlign: 'right', fontWeight: 850 }}>{(item.quantity * item.cost).toLocaleString('ru-RU')} lei</span>}
                                                     <span style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.35rem' }}><button onClick={() => openEditModal(item)} title="Изменить остаток"><Edit2 size={15} /></button><button onClick={() => openWasteModal(item)} title="Списать" style={{ color: '#ef4444' }}><Minus size={16} /></button></span>
                                                 </div>
@@ -1052,7 +1054,7 @@ export default function Stock() {
                     }}>
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: isMobile ? '2fr 1fr 1fr' : '3fr 1fr 1fr 1fr 1fr 100px',
+                            gridTemplateColumns: isMobile ? '2fr 1fr 1fr' : 'minmax(260px,3fr) 1fr 0.8fr 1fr 1fr 1fr 100px',
                             padding: '1rem',
                             background: '#f8fafc',
                             fontWeight: 600,
@@ -1081,7 +1083,8 @@ export default function Stock() {
                             </button>
                             {!isMobile && <div style={{ textAlign: 'center' }}>Мин.</div>}
                             {!isMobile && <div style={{ textAlign: 'right' }}>Себест.</div>}
-                            <div style={{ textAlign: 'right' }}>Сумма</div>
+                            <div style={{ textAlign: 'right' }}>{isMobile ? 'Продажа' : 'Цена продажи'}</div>
+                            {!isMobile && <div style={{ textAlign: 'right' }}>Сумма</div>}
                             {!isMobile && <div style={{ textAlign: 'center' }}>Действия</div>}
                         </div>
 
@@ -1096,7 +1099,7 @@ export default function Stock() {
                                     key={`${item.type}-${item.id}`}
                                     style={{
                                         display: 'grid',
-                                        gridTemplateColumns: isMobile ? '2fr 1fr 1fr' : '3fr 1fr 1fr 1fr 1fr 100px',
+                                        gridTemplateColumns: isMobile ? '2fr 1fr 1fr' : 'minmax(260px,3fr) 1fr 0.8fr 1fr 1fr 1fr 100px',
                                         padding: '0.875rem 1rem',
                                         borderBottom: '1px solid var(--border)',
                                         alignItems: 'center',
@@ -1151,6 +1154,11 @@ export default function Stock() {
                                                     fontWeight: 800
                                                 }}>
                                                     {item.category}
+                                                </div>
+                                            )}
+                                            {isMobile && (
+                                                <div style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: 700, marginTop: '0.25rem' }}>
+                                                    Себест.: {item.cost.toLocaleString('ru-RU')} lei
                                                 </div>
                                             )}
                                             {(item.is_low || item.quantity <= 0) && (
@@ -1234,9 +1242,15 @@ export default function Stock() {
                                         </div>
                                     )}
 
-                                    <div style={{ textAlign: 'right', fontWeight: 600, color: 'var(--primary)' }}>
-                                        {(item.quantity * item.cost).toLocaleString()} lei
+                                    <div style={{ textAlign: 'right', fontWeight: 800, color: item.sale_price > 0 ? '#059669' : '#dc2626' }}>
+                                        {item.sale_price > 0 ? `${item.sale_price.toLocaleString('ru-RU')} lei` : 'Не задана'}
                                     </div>
+
+                                    {!isMobile && (
+                                        <div style={{ textAlign: 'right', fontWeight: 600, color: 'var(--primary)' }}>
+                                            {(item.quantity * item.cost).toLocaleString('ru-RU')} lei
+                                        </div>
+                                    )}
 
                                     {!isMobile && (
                                         <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
