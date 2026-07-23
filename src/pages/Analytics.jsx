@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useStore } from '../context/StoreContext'
+import { supabase } from '../supabase'
 import { buildCashActivities, isCashTransfer } from '../lib/cashLedger'
 import {
     BarChart, DollarSign, TrendingUp, TrendingDown,
@@ -7,7 +8,7 @@ import {
 } from 'lucide-react'
 
 export default function Analytics() {
-    const { sales, salePayments, expenses, cashMovements, supplyPayments, supplies, stockTransactions, flowers, goods, claims } = useStore()
+    const { sales, salePayments, expenses, cashMovements, supplyPayments, supplies, flowers, goods, claims } = useStore()
 
     // Mobile Check
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -22,45 +23,109 @@ export default function Analytics() {
     const [customRange, setCustomRange] = useState({ start: '', end: '' })
     const [analyticsView, setAnalyticsView] = useState('pnl')
 
+    const dateBounds = useMemo(() => {
+        const now = new Date()
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        let start = null
+        let endExclusive = null
+        let valid = true
+
+        switch (dateFilter) {
+            case 'today':
+                start = today
+                break
+            case 'yesterday':
+                start = new Date(today)
+                start.setDate(start.getDate() - 1)
+                endExclusive = today
+                break
+            case 'week':
+                start = new Date(today)
+                start.setDate(start.getDate() - 7)
+                break
+            case 'month':
+                start = new Date(today)
+                start.setDate(start.getDate() - 30)
+                break
+            case 'custom':
+                if (!customRange.start || !customRange.end) {
+                    valid = false
+                    break
+                }
+                start = new Date(`${customRange.start}T00:00:00`)
+                endExclusive = new Date(`${customRange.end}T00:00:00`)
+                endExclusive.setDate(endExclusive.getDate() + 1)
+                valid = !Number.isNaN(start.getTime()) && !Number.isNaN(endExclusive.getTime())
+                break
+            default:
+                break
+        }
+
+        return {
+            valid,
+            startIso: start ? start.toISOString() : null,
+            endExclusiveIso: endExclusive ? endExclusive.toISOString() : null
+        }
+    }, [dateFilter, customRange])
+
+    const [analyticsWasteTransactions, setAnalyticsWasteTransactions] = useState([])
+    useEffect(() => {
+        let active = true
+
+        if (!dateBounds.valid) {
+            setAnalyticsWasteTransactions([])
+            return () => {
+                active = false
+            }
+        }
+
+        let query = supabase
+            .from('stock_transactions')
+            .select('*')
+            .eq('transaction_type', 'waste')
+            .order('created_at', { ascending: false })
+
+        if (dateBounds.startIso) query = query.gte('created_at', dateBounds.startIso)
+        if (dateBounds.endExclusiveIso) query = query.lt('created_at', dateBounds.endExclusiveIso)
+
+        query.then(({ data, error }) => {
+            if (!active) return
+            if (error) {
+                console.error('Could not load analytics write-offs:', error)
+                setAnalyticsWasteTransactions([])
+                return
+            }
+            setAnalyticsWasteTransactions(data || [])
+        })
+
+        return () => {
+            active = false
+        }
+    }, [dateBounds])
+
     // Helper: Date Check
     const isWithinRange = (dateStr) => {
         if (!dateStr) return false
         const d = new Date(dateStr)
-        const now = new Date()
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        if (Number.isNaN(d.getTime()) || !dateBounds.valid) return false
+        if (dateBounds.startIso && d < new Date(dateBounds.startIso)) return false
+        if (dateBounds.endExclusiveIso && d >= new Date(dateBounds.endExclusiveIso)) return false
+        return true
+    }
 
-        switch (dateFilter) {
-            case 'today':
-                return d >= today
-            case 'yesterday':
-                const yest = new Date(today)
-                yest.setDate(yest.getDate() - 1)
-                const yestEnd = new Date(today)
-                return d >= yest && d < yestEnd
-            case 'week':
-                const weekAgo = new Date(today)
-                weekAgo.setDate(weekAgo.getDate() - 7)
-                return d >= weekAgo
-            case 'month':
-                const monthAgo = new Date(today)
-                monthAgo.setDate(monthAgo.getDate() - 30)
-                return d >= monthAgo
-            case 'custom':
-                if (!customRange.start || !customRange.end) return false
-                const start = new Date(customRange.start)
-                const end = new Date(customRange.end)
-                end.setHours(23, 59, 59, 999)
-                return d >= start && d <= end
-            default:
-                return true
-        }
+    const isRecognizedSale = sale => {
+        const productionStatus = String(sale.production_status || '').toLowerCase()
+        const deliveryStatus = String(sale.delivery_status || '').toLowerCase()
+        return productionStatus !== 'planned' && !['cancelled', 'canceled'].includes(deliveryStatus)
     }
 
     // --- Calculations ---
 
     const filteredData = useMemo(() => {
         // Sales (Revenue, Gross Profit)
-        const filteredSales = sales.filter(s => isWithinRange(s.order_date || s.created_at))
+        const filteredSales = sales.filter(s =>
+            isRecognizedSale(s) && isWithinRange(s.order_date || s.created_at)
+        )
 
         // Expenses (OpEx)
         const filteredExpenses = expenses.filter(e =>
@@ -68,14 +133,11 @@ export default function Analytics() {
         )
 
         // Stock Transactions (Waste/Write-offs)
-        const filteredWaste = stockTransactions.filter(tx =>
-            tx.transaction_type === 'waste' &&
-            isWithinRange(tx.created_at)
-        )
+        const filteredWaste = analyticsWasteTransactions.filter(tx => isWithinRange(tx.created_at))
         const filteredClaims = (claims || []).filter(claim => isWithinRange(claim.created_at))
 
         return { filteredSales, filteredExpenses, filteredWaste, filteredClaims }
-    }, [sales, expenses, stockTransactions, claims, dateFilter, customRange])
+    }, [sales, expenses, analyticsWasteTransactions, claims, dateBounds])
 
     const pnlStats = useMemo(() => {
         const { filteredSales, filteredExpenses, filteredWaste } = filteredData
