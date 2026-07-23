@@ -1048,28 +1048,44 @@ export function StoreProvider({ children }) {
         return [...aggregated.values()]
     }
 
-    const deductSaleComposition = async (sale, saleId) => {
+    const refreshInventoryState = async () => {
+        const [stockResult, transactionsResult, lotsResult] = await Promise.all([
+            supabase.from('stock').select('*'),
+            supabase.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(100),
+            supabase.from('stock_lots').select('*, suppliers(name)').order('created_at', { ascending: true })
+        ])
+
+        if (stockResult.data) setStock(stockResult.data)
+        if (transactionsResult.data) setStockTransactions(transactionsResult.data)
+        if (lotsResult.data) setStockLots(lotsResult.data)
+    }
+
+    const syncSaleCompositionStock = async (sale, saleId) => {
         const composition = normalizeSaleComposition(sale)
         if (composition.length === 0) {
             return { success: false, error: new Error('Сначала добавьте состав букета') }
         }
 
-        const stockIssues = composition
-            .map(item => {
-                const available = Number(stock.find(row => row.item_type === item.type && String(row.item_id) === String(item.id))?.quantity || 0)
-                return { ...item, available, missing: Math.max(0, item.qty - available) }
-            })
-            .filter(item => item.missing > 0)
+        const explicitComposition = Array.isArray(sale?.custom_composition) && sale.custom_composition.length > 0
+            ? sale.custom_composition
+            : null
+        const { data, error } = await supabase.rpc('sync_sale_inventory', {
+            p_sale_id: saleId,
+            p_composition: explicitComposition
+        })
 
-        if (stockIssues.length > 0) {
-            return { success: false, error: new Error('Недостаточно остатков на складе'), stockIssues }
+        if (error) {
+            const stockIssues = composition
+                .map(item => {
+                    const available = Number(stock.find(row => row.item_type === item.type && String(row.item_id) === String(item.id))?.quantity || 0)
+                    return { ...item, available, missing: Math.max(0, item.qty - available) }
+                })
+                .filter(item => item.missing > 0)
+            return { success: false, error, stockIssues }
         }
 
-        for (const item of composition) {
-            const result = await removeFromStock(item.type, item.id, item.qty, 'sale', saleId, 'Списание по заказу')
-            if (!result.success) return result
-        }
-        return { success: true }
+        await refreshInventoryState()
+        return { success: true, data }
     }
 
     // Sales
@@ -1181,7 +1197,7 @@ export function StoreProvider({ children }) {
                 }
 
                 if (!skipStockDeduction && salePayload.production_status !== 'planned') {
-                    const stockResult = await deductSaleComposition(salePayload, saleData.id)
+                    const stockResult = await syncSaleCompositionStock(salePayload, saleData.id)
                     if (!stockResult.success) {
                         await supabase.from('sales').delete().eq('id', saleData.id)
                         setSales(current => current.filter(item => item.id !== saleData.id))
@@ -1226,6 +1242,10 @@ export function StoreProvider({ children }) {
         // Sanitize UUID fields (convert empty strings to null or remove them)
         const payload = { ...updates }
         const existingSale = sales.find(sale => String(sale.id) === String(id)) || {}
+        const compositionToSync = existingSale.stock_deducted && payload.custom_composition !== undefined
+            ? payload.custom_composition
+            : undefined
+        if (compositionToSync !== undefined) delete payload.custom_composition
         // These fields control creation of the first payment and are not columns of sales.
         delete payload.skip_stock_deduction
         delete payload.initial_payment_amount
@@ -1281,12 +1301,24 @@ export function StoreProvider({ children }) {
             payload.payment_status = getSalePaymentSummary({ ...existingSale, ...payload }, salePayments).status
         }
 
-        const { error } = await supabase.from('sales').update(payload).eq('id', id)
-        if (!error) {
+        const updateResult = Object.keys(payload).length > 0
+            ? await supabase.from('sales').update(payload).eq('id', id)
+            : { error: null }
+        if (!updateResult.error && compositionToSync !== undefined) {
+            const stockResult = await syncSaleCompositionStock({
+                ...existingSale,
+                ...payload,
+                custom_composition: compositionToSync
+            }, id)
+            if (!stockResult.success) return stockResult
+            payload.custom_composition = compositionToSync
+            payload.stock_deducted = true
+        }
+        if (!updateResult.error) {
             setSales(sales.map(s => s.id === id ? { ...s, ...payload } : s))
             return { success: true }
         }
-        return { success: false, error }
+        return { success: false, error: updateResult.error }
     }
 
     const setSaleProductionStatus = async (id, productionStatus, saleOverride = null) => {
@@ -1303,8 +1335,8 @@ export function StoreProvider({ children }) {
         }
 
         let stockDeducted = Boolean(sale.stock_deducted)
-        if (productionStatus !== 'planned' && !stockDeducted) {
-            const result = await deductSaleComposition(sale, id)
+        if (productionStatus !== 'planned') {
+            const result = await syncSaleCompositionStock(sale, id)
             if (!result.success) return result
             stockDeducted = true
         }
