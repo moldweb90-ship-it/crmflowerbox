@@ -1084,8 +1084,23 @@ export function StoreProvider({ children }) {
             return { success: false, error, stockIssues }
         }
 
+        const { error: financialsError } = await supabase.rpc('refresh_sale_actual_cost', {
+            p_sale_id: saleId
+        })
+        if (financialsError) return { success: false, error: financialsError }
+
         await refreshInventoryState()
-        return { success: true, data }
+        const { data: refreshedSale, error: refreshSaleError } = await supabase
+            .from('sales')
+            .select('cost_price, profit, custom_composition')
+            .eq('id', saleId)
+            .single()
+        if (refreshSaleError) return { success: false, error: refreshSaleError }
+
+        setSales(current => current.map(item => String(item.id) === String(saleId)
+            ? { ...item, ...refreshedSale }
+            : item))
+        return { success: true, data, sale: refreshedSale }
     }
 
     // Sales
@@ -1313,9 +1328,14 @@ export function StoreProvider({ children }) {
             if (!stockResult.success) return stockResult
             payload.custom_composition = compositionToSync
             payload.stock_deducted = true
+            if (stockResult.sale) {
+                payload.cost_price = stockResult.sale.cost_price
+                payload.profit = stockResult.sale.profit
+                payload.custom_composition = stockResult.sale.custom_composition
+            }
         }
         if (!updateResult.error) {
-            setSales(sales.map(s => s.id === id ? { ...s, ...payload } : s))
+            setSales(current => current.map(s => s.id === id ? { ...s, ...payload } : s))
             return { success: true }
         }
         return { success: false, error: updateResult.error }
