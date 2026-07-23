@@ -361,12 +361,12 @@ export default function Dashboard() {
             return dDate < now
         }).map(s => ({
             id: s.id,
-            orderNumber: s.order_number || s.id.substring(0, 6).toUpperCase(),
-            clientName: s.customer_name || 'Клиент',
+            bouquetTitle: s.custom_name || s.product_name || s.products?.name || s.product?.name || 'Заказ',
+            clientName: s.customer_name || s.recipient_name || 'Клиент не указан',
             time: s.delivery_time_mode === 'day'
                 ? 'В течение дня'
                 : new Date(s.delivery_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            status: s.status,
+            problemLabel: s.delivery_method === 'pickup' ? 'Выдача просрочена' : 'Доставка просрочена',
             amount: s.sale_price,
             note: s.order_notes || ''
         }))
@@ -1103,7 +1103,27 @@ export default function Dashboard() {
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>
                                     {problemOrders.slice(0, 2).map(p => (
-                                        <div key={p.id} title={p.note || ''}>#{p.orderNumber} - {p.time} ({p.status})</div>
+                                        <button
+                                            key={p.id}
+                                            type="button"
+                                            onClick={() => navigate(`/sales?order=${encodeURIComponent(p.id)}`)}
+                                            title={[p.bouquetTitle, p.clientName, p.note].filter(Boolean).join(' · ')}
+                                            style={{
+                                                display: 'block',
+                                                width: '100%',
+                                                padding: '0.2rem 0',
+                                                border: 0,
+                                                background: 'transparent',
+                                                color: 'inherit',
+                                                textAlign: 'left',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <div style={{ fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {p.bouquetTitle} · {p.clientName}
+                                            </div>
+                                            <div style={{ opacity: 0.85 }}>{p.problemLabel} · {p.time}</div>
+                                        </button>
                                     ))}
                                     {problemOrders.length > 2 && <div>...и еще {problemOrders.length - 2}</div>}
                                 </div>
