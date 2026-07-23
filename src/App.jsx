@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
@@ -25,11 +26,32 @@ import Login from './pages/Login'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import RequirePermission from './components/layout/RequirePermission'
 
+function DisableNumberInputWheel() {
+    useEffect(() => {
+        const handleWheel = event => {
+            const input = event.target
+            if (
+                input instanceof HTMLInputElement &&
+                input.type === 'number' &&
+                document.activeElement === input
+            ) {
+                input.blur()
+            }
+        }
+
+        document.addEventListener('wheel', handleWheel, { capture: true, passive: true })
+        return () => document.removeEventListener('wheel', handleWheel, true)
+    }, [])
+
+    return null
+}
+
 function App() {
     return (
         <AuthProvider>
             <PermissionProvider>
                 <StoreProvider>
+                    <DisableNumberInputWheel />
                     <BrowserRouter>
                         <Routes>
                             <Route path="/login" element={<Login />} />
