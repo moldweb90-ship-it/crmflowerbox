@@ -91,7 +91,26 @@ BEGIN
           END,
           NULLIF(element->>'cost', '')::numeric,
           0
-        )
+        ),
+        -- Refresh the unit catalogue price used in the composition breakdown,
+        -- but keep the already agreed sale.sale_price total untouched.
+        'price',
+        CASE
+          WHEN COALESCE(NULLIF(element->>'technique_enabled', '')::boolean, false)
+            OR element ? 'price_override'
+          THEN COALESCE(NULLIF(element->>'price', '')::numeric, 0)
+          WHEN element->>'type' = 'flower' THEN COALESCE((
+            SELECT price
+              FROM public.flowers
+             WHERE id = COALESCE(element->>'item_id', element->>'id')::uuid
+          ), NULLIF(element->>'price', '')::numeric, 0)
+          WHEN element->>'type' = 'good' THEN COALESCE((
+            SELECT price
+              FROM public.goods
+             WHERE id = COALESCE(element->>'item_id', element->>'id')::uuid
+          ), NULLIF(element->>'price', '')::numeric, 0)
+          ELSE COALESCE(NULLIF(element->>'price', '')::numeric, 0)
+        END
       )
       ORDER BY ordinal
     ), '[]'::jsonb)
