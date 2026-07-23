@@ -16,6 +16,8 @@ DECLARE
   delta_quantity numeric;
   remaining_quantity numeric;
   take_quantity numeric;
+  restore_unit_cost numeric;
+  restore_supplier_id uuid;
   deducted_quantity numeric := 0;
   restored_quantity numeric := 0;
 BEGIN
@@ -207,6 +209,43 @@ BEGIN
     ELSIF delta_quantity < 0 THEN
       delta_quantity := ABS(delta_quantity);
 
+      -- A reduced composition must return stock at the same weighted cost
+      -- that was originally deducted for this sale. The current catalogue
+      -- cost may already belong to a newer supply and would distort COGS.
+      SELECT
+        COALESCE(
+          SUM((-transaction.quantity) * COALESCE(
+            transaction.cost_price,
+            CASE
+              WHEN item.item_type = 'flower' THEN flower.cost
+              WHEN item.item_type = 'good' THEN good.cost
+              ELSE 0
+            END,
+            0
+          )) / NULLIF(-SUM(transaction.quantity), 0),
+          CASE
+            WHEN item.item_type = 'flower' THEN MAX(flower.cost)
+            WHEN item.item_type = 'good' THEN MAX(good.cost)
+            ELSE 0
+          END,
+          0
+        ),
+        (ARRAY_AGG(transaction.supplier_id ORDER BY transaction.created_at)
+          FILTER (WHERE transaction.supplier_id IS NOT NULL))[1]
+        INTO restore_unit_cost, restore_supplier_id
+        FROM public.stock_transactions AS transaction
+        LEFT JOIN public.flowers AS flower
+          ON item.item_type = 'flower'
+         AND flower.id = item.item_id
+        LEFT JOIN public.goods AS good
+          ON item.item_type = 'good'
+         AND good.id = item.item_id
+       WHERE transaction.reference_id = p_sale_id
+         AND transaction.transaction_type = 'sale'
+         AND transaction.item_type = item.item_type
+         AND transaction.item_id = item.item_id
+         AND transaction.quantity < 0;
+
       INSERT INTO public.stock (item_type, item_id, quantity, updated_at)
       VALUES (item.item_type, item.item_id, delta_quantity, now())
       ON CONFLICT (item_type, item_id)
@@ -225,11 +264,11 @@ BEGIN
       ) VALUES (
         item.item_type,
         item.item_id,
-        NULL,
+        restore_supplier_id,
         NULL,
         delta_quantity,
         delta_quantity,
-        0
+        restore_unit_cost
       );
 
       INSERT INTO public.stock_transactions (
@@ -238,6 +277,8 @@ BEGIN
         quantity,
         transaction_type,
         reference_id,
+        cost_price,
+        supplier_id,
         notes
       ) VALUES (
         item.item_type,
@@ -245,6 +286,8 @@ BEGIN
         delta_quantity,
         'sale',
         p_sale_id,
+        restore_unit_cost,
+        restore_supplier_id,
         'Возврат после изменения состава заказа'
       );
 
